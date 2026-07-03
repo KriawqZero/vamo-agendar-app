@@ -1,0 +1,3 @@
+[auth.third_party.clerk]
+enabled = true
+domain = "https://becoming-prawn-0.clerk.accounts.dev"
