@@ -3,6 +3,21 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --clerk-color-primary: light-dark(#2F3037, #FFFFFF);
+  --clerk-color-primary-foreground: light-dark(#FFFFFF, black);
+  --clerk-color-danger: #EF4444;
+  --clerk-color-success: #22C543;
+  --clerk-color-warning: #F36B16;
+  --clerk-color-neutral: light-dark(#000000, white);
+  --clerk-color-foreground: light-dark(#000000, white);
+  --clerk-color-background: light-dark(#FFFFFF, #212126);
+  --clerk-color-input: light-dark(#FFFFFF, #26262B);
+  --clerk-color-input-foreground: light-dark(#000000, white);
+  --clerk-color-ring: light-dark(color-mix(in srgb, #000000 15.000000000000002%, transparent), color-mix(in srgb, #ffffff 15.000000000000002%, transparent));
+  --clerk-color-shimmer: #FFFFFF;
+  --clerk-color-modal-backdrop: #000000;
+  --clerk-border-radius: 0rem;
+  --clerk-spacing: 1.125rem;
 }
 
 @theme inline {
