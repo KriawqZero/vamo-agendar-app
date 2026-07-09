@@ -4,6 +4,8 @@ CREATE TABLE perfis_empresas (
     nome_estabelecimento text NOT NULL,
     descricao text,
     telefone_contato text,
+    cor_marca text,  -- cor de destaque da página pública (recurso Plus+; ainda não consumido pelo booking)
+    logo_url text,   -- URL do logo na página pública (recurso Pro; ainda não consumido pelo booking)
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
@@ -36,3 +38,5 @@ COMMENT ON TABLE perfis_empresas IS 'Armazena as informações públicas de perf
 COMMENT ON COLUMN perfis_empresas.tenant_id IS 'Identificador único da organização no Clerk (tenant).';
 COMMENT ON COLUMN perfis_empresas.slug IS 'Slug único utilizado na URL pública de agendamento.';
 COMMENT ON COLUMN perfis_empresas.nome_estabelecimento IS 'Nome fantasia exibido no cabeçalho do agendamento.';
+COMMENT ON COLUMN perfis_empresas.cor_marca IS 'Cor de destaque da página pública de booking (recurso do plano Plus+). Ainda não aplicada na UI pública.';
+COMMENT ON COLUMN perfis_empresas.logo_url IS 'URL do logo exibido na página pública de booking (recurso do plano Pro). Ainda não aplicada na UI pública.';
