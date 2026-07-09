@@ -2,6 +2,9 @@ import React from 'react'
 import { auth } from '@clerk/nextjs/server'
 import { obterPerfilEmpresa } from '@/app/actions/perfis-empresas'
 import { listarHorariosFuncionamento, listarExcecoesAgenda } from '@/app/actions/agenda'
+import { createClient } from '@/lib/supabase/server'
+import { PLANOS } from '@/lib/planos'
+import { obterAssinaturaVigente } from '@/lib/assinaturas'
 import AgendaClient from './AgendaClient'
 
 export default async function AgendaPage() {
@@ -29,11 +32,17 @@ export default async function AgendaPage() {
     const horariosFuncionamento = await listarHorariosFuncionamento()
     const excecoesAgenda = await listarExcecoesAgenda()
 
+    // 3. Buscar o plano vigente do tenant para aplicar o gating de personalização na UI
+    const supabase = await createClient()
+    const { plano } = await obterAssinaturaVigente(supabase, orgId)
+    const { linkPersonalizado, corPersonalizada, logoPersonalizado } = PLANOS[plano].recursos
+
     return (
         <AgendaClient
             perfilEmpresa={perfilEmpresa}
             horariosFuncionamento={horariosFuncionamento}
             excecoesAgenda={excecoesAgenda}
+            recursosPlano={{ linkPersonalizado, corPersonalizada, logoPersonalizado }}
         />
     )
 }

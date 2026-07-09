@@ -11,6 +11,8 @@ interface PerfilEmpresa {
     nome_estabelecimento: string;
     descricao: string | null;
     telefone_contato: string | null;
+    cor_marca: string | null;
+    logo_url: string | null;
 }
 
 interface HorarioFuncionamento {
@@ -30,10 +32,25 @@ interface ExcecaoAgenda {
     motivo: string | null;
 }
 
+interface RecursosPlano {
+    linkPersonalizado: boolean;
+    corPersonalizada: boolean;
+    logoPersonalizado: boolean;
+}
+
 interface AgendaClientProps {
     perfilEmpresa: PerfilEmpresa | null;
     horariosFuncionamento: HorarioFuncionamento[];
     excecoesAgenda: ExcecaoAgenda[];
+    recursosPlano: RecursosPlano;
+}
+
+function SeloPlano({ plano }: { plano: 'Plus' | 'Pro' }) {
+    return (
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
+            🔒 {plano}
+        </span>
+    )
 }
 
 const DIAS_SEMANA = [
@@ -49,7 +66,8 @@ const DIAS_SEMANA = [
 export default function AgendaClient({
     perfilEmpresa,
     horariosFuncionamento,
-    excecoesAgenda
+    excecoesAgenda,
+    recursosPlano
 }: AgendaClientProps) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
@@ -60,6 +78,8 @@ export default function AgendaClient({
     const [nomeEstabelecimento, setNomeEstabelecimento] = useState(perfilEmpresa?.nome_estabelecimento || '')
     const [descricao, setDescricao] = useState(perfilEmpresa?.descricao || '')
     const [telefoneContato, setTelefoneContato] = useState(perfilEmpresa?.telefone_contato || '')
+    const [corMarca, setCorMarca] = useState<string | null>(perfilEmpresa?.cor_marca ?? null)
+    const [logoUrl, setLogoUrl] = useState<string>(perfilEmpresa?.logo_url ?? '')
     const [msgPerfil, setMsgPerfil] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null)
 
     // Estado dos Horários Comerciais
@@ -99,7 +119,9 @@ export default function AgendaClient({
                     slug,
                     nomeEstabelecimento,
                     descricao,
-                    telefoneContato
+                    telefoneContato,
+                    corMarca,
+                    logoUrl: logoUrl || null
                 })
                 setMsgPerfil({ tipo: 'sucesso', texto: 'Perfil salvo com sucesso!' })
                 // Atualiza o slug local com a versão higienizada retornada do banco
@@ -260,7 +282,9 @@ export default function AgendaClient({
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-xs font-bold uppercase text-zinc-400 block">Link de Agendamento (Slug)</label>
+                                <label className="flex items-center gap-2 text-xs font-bold uppercase text-zinc-400">
+                                    Link de Agendamento (Slug) {!recursosPlano.linkPersonalizado && <SeloPlano plano="Plus" />}
+                                </label>
                                 <div className="flex rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 overflow-hidden text-sm">
                                     <span className="bg-zinc-100 dark:bg-zinc-800 px-3 py-2 text-zinc-500 font-mono text-xs flex items-center border-r border-zinc-200 dark:border-zinc-800">
                                         /book/
@@ -270,10 +294,48 @@ export default function AgendaClient({
                                         value={slug}
                                         onChange={(e) => setSlug(e.target.value)}
                                         placeholder="barbearia-classica"
-                                        className="w-full px-3.5 py-2 bg-transparent outline-hidden text-zinc-900 dark:text-zinc-50 font-mono text-sm"
+                                        disabled={!recursosPlano.linkPersonalizado}
+                                        className="w-full px-3.5 py-2 bg-transparent outline-hidden text-zinc-900 dark:text-zinc-50 font-mono text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                         required
                                     />
                                 </div>
+                                {!recursosPlano.linkPersonalizado && (
+                                    <p className="text-xs text-zinc-500 mt-1">
+                                        Personalize seu link no plano Plus.{' '}
+                                        <a href="/dashboard/plano" className="font-bold underline underline-offset-2">Ver planos</a>
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                                    Cor da marca {!recursosPlano.corPersonalizada && <SeloPlano plano="Plus" />}
+                                </label>
+                                <input
+                                    type="color"
+                                    value={corMarca || '#18181b'}
+                                    onChange={(e) => setCorMarca(e.target.value)}
+                                    disabled={!recursosPlano.corPersonalizada}
+                                    className="h-10 w-20 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                                />
+                                <p className="text-xs text-zinc-500 mt-1">Cor de destaque da sua página pública (em breve).</p>
+                            </div>
+
+                            <div>
+                                <label className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                                    Logo (URL) {!recursosPlano.logoPersonalizado && <SeloPlano plano="Pro" />}
+                                </label>
+                                <input
+                                    type="url"
+                                    value={logoUrl}
+                                    onChange={(e) => setLogoUrl(e.target.value)}
+                                    disabled={!recursosPlano.logoPersonalizado}
+                                    placeholder="https://…/logo.png"
+                                    className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                                />
+                                <p className="text-xs text-zinc-500 mt-1">Logo exibido na sua página pública (em breve).</p>
                             </div>
                         </div>
 
