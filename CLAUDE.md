@@ -54,7 +54,7 @@ Em Server Actions B2B, valide `const { orgId } = await auth()` antes de operar e
 - **Performance crítica**: sempre envolver `auth.jwt()` em subquery — `(SELECT auth.jwt() ->> 'org_id')` — para virar initPlan e evitar avaliação por linha.
 - Nomenclatura em pt-BR: tabelas no **plural** (`agendamentos`, `servicos`), colunas no **singular** (`preco`, `duracao_minutos`), tudo `snake_case`; FKs como `<tabela_singular>_id`. Adicionar `COMMENT ON TABLE/POLICY` documentando a intenção de negócio.
 
-Tabelas existentes: `perfis_empresas` (identidade + slug público), `servicos`, `horarios_funcionamento` (dia_semana 0–6 + janelas), `excecoes_agenda` (feriados/bloqueios), `whatsapp_configs` (instância Evolution + templates de mensagem), `clientes`, `agendamentos` (status: pendente/confirmado/concluido/cancelado).
+Tabelas existentes: `perfis_empresas` (identidade + slug público), `servicos`, `horarios_funcionamento` (dia_semana 0–6 + janelas), `excecoes_agenda` (feriados/bloqueios), `whatsapp_configs` (instância Evolution + templates de mensagem), `clientes`, `agendamentos` (status: pendente/confirmado/concluido/cancelado), `assinaturas` (planos plus/pro; gratuito = sem linha vigente; ver docs/07-PLANOS_E_MONETIZACAO.md).
 
 ### Engine de disponibilidade (`src/lib/booking-engine.ts`)
 

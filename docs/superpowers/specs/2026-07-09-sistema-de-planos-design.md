@@ -67,6 +67,14 @@ assinaturas
   (`tenant_id = (SELECT auth.jwt() ->> 'org_id')`). **Nenhuma** política de escrita para
   `authenticated`/`anon` — escreve apenas o dono do banco (SQL manual agora, webhook
   Asaas com `service_role` depois). Plano infraudável pelo cliente.
+- Exceção descoberta no planejamento: o fluxo público de booking (role `anon`) precisa
+  **ler** a assinatura do tenant para a defesa em profundidade do WhatsApp (não enviar
+  confirmação para tenant rebaixado). Há, portanto, uma política de SELECT `TO anon`
+  `USING (true)` — mas com **GRANT por coluna** limitando `anon` a
+  `tenant_id`/`plano`/`status`: os campos de pagamento (`valor`, ids Asaas,
+  `url_fatura_pendente`) são ilegíveis sem login. O código público usa a variante
+  enxuta `obterPlanoVigentePublico()`; escrita continua impossível via API.
+  (Decisão do owner em 2026-07-09, após achado de review.)
 
 ### 2. Colunas preparatórias em `perfis_empresas`
 
