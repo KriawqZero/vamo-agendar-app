@@ -15,14 +15,19 @@ interface Servico {
 
 interface ServicosClientProps {
     servicos: Servico[];
+    planoNome: string;
+    limiteServicosAtivos: number | null;
 }
 
-export default function ServicosClient({ servicos }: ServicosClientProps) {
+export default function ServicosClient({ servicos, planoNome, limiteServicosAtivos }: ServicosClientProps) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
     const [modalAberto, setModalAberto] = useState(false)
     const [editandoServico, setEditandoServico] = useState<Servico | null>(null)
     const [erroForm, setErroForm] = useState<string | null>(null)
+
+    const servicosAtivos = servicos.filter((s) => s.ativo).length
+    const limiteAtingido = limiteServicosAtivos !== null && servicosAtivos >= limiteServicosAtivos
 
     // Estado do Formulário
     const [nome, setNome] = useState('')
@@ -125,11 +130,30 @@ export default function ServicosClient({ servicos }: ServicosClientProps) {
                 </div>
                 <button
                     onClick={abrirCriar}
-                    className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 font-semibold rounded-lg text-sm transition-all duration-200 cursor-pointer shadow-xs"
+                    disabled={limiteAtingido}
+                    title={limiteAtingido ? 'Limite de serviços ativos do plano atingido' : undefined}
+                    className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 font-semibold rounded-lg text-sm transition-all duration-200 cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     Novo Serviço
                 </button>
             </div>
+
+            {/* Contador de limite do plano */}
+            {limiteServicosAtivos !== null && (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                        <span className={`font-bold ${limiteAtingido ? 'text-red-600 dark:text-red-400' : 'text-zinc-900 dark:text-zinc-100'}`}>
+                            {servicosAtivos}/{limiteServicosAtivos}
+                        </span>{' '}
+                        serviços ativos · plano {planoNome}
+                    </p>
+                    {limiteAtingido && (
+                        <a href="/dashboard/plano" className="shrink-0 text-xs font-bold text-zinc-900 dark:text-zinc-100 underline underline-offset-2">
+                            Fazer upgrade
+                        </a>
+                    )}
+                </div>
+            )}
 
             {/* Lista Grid */}
             {servicos.length === 0 ? (

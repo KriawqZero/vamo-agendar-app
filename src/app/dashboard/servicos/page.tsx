@@ -1,6 +1,9 @@
 import React from 'react'
 import { auth } from '@clerk/nextjs/server'
 import { listarServicos } from '@/app/actions/servicos'
+import { createClient } from '@/lib/supabase/server'
+import { PLANOS } from '@/lib/planos'
+import { obterAssinaturaVigente } from '@/lib/assinaturas'
 import ServicosClient from './ServicosClient'
 
 export default async function ServicosPage() {
@@ -26,5 +29,16 @@ export default async function ServicosPage() {
     // 2. Buscar a lista de serviços do banco
     const servicos = await listarServicos()
 
-    return <ServicosClient servicos={servicos} />
+    // 3. Buscar o plano vigente do tenant para aplicar o gating de limite na UI
+    const supabase = await createClient()
+    const { plano } = await obterAssinaturaVigente(supabase, orgId)
+    const definicao = PLANOS[plano]
+
+    return (
+        <ServicosClient
+            servicos={servicos}
+            planoNome={definicao.nome}
+            limiteServicosAtivos={definicao.limiteServicosAtivos}
+        />
+    )
 }
