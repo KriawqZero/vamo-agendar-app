@@ -16,9 +16,16 @@ ALTER TABLE servicos ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de RLS
 -- 1. Leitura pública para quem vai realizar o agendamento
-CREATE POLICY "Permitir SELECT público para todos" 
+CREATE POLICY "Permitir SELECT público para todos"
 ON servicos FOR SELECT TO anon, authenticated
 USING (ativo = true);
+
+-- 1b. O dono precisa enxergar também os serviços inativos (para reativá-los),
+-- e INSERT/UPDATE ... RETURNING (usado pelo .select() do supabase-js) exige
+-- que a linha passe no SELECT — sem esta política, desativar um serviço falharia.
+CREATE POLICY "Permitir SELECT do próprio tenant para autenticados"
+ON servicos FOR SELECT TO authenticated
+USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'));
 
 -- 2. Escrita protegida para o tenant dono do serviço
 CREATE POLICY "Permitir INSERT para donos da org autenticados" 

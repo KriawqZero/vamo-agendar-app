@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useTransition } from 'react'
+import React, { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { atualizarStatusAgendamento } from '@/app/actions/agendamentos'
 
@@ -58,9 +58,16 @@ export default function DashboardClient({
         .filter(ag => ag.status === 'confirmado' || ag.status === 'concluido')
         .reduce((sum, ag) => sum + Number(ag.servicos?.preco || 0), 0)
 
-    const linkPublico = perfilEmpresa 
-        ? `${window.location.origin}/book/${perfilEmpresa.slug}` 
-        : ''
+    // `window` não existe no SSR: renderiza o caminho relativo no servidor
+    // e completa com o domínio somente após montar no browser.
+    const caminhoBooking = perfilEmpresa ? `/book/${perfilEmpresa.slug}` : ''
+    const [linkPublico, setLinkPublico] = useState(caminhoBooking)
+
+    useEffect(() => {
+        if (caminhoBooking) {
+            setLinkPublico(`${window.location.origin}${caminhoBooking}`)
+        }
+    }, [caminhoBooking])
 
     const copiarLink = () => {
         if (!linkPublico) return

@@ -16,9 +16,16 @@ ALTER TABLE horarios_funcionamento ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de RLS
 -- 1. Leitura pública para quem vai realizar o agendamento
-CREATE POLICY "Permitir SELECT público para todos" 
+CREATE POLICY "Permitir SELECT público para todos"
 ON horarios_funcionamento FOR SELECT TO anon, authenticated
 USING (ativo = true);
+
+-- 1b. O dono precisa enxergar também as linhas inativas (dias desativados),
+-- tanto para listá-las no dashboard quanto porque INSERT/UPDATE ... RETURNING
+-- (usado pelo .select() do supabase-js) exige que a linha passe no SELECT.
+CREATE POLICY "Permitir SELECT do próprio tenant para autenticados"
+ON horarios_funcionamento FOR SELECT TO authenticated
+USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'));
 
 -- 2. Escrita protegida para o tenant dono do horário
 CREATE POLICY "Permitir INSERT para donos da org autenticados" 

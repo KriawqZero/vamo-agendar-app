@@ -6,8 +6,10 @@ export async function createClient() {
     const cookieStore = await cookies()
     const { getToken } = await auth()
 
-    // O pulo do gato: Pega o JWT que o Clerk gerou especificamente para o escopo do Supabase
-    const supabaseAccessToken = await getToken({ template: 'supabase' })
+    // Integração nativa Clerk ↔ Supabase (third-party auth): o session token padrão
+    // do Clerk já é aceito pelo Supabase — o fluxo de JWT template foi depreciado.
+    // Retorna null quando não há sessão (fluxo B2C anônimo).
+    const supabaseAccessToken = await getToken()
 
     return createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,12 +30,15 @@ export async function createClient() {
                     }
                 },
             },
-            global: {
-                headers: {
-                    // Injeta nativamente o token do Clerk em cada chamada HTTP para o Supabase
-                    Authorization: `Bearer ${supabaseAccessToken}`,
+            // Sem sessão, omitimos o header para a requisição cair na role `anon`
+            // (um `Bearer null` seria rejeitado pelo PostgREST).
+            ...(supabaseAccessToken && {
+                global: {
+                    headers: {
+                        Authorization: `Bearer ${supabaseAccessToken}`,
+                    },
                 },
-            },
+            }),
         }
     )
 }
