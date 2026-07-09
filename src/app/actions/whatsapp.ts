@@ -2,9 +2,18 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
+import { PLANOS } from '@/lib/planos'
+import { obterAssinaturaVigente } from '@/lib/assinaturas'
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080'
 const EVOLUTION_GLOBAL_API_KEY = process.env.EVOLUTION_GLOBAL_API_KEY || 'global_key_here'
+
+async function exigirPlanoComWhatsapp(supabase: Awaited<ReturnType<typeof createClient>>, orgId: string) {
+    const { plano } = await obterAssinaturaVigente(supabase, orgId)
+    if (!PLANOS[plano].recursos.whatsapp) {
+        throw new Error('A integração com WhatsApp é um recurso do plano Pro. Faça upgrade em Plano no menu.')
+    }
+}
 
 /**
  * Busca as configurações de WhatsApp da organização logada.
@@ -50,6 +59,8 @@ export async function salvarTemplatesMensagem(
 
     const supabase = await createClient()
 
+    await exigirPlanoComWhatsapp(supabase, orgId)
+
     // O status e dados de conexão de instância não mudam aqui
     const { data, error } = await supabase
         .from('whatsapp_configs')
@@ -84,6 +95,8 @@ export async function criarInstanciaWhatsApp() {
     const instanceName = `instancia-${orgId.replace(/[^a-zA-Z0-9-]/g, '')}`.toLowerCase()
 
     const supabase = await createClient()
+
+    await exigirPlanoComWhatsapp(supabase, orgId)
 
     try {
         // 1. Chamar Evolution API para criar instância

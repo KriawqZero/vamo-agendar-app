@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { processarMensagemTemplate, enviarMensagemWhatsApp } from '@/lib/whatsapp-helper'
+import { PLANOS } from '@/lib/planos'
+import { obterAssinaturaVigente } from '@/lib/assinaturas'
 
 export async function POST(req: NextRequest) {
     try {
@@ -54,6 +56,13 @@ export async function POST(req: NextRequest) {
         if (agendamento.status === 'cancelado') {
             console.log(`Lembrete ignorado. Agendamento ${agendamentoId} está com status cancelado.`)
             return NextResponse.json({ success: true, message: 'Agendamento cancelado. Lembrete ignorado.' })
+        }
+
+        // Tenant rebaixado após agendar: lembrete não é mais um recurso do plano dele
+        const { plano } = await obterAssinaturaVigente(supabase, tenantId)
+        if (!PLANOS[plano].recursos.whatsapp) {
+            console.log(`Lembrete ignorado. Tenant ${tenantId} não possui WhatsApp no plano vigente.`)
+            return NextResponse.json({ success: true, message: 'Plano sem WhatsApp. Lembrete ignorado.' })
         }
 
         // Coagir relações retornadas como possivelmente arrays pelo Supabase Client

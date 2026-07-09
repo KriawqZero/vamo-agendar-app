@@ -3,6 +3,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { obterSlotsDisponiveis } from '@/lib/booking-engine'
 import { processarMensagemTemplate, enviarMensagemWhatsApp, agendarLembreteQStash } from '@/lib/whatsapp-helper'
+import { PLANOS } from '@/lib/planos'
+import { obterAssinaturaVigente } from '@/lib/assinaturas'
 
 interface AgendamentoPublicoParams {
     tenantId: string;
@@ -141,7 +143,9 @@ export async function criarAgendamentoPublico({
             .eq('tenant_id', tenantId)
             .maybeSingle()
 
-        if (config && config.status === 'conectado' && config.instance_token) {
+        const { plano } = await obterAssinaturaVigente(supabase, tenantId)
+
+        if (config && config.status === 'conectado' && config.instance_token && PLANOS[plano].recursos.whatsapp) {
             const dateObj = new Date(dataHora)
             const datePart = dateObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
             const timePart = dateObj.toLocaleTimeString('pt-BR', {

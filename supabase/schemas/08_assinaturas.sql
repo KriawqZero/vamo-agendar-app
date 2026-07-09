@@ -30,9 +30,16 @@ CREATE POLICY "Permitir SELECT do próprio tenant para autenticados"
 ON assinaturas FOR SELECT TO authenticated
 USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'));
 
+-- Política: o fluxo público de booking (role anon) precisa saber se o tenant
+-- tem WhatsApp habilitado no plano vigente para decidir se dispara mensagens.
+CREATE POLICY "Permitir SELECT público para verificação de recursos"
+ON assinaturas FOR SELECT TO anon
+USING (true);
+
 -- Comentários
 COMMENT ON TABLE assinaturas IS 'Assinatura de plano pago (plus/pro) de cada tenant, no formato da integração Asaas. Plano Gratuito = ausência de linha vigente.';
 COMMENT ON COLUMN assinaturas.ciclo IS 'Ciclo de cobrança no enum do Asaas (MONTHLY/YEARLY).';
 COMMENT ON COLUMN assinaturas.status IS 'ativa = em dia; inadimplente = mantém benefícios + banner de pagamento pendente; cancelada = volta ao Gratuito.';
 COMMENT ON COLUMN assinaturas.url_fatura_pendente IS 'invoiceUrl da cobrança em atraso no Asaas, usada no banner de inadimplência.';
 COMMENT ON POLICY "Permitir SELECT do próprio tenant para autenticados" ON assinaturas IS 'Leitura restrita ao tenant; escrita reservada ao backend (SQL manual/webhook Asaas), sem política para roles de API.';
+COMMENT ON POLICY "Permitir SELECT público para verificação de recursos" ON assinaturas IS 'O fluxo público de booking precisa saber se o tenant tem WhatsApp habilitado no plano. Exposição aceitável: plano/status não são dados sensíveis.';
