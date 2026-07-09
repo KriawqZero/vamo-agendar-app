@@ -2,6 +2,8 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
+import { PLANOS } from '@/lib/planos'
+import { obterAssinaturaVigente } from '@/lib/assinaturas'
 
 interface ServicoInput {
     id?: string;
@@ -51,6 +53,40 @@ export async function salvarServico(input: ServicoInput) {
     }
 
     const supabase = await createClient()
+
+    // Gating de plano: criar serviço ativo ou reativar um inativo não pode
+    // exceder o limite de serviços ativos do plano vigente.
+    if (input.ativo) {
+        const { plano } = await obterAssinaturaVigente(supabase, orgId)
+        const limite = PLANOS[plano].limiteServicosAtivos
+
+        if (limite !== null) {
+            let query = supabase
+                .from('servicos')
+                .select('id', { count: 'exact', head: true })
+                .eq('tenant_id', orgId)
+                .eq('ativo', true)
+
+            if (input.id) {
+                // Em edição, o próprio serviço não conta contra o limite
+                query = query.neq('id', input.id)
+            }
+
+            const { count, error: countError } = await query
+
+            if (countError) {
+                console.error('Erro ao contar serviços ativos:', countError.message)
+                throw new Error('Não foi possível validar o limite do seu plano. Tente novamente.')
+            }
+
+            if ((count ?? 0) >= limite) {
+                throw new Error(
+                    `O plano ${PLANOS[plano].nome} permite até ${limite} serviços ativos. ` +
+                    'Desative outro serviço ou faça upgrade em Plano no menu.'
+                )
+            }
+        }
+    }
 
     const payload = {
         tenant_id: orgId,
