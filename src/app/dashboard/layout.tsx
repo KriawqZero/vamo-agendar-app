@@ -1,6 +1,10 @@
 import React from 'react'
 import Link from 'next/link'
 import { UserButton, OrganizationSwitcher } from '@clerk/nextjs'
+import { auth } from '@clerk/nextjs/server'
+import { createClient } from '@/lib/supabase/server'
+import { PLANOS } from '@/lib/planos'
+import { obterAssinaturaVigente, type AssinaturaVigente } from '@/lib/assinaturas'
 
 // Simple SVG Icons
 const DashboardIcon = () => (
@@ -27,11 +31,24 @@ const WhatsappIcon = () => (
     </svg>
 )
 
-export default function DashboardLayout({
+const PlanoIcon = () => (
+    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+    </svg>
+)
+
+export default async function DashboardLayout({
     children,
 }: {
     children: React.ReactNode
 }) {
+    const { orgId } = await auth()
+    let assinatura: AssinaturaVigente = { plano: 'gratuito', inadimplente: false, urlFaturaPendente: null }
+    if (orgId) {
+        const supabase = await createClient()
+        assinatura = await obterAssinaturaVigente(supabase, orgId)
+    }
+
     return (
         <div className="flex h-screen w-full flex-col md:flex-row bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 font-sans">
             {/* Sidebar (Desktop) / Header (Mobile) */}
@@ -99,6 +116,17 @@ export default function DashboardLayout({
                         <WhatsappIcon />
                         <span className="hidden sm:inline md:inline">WhatsApp</span>
                     </Link>
+
+                    <Link
+                        href="/dashboard/plano"
+                        className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-950 dark:hover:text-white shrink-0"
+                    >
+                        <PlanoIcon />
+                        <span className="hidden sm:inline md:inline">Plano</span>
+                        <span className="ml-auto hidden md:inline text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                            {PLANOS[assinatura.plano].nome}
+                        </span>
+                    </Link>
                 </nav>
 
                 {/* User perfil na base do menu para desktop */}
@@ -115,6 +143,24 @@ export default function DashboardLayout({
 
             {/* Main Content */}
             <main className="flex-1 overflow-y-auto p-4 md:p-8">
+                {assinatura.inadimplente && (
+                    <div className="mb-6 flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/40 p-4">
+                        <div className="flex-1">
+                            <p className="text-sm font-bold text-red-800 dark:text-red-200">
+                                Não foi possível realizar seu pagamento
+                            </p>
+                            <p className="text-xs text-red-700 dark:text-red-300">
+                                Resolva o mais rápido possível para não perder os recursos do plano {PLANOS[assinatura.plano].nome}.
+                            </p>
+                        </div>
+                        <a
+                            href={assinatura.urlFaturaPendente ?? '/dashboard/plano'}
+                            className="shrink-0 rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white transition-all duration-200 hover:bg-red-700"
+                        >
+                            Resolver pagamento
+                        </a>
+                    </div>
+                )}
                 {children}
             </main>
         </div>
