@@ -42,3 +42,27 @@ export async function obterAssinaturaVigente(
         urlFaturaPendente: data.url_fatura_pendente ?? null,
     }
 }
+
+/**
+ * Variante enxuta para contextos públicos (role anon): o GRANT por coluna
+ * permite a anon ler apenas tenant_id/plano/status de assinaturas.
+ * Retorna somente o plano vigente.
+ */
+export async function obterPlanoVigentePublico(
+    supabase: SupabaseClient,
+    tenantId: string
+): Promise<PlanoId> {
+    const { data, error } = await supabase
+        .from('assinaturas')
+        .select('plano, status')
+        .eq('tenant_id', tenantId)
+        .in('status', ['ativa', 'inadimplente'])
+        .maybeSingle()
+
+    if (error) {
+        console.error('Erro ao buscar plano vigente (público):', error.message)
+        return 'gratuito'
+    }
+
+    return data && data.plano in PLANOS ? (data.plano as PlanoId) : 'gratuito'
+}
