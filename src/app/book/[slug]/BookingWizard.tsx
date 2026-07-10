@@ -346,7 +346,7 @@ export default function BookingWizard({ perfil, servicos }: BookingWizardProps) 
                                     <button
                                         key={slot.datetime}
                                         onClick={() => selecionarHorario(slot.datetime)}
-                                        className="py-2.5 bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-850 dark:hover:bg-zinc-800 border border-zinc-200/60 dark:border-zinc-800 rounded-xl text-center text-sm font-bold font-mono transition-all hover:scale-[1.02] cursor-pointer"
+                                        className="py-2.5 bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 border border-zinc-200/60 dark:border-zinc-800 rounded-xl text-center text-sm font-bold font-mono transition-all hover:scale-[1.02] cursor-pointer"
                                     >
                                         {slot.time}
                                     </button>
@@ -495,7 +495,7 @@ export default function BookingWizard({ perfil, servicos }: BookingWizardProps) 
                                 setEmail('')
                                 setEtapa('servico')
                             }}
-                            className="px-6 py-2.5 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-850 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                            className="px-6 py-2.5 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
                         >
                             Novo Agendamento
                         </button>

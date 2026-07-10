@@ -173,7 +173,7 @@ export default function WhatsappClient({ config }: WhatsappClientProps) {
                             </div>
                             
                             {carregandoQrCode && !qrcode ? (
-                                <div className="w-48 h-48 bg-zinc-50 dark:bg-zinc-850 rounded-xl flex items-center justify-center border border-dashed border-zinc-200 dark:border-zinc-700">
+                                <div className="w-48 h-48 bg-zinc-50 dark:bg-zinc-800 rounded-xl flex items-center justify-center border border-dashed border-zinc-200 dark:border-zinc-700">
                                     <span className="text-xs text-zinc-400 animate-pulse">Gerando QR Code...</span>
                                 </div>
                             ) : qrcode ? (
@@ -186,7 +186,7 @@ export default function WhatsappClient({ config }: WhatsappClientProps) {
                                     />
                                 </div>
                             ) : (
-                                <div className="w-48 h-48 bg-zinc-50 dark:bg-zinc-850 rounded-xl flex items-center justify-center">
+                                <div className="w-48 h-48 bg-zinc-50 dark:bg-zinc-800 rounded-xl flex items-center justify-center">
                                     <span className="text-xs text-zinc-400">QR Code indisponível.</span>
                                 </div>
                             )}
@@ -211,7 +211,7 @@ export default function WhatsappClient({ config }: WhatsappClientProps) {
                                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                                 <span className="text-sm font-semibold">Integrado com sucesso</span>
                             </div>
-                            <div className="bg-zinc-50 dark:bg-zinc-850 p-3 rounded-lg text-xs space-y-1 text-zinc-600 dark:text-zinc-400">
+                            <div className="bg-zinc-50 dark:bg-zinc-800 p-3 rounded-lg text-xs space-y-1 text-zinc-600 dark:text-zinc-400">
                                 <div><span className="font-semibold">Instância:</span> {config?.instance_name}</div>
                             </div>
                             <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">

@@ -3,5 +3,8 @@
   "baseFontSize": 18,
   "baseFontSizeAction": true,
   "nativeMenus": false,
-  "cssTheme": "Catppuccin"
+  "cssTheme": "Catppuccin",
+  "enabledCssSnippets": [
+    "margem"
+  ]
 }

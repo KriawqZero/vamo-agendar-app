@@ -31,13 +31,17 @@ interface DashboardClientProps {
     perfilEmpresa: { slug: string; nome_estabelecimento: string } | null;
     whatsappStatus: string;
     dataSelecionada: string; // YYYY-MM-DD
+    temServicoAtivo: boolean;
+    temHorariosConfigurados: boolean;
 }
 
 export default function DashboardClient({
     agendamentos,
     perfilEmpresa,
     whatsappStatus,
-    dataSelecionada
+    dataSelecionada,
+    temServicoAtivo,
+    temHorariosConfigurados
 }: DashboardClientProps) {
     const router = useRouter()
     const [isPending, startTransition] = useTransition()
@@ -137,6 +141,65 @@ export default function DashboardClient({
                 </div>
             )}
 
+            {/* Checklist de Primeiros Passos */}
+            {perfilEmpresa && (!temServicoAtivo || !temHorariosConfigurados) && (
+                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-xs">
+                    <h2 className="text-lg font-bold tracking-tight mb-4 text-zinc-900 dark:text-zinc-50">Primeiros passos</h2>
+                    <div className="space-y-4">
+                        {/* Passo 1 */}
+                        <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 border ${temServicoAtivo ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-zinc-300 dark:border-zinc-700 text-transparent'}`}>
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 className={`font-semibold ${temServicoAtivo ? 'text-zinc-400 dark:text-zinc-500 line-through' : 'text-zinc-900 dark:text-zinc-100'}`}>Cadastre seus serviços</h3>
+                                {!temServicoAtivo && (
+                                    <>
+                                        <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Crie pelo menos um serviço para seus clientes agendarem.</p>
+                                        <button onClick={() => router.push('/dashboard/servicos')} className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 hover:underline mt-2">Configurar serviços &rarr;</button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Passo 2 */}
+                        <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 border ${temHorariosConfigurados ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-zinc-300 dark:border-zinc-700 text-transparent'}`}>
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 className={`font-semibold ${temHorariosConfigurados ? 'text-zinc-400 dark:text-zinc-500 line-through' : 'text-zinc-900 dark:text-zinc-100'}`}>Configure seus horários de funcionamento</h3>
+                                {!temHorariosConfigurados && (
+                                    <>
+                                        <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Defina os dias e horários em que você atende.</p>
+                                        <button onClick={() => router.push('/dashboard/agenda')} className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 hover:underline mt-2">Configurar agenda &rarr;</button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Passo 3 */}
+                        <div className="flex items-start gap-3">
+                            <div className="mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 border border-zinc-300 dark:border-zinc-700 text-transparent">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                </svg>
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">Compartilhe seu link de agendamento</h3>
+                                <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
+                                    Disponível após concluir as etapas acima.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Cards de Estatísticas */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* Agendamentos */}
@@ -199,6 +262,14 @@ export default function DashboardClient({
                         <p className="text-sm font-medium text-zinc-200 break-all select-all font-mono">
                             {linkPublico}
                         </p>
+                        {(!temServicoAtivo || !temHorariosConfigurados) && (
+                            <p className="text-xs text-amber-400 mt-2 font-medium flex items-center gap-1.5">
+                                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                                Seu link ainda não mostra horários — complete os primeiros passos acima.
+                            </p>
+                        )}
                     </div>
                     <button
                         onClick={copiarLink}

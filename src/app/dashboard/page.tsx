@@ -80,12 +80,30 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
     const whatsappStatus = whatsappConfig?.status || 'desconectado'
 
+    // 5. Verificar Checklist de Onboarding
+    const { count: countServicos } = await supabase
+        .from('servicos')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', orgId)
+        .eq('ativo', true)
+    
+    const temServicoAtivo = (countServicos ?? 0) > 0
+
+    const { count: countHorarios } = await supabase
+        .from('horarios_funcionamento')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', orgId)
+        
+    const temHorariosConfigurados = (countHorarios ?? 0) > 0
+
     return (
         <DashboardClient
             agendamentos={agendamentos}
             perfilEmpresa={perfilEmpresa}
             whatsappStatus={whatsappStatus}
             dataSelecionada={dataSelecionada}
+            temServicoAtivo={temServicoAtivo}
+            temHorariosConfigurados={temHorariosConfigurados}
         />
     )
 }
