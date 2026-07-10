@@ -1,0 +1,4 @@
+/* Aumenta a largura útil das notas no Obsidian */
+body {
+  --file-line-width: 900px;
+}

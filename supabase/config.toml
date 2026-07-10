@@ -1,3 +1,10 @@
+project_id = "vamo-agendar-app"
+
+[db.migrations]
+# Fluxo declarativo: schemas em supabase/schemas/ são a fonte da verdade.
+# Migrations são geradas via `supabase db diff -f <nome>`, nunca à mão.
+schema_paths = ["./schemas/*.sql"]
+
 [auth.third_party.clerk]
 enabled = true
-domain = "https://becoming-prawn-0.clerk.accounts.dev"
+domain = "becoming-prawn-0.clerk.accounts.dev"
