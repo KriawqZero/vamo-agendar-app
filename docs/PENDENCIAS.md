@@ -10,24 +10,16 @@ implementar o checkout Asaas.
 
 ## 🔴 Prioridade alta
 
-### 1. Corrigir o disparo de WhatsApp no fluxo público (bug pré-existente da Etapa 5)
+### 1. ✅ RESOLVIDO (2026-07-10) — Disparo de WhatsApp no fluxo público
 
-Achado da revisão final do sistema de planos: `whatsapp_configs` **não tem política de
-SELECT para `anon`**, e o fluxo público de booking + o webhook de lembrete rodam como
-`anon`. Resultado: a busca da config retorna vazio e **a confirmação e o lembrete nunca
-disparam para um visitante real** — só funcionam quando o próprio dono (logado no
-próprio tenant) testa. Há um segundo sintoma: um usuário logado agendando na página de
-**outro** tenant também quebra a decisão de disparo (a leitura de `assinaturas` como
-`authenticated` filtra para a org dele → cai em "gratuito").
-
-**Correção certa**: a fase de disparo (busca de `whatsapp_configs` + plano do tenant)
-deve usar um cliente privilegiado server-side (chave service role, nunca exposta) ou uma
-função `SECURITY DEFINER` que retorne apenas o necessário. **Não** criar política de
-SELECT anon em `whatsapp_configs` (exporia o `instance_token` — qualquer um enviaria
-mensagens como o tenant).
-
-**Bônus**: com o cliente privilegiado, a exposição anônima de `assinaturas` (política
-anon + GRANT por coluna) deixa de ser necessária e pode ser removida.
+A fase de disparo (confirmação em `public-booking.ts` e webhook de lembrete) agora usa
+o cliente privilegiado `createAdminClient()` (`src/lib/supabase/admin.ts`, secret key
+via env `SUPABASE_SECRET_KEY` — **lembrar de configurá-la no Railway/produção**).
+Nenhuma política anon foi criada em `whatsapp_configs` (o `instance_token` continua
+inacessível sem login). Resíduo que continua pendente: a exposição anônima de
+`assinaturas` (tenant_id/plano/status) **não** pôde ser removida — o slug efetivo do
+booking público ainda depende dela (`obterPlanoVigentePublico` em
+`obterDadosBookingPublico`).
 
 ### 2. Hardening da Data API (o que a role `anon` enxerga)
 

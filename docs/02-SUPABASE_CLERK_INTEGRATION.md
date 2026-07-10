@@ -145,8 +145,12 @@ USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'))
   `ativo = true`) têm também uma política de SELECT do próprio tenant.
 - **Usuário logado numa página pública de outro tenant** roda como `authenticated`,
   não `anon` — políticas públicas devem contemplar `TO anon, authenticated` quando o
-  dado precisa ser visível no fluxo B2C (limitação conhecida da mensageria: ver
-  `docs/PENDENCIAS.md`, item 1).
+  dado precisa ser visível no fluxo B2C.
 - **GRANT por coluna**: em `assinaturas`, a role `anon` só lê
   `tenant_id/plano/status` — o código público usa `obterPlanoVigentePublico()`
   (nunca `obterAssinaturaVigente`, que selecionaria coluna proibida).
+- **Cliente privilegiado (`src/lib/supabase/admin.ts`)**: a fase de DISPARO da
+  mensageria (confirmação no booking anônimo e webhook de lembrete) usa a secret key
+  (`SUPABASE_SECRET_KEY`, ignora RLS) porque precisa ler `whatsapp_configs`
+  (`instance_token`) e `clientes` sem sessão. Uso restrito a esses pontos — mutações
+  de tenant continuam nas Server Actions com RLS.

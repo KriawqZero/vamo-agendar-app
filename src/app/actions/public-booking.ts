@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { obterSlotsDisponiveis } from '@/lib/booking-engine'
 import { processarMensagemTemplate, enviarMensagemWhatsApp, agendarLembreteQStash } from '@/lib/whatsapp-helper'
 import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
@@ -129,7 +130,13 @@ export async function criarAgendamentoPublico({
 
     // 6. Disparar notificações assíncronas (WhatsApp + QStash)
     try {
-        const { data: perfil } = await supabase
+        // Fase de disparo usa o cliente PRIVILEGIADO: este fluxo roda como anon
+        // (ou como um usuário logado de OUTRO tenant) e o RLS bloquearia
+        // whatsapp_configs (instance_token nunca pode ser público). Qualquer
+        // falha aqui é engolida pelo catch — o agendamento nunca quebra.
+        const admin = createAdminClient()
+
+        const { data: perfil } = await admin
             .from('perfis_empresas')
             .select('nome_estabelecimento')
             .eq('tenant_id', tenantId)
@@ -137,13 +144,13 @@ export async function criarAgendamentoPublico({
 
         const empresaNome = perfil?.nome_estabelecimento || 'Estabelecimento'
 
-        const { data: config } = await supabase
+        const { data: config } = await admin
             .from('whatsapp_configs')
             .select('*')
             .eq('tenant_id', tenantId)
             .maybeSingle()
 
-        const plano = await obterPlanoVigentePublico(supabase, tenantId)
+        const plano = await obterPlanoVigentePublico(admin, tenantId)
 
         if (config && config.status === 'conectado' && config.instance_token && PLANOS[plano].recursos.whatsapp) {
             const dateObj = new Date(dataHora)

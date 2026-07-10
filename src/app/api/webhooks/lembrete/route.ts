@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { processarMensagemTemplate, enviarMensagemWhatsApp } from '@/lib/whatsapp-helper'
 import { PLANOS } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
@@ -24,9 +24,10 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ error: 'Payload incompleto.' }, { status: 400 })
         }
 
-        // 3. Criar client do Supabase (ignora RLS local porque é um job interno executado em servidor)
-        // Usaremos o client padrão do server.ts
-        const supabase = await createClient()
+        // 3. Cliente PRIVILEGIADO (secret key): este webhook é um job interno sem
+        // sessão — como anon, o RLS bloquearia whatsapp_configs (instance_token)
+        // e clientes (telefone). A requisição já foi autenticada pelo secret acima.
+        const supabase = createAdminClient()
 
         // 4. Buscar informações do agendamento, do cliente e do serviço
         const { data: agendamento, error: agError } = await supabase
