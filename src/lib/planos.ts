@@ -70,3 +70,15 @@ export const PLANOS: Record<PlanoId, DefinicaoPlano> = Object.freeze({
         },
     },
 } satisfies Record<PlanoId, DefinicaoPlano>)
+
+/**
+ * Slug efetivo do perfil conforme o plano: com link personalizado vale o slug
+ * escolhido; sem o recurso, vale o slug aleatório do provisionamento
+ * (o customizado fica reservado e volta a valer num re-upgrade).
+ */
+export function obterSlugEfetivo(
+    perfil: { slug: string; slug_gratuito: string },
+    plano: PlanoId
+): string {
+    return PLANOS[plano].recursos.linkPersonalizado ? perfil.slug : perfil.slug_gratuito
+}

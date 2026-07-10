@@ -96,12 +96,17 @@ cancelar a linha atual antes de inserir a nova.
   excedeu o limite → erro amigável com CTA para `/dashboard/plano`.
 - **`src/app/actions/perfis-empresas.ts`** — o perfil é **auto-provisionado** no
   primeiro acesso ao dashboard (`obterPerfilEmpresa` cria a linha com o nome da
-  organização no Clerk e um slug aleatório), garantindo que todo tenant nasça com link
-  de agendamento. No Gratuito a action rejeita alterações de slug; Plus/Pro editam
-  livremente. Salvar `cor_marca` exige Plus ou superior. O **logo não é input do
-  usuário**: para tenants Pro, `salvarPerfilEmpresa` sincroniza em `logo_url` o logo da
-  organização configurado no Clerk (`organization.imageUrl`, apenas se `hasImage`);
-  sem o recurso no plano, `logo_url` fica nulo.
+  organização no Clerk e um slug aleatório, gravado também em `slug_gratuito`),
+  garantindo que todo tenant nasça com link de agendamento. **Slug efetivo por plano**
+  (`obterSlugEfetivo` em `src/lib/planos.ts`): com link personalizado vale `slug`;
+  sem o recurso vale `slug_gratuito` — num downgrade, o link customizado **para de
+  resolver imediatamente** em `/book/[slug]` (validação em `obterDadosBookingPublico`),
+  mas fica **reservado** e volta a valer num re-upgrade. No Gratuito a action rejeita
+  alterações de slug; Plus/Pro editam livremente. Salvar `cor_marca` exige Plus ou
+  superior. O **logo não é input do usuário**: para tenants Pro com a preferência
+  `exibir_logo` ligada (toggle na agenda, exclusivo do Pro), `salvarPerfilEmpresa`
+  sincroniza em `logo_url` o logo da organização configurado no Clerk
+  (`organization.imageUrl`, apenas se `hasImage`); caso contrário, `logo_url` fica nulo.
 - **`src/app/actions/whatsapp.ts`** — todas as actions de conexão/configuração exigem
   Pro (`PLANOS[plano].recursos.whatsapp`).
 

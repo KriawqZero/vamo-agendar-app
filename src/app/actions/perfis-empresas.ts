@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { auth, clerkClient } from '@clerk/nextjs/server'
-import { PLANOS } from '@/lib/planos'
+import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
 import { obterAssinaturaVigente } from '@/lib/assinaturas'
 
 interface PerfilEmpresaInput {
@@ -11,6 +11,7 @@ interface PerfilEmpresaInput {
     descricao?: string;
     telefoneContato?: string;
     corMarca?: string | null;
+    exibirLogo?: boolean;
 }
 
 /**
@@ -36,7 +37,11 @@ export async function obterPerfilEmpresa() {
     }
 
     if (data) {
-        return data
+        // O dashboard sempre enxerga o slug efetivo do plano vigente: sem link
+        // personalizado, vale o slug do provisionamento (o customizado fica
+        // reservado em `slug` e volta a valer num re-upgrade).
+        const { plano } = await obterAssinaturaVigente(supabase, orgId)
+        return { ...data, slug: obterSlugEfetivo(data, plano) }
     }
 
     // Auto-provisionamento: todo tenant nasce com perfil e link de agendamento,
@@ -46,12 +51,14 @@ export async function obterPerfilEmpresa() {
     const clerk = await clerkClient()
     const organizacao = await clerk.organizations.getOrganization({ organizationId: orgId })
 
+    const slugGerado = gerarSlugAleatorio()
     const { data: novoPerfil, error: insertError } = await supabase
         .from('perfis_empresas')
         .upsert(
             {
                 tenant_id: orgId,
-                slug: gerarSlugAleatorio(),
+                slug: slugGerado,
+                slug_gratuito: slugGerado,
                 nome_estabelecimento: organizacao.name,
             },
             { onConflict: 'tenant_id', ignoreDuplicates: true }
@@ -113,7 +120,7 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
     // Busca o perfil atual para decidir slug e detectar alterações bloqueadas
     const { data: perfilAtual, error: perfilError } = await supabase
         .from('perfis_empresas')
-        .select('slug, cor_marca, logo_url')
+        .select('slug, slug_gratuito, cor_marca, logo_url, exibir_logo')
         .eq('tenant_id', orgId)
         .maybeSingle()
 
@@ -123,20 +130,28 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
     }
 
     // Regra de slug por plano:
-    // - Plus/Pro: slug livre (comportamento atual).
-    // - Gratuito: slug é um código aleatório gerado pelo sistema; alterações são rejeitadas.
+    // - Plus/Pro: slug livre (gravado em `slug`).
+    // - Gratuito: o slug efetivo é o `slug_gratuito` do provisionamento; o formulário
+    //   envia esse valor de volta e qualquer outro é rejeitado. O slug customizado
+    //   que porventura exista em `slug` é preservado para um futuro re-upgrade.
     let slugFinal = slugFormatado
+    let slugGratuito = perfilAtual?.slug_gratuito ?? null
     if (!recursos.linkPersonalizado) {
         if (!perfilAtual) {
             slugFinal = gerarSlugAleatorio()
-        } else if (slugFormatado !== perfilAtual.slug) {
+            slugGratuito = slugFinal
+        } else if (slugFormatado !== perfilAtual.slug_gratuito) {
             throw new Error(
                 'Personalizar o link é um recurso do plano Plus. ' +
                 'Faça upgrade em Plano no menu para escolher seu link.'
             )
         } else {
+            // Mantém o slug armazenado (customizado ou não) intacto
             slugFinal = perfilAtual.slug
         }
+    } else if (!perfilAtual) {
+        // Perfil novo já em plano pago: o slug escolhido também vira a base do Gratuito
+        slugGratuito = gerarSlugAleatorio()
     }
 
     // Gating de personalização visual
@@ -146,11 +161,17 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
         throw new Error('Cor personalizada é um recurso do plano Plus. Faça upgrade em Plano no menu.')
     }
 
-    // Logo não é input do usuário: para tenants Pro, sincronizamos o logo da
-    // organização configurado no Clerk (evita URLs arbitrárias e bucket próprio).
-    // Sem o recurso no plano, o logo fica nulo.
+    // Exibição do logo é preferência do tenant, mas alterá-la exige o plano Pro
+    const exibirLogoNovo = input.exibirLogo ?? perfilAtual?.exibir_logo ?? true
+    if (exibirLogoNovo !== (perfilAtual?.exibir_logo ?? true) && !recursos.logoPersonalizado) {
+        throw new Error('Exibir o logo é um recurso do plano Pro. Faça upgrade em Plano no menu.')
+    }
+
+    // Logo não é input do usuário: para tenants Pro com exibição ligada,
+    // sincronizamos o logo da organização configurado no Clerk (evita URLs
+    // arbitrárias e bucket próprio). Caso contrário, o logo fica nulo.
     let logoUrlNovo: string | null = null
-    if (recursos.logoPersonalizado) {
+    if (recursos.logoPersonalizado && exibirLogoNovo) {
         const clerk = await clerkClient()
         const organizacao = await clerk.organizations.getOrganization({ organizationId: orgId })
         logoUrlNovo = organizacao.hasImage ? organizacao.imageUrl : null
@@ -159,11 +180,13 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
     const payload = {
         tenant_id: orgId,
         slug: slugFinal,
+        slug_gratuito: slugGratuito,
         nome_estabelecimento: input.nomeEstabelecimento.trim(),
         descricao: input.descricao?.trim() || null,
         telefone_contato: input.telefoneContato?.replace(/\D/g, '') || null,
         cor_marca: corMarcaNova,
         logo_url: logoUrlNovo,
+        exibir_logo: exibirLogoNovo,
         updated_at: new Date().toISOString()
     }
 
@@ -182,7 +205,8 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
         throw new Error('Erro ao salvar configurações do perfil.')
     }
 
-    return data
+    // Devolve o slug efetivo do plano vigente (o formulário exibe este valor)
+    return { ...data, slug: obterSlugEfetivo(data, plano) }
 }
 
 // 8 caracteres base36 — link opaco do plano Gratuito (ex.: /book/x7k2m9qa)

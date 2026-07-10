@@ -9,11 +9,13 @@ import { salvarHorariosFuncionamento, salvarExcecaoAgenda, excluirExcecaoAgenda 
 interface PerfilEmpresa {
     tenant_id: string;
     slug: string;
+    slug_gratuito: string;
     nome_estabelecimento: string;
     descricao: string | null;
     telefone_contato: string | null;
     cor_marca: string | null;
     logo_url: string | null;
+    exibir_logo: boolean;
 }
 
 interface HorarioFuncionamento {
@@ -80,6 +82,7 @@ export default function AgendaClient({
     const [descricao, setDescricao] = useState(perfilEmpresa?.descricao || '')
     const [telefoneContato, setTelefoneContato] = useState(perfilEmpresa?.telefone_contato || '')
     const [corMarca, setCorMarca] = useState<string | null>(perfilEmpresa?.cor_marca ?? null)
+    const [exibirLogo, setExibirLogo] = useState<boolean>(perfilEmpresa?.exibir_logo ?? true)
     const [msgPerfil, setMsgPerfil] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null)
     // Logo é o da organização no Clerk (sincronizado pelo servidor ao salvar) — aqui só exibimos o preview
     const { organization } = useOrganization()
@@ -122,7 +125,8 @@ export default function AgendaClient({
                     nomeEstabelecimento,
                     descricao,
                     telefoneContato,
-                    corMarca
+                    corMarca,
+                    exibirLogo
                 })
                 setMsgPerfil({ tipo: 'sucesso', texto: 'Perfil salvo com sucesso!' })
                 // Atualiza o slug local com a versão higienizada retornada do banco
@@ -347,6 +351,16 @@ export default function AgendaClient({
                                             : 'Exiba o logo da sua organização na página pública com o plano Pro.'}
                                     </p>
                                 </div>
+                                <label className={`mt-2 flex items-center gap-2 text-xs font-medium ${recursosPlano.logoPersonalizado ? 'text-zinc-700 dark:text-zinc-300 cursor-pointer' : 'text-zinc-400 dark:text-zinc-600 cursor-not-allowed'}`}>
+                                    <input
+                                        type="checkbox"
+                                        checked={exibirLogo}
+                                        onChange={(e) => setExibirLogo(e.target.checked)}
+                                        disabled={!recursosPlano.logoPersonalizado}
+                                        className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-700 accent-zinc-900 dark:accent-zinc-100 disabled:cursor-not-allowed"
+                                    />
+                                    Exibir o logo na página pública
+                                </label>
                             </div>
                         </div>
 

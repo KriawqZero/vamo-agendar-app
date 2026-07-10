@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { obterSlotsDisponiveis } from '@/lib/booking-engine'
 import { processarMensagemTemplate, enviarMensagemWhatsApp, agendarLembreteQStash } from '@/lib/whatsapp-helper'
-import { PLANOS } from '@/lib/planos'
+import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 
 interface AgendamentoPublicoParams {
@@ -186,18 +186,37 @@ export async function criarAgendamentoPublico({
 
 /**
  * Busca o perfil da empresa e os seus serviços ativos usando o slug.
+ * Apenas o slug efetivo do plano vigente resolve: sem link personalizado no
+ * plano, vale o `slug_gratuito` do provisionamento — o customizado deixa de
+ * funcionar imediatamente após um downgrade (e volta num re-upgrade).
  */
 export async function obterDadosBookingPublico(slug: string) {
     const supabase = await createClient()
 
-    // 1. Buscar perfil pelo slug
-    const { data: perfil, error: pError } = await supabase
+    // 1. Buscar perfil pelo slug customizado; se não achar, pelo slug do provisionamento
+    let { data: perfil, error: pError } = await supabase
         .from('perfis_empresas')
         .select('*')
         .eq('slug', slug)
         .maybeSingle()
 
+    if (!perfil && !pError) {
+        const fallback = await supabase
+            .from('perfis_empresas')
+            .select('*')
+            .eq('slug_gratuito', slug)
+            .maybeSingle()
+        perfil = fallback.data
+        pError = fallback.error
+    }
+
     if (pError || !perfil) {
+        return null
+    }
+
+    // 2. Validar que o slug acessado é o efetivo para o plano vigente do tenant
+    const plano = await obterPlanoVigentePublico(supabase, perfil.tenant_id)
+    if (obterSlugEfetivo(perfil, plano) !== slug) {
         return null
     }
 
