@@ -94,9 +94,14 @@ cancelar a linha atual antes de inserir a nova.
 - **`src/app/actions/servicos.ts`** — ao criar um serviço ativo ou reativar um inativo,
   conta os serviços `ativo = true` do tenant contra `PLANOS[plano].limiteServicosAtivos`;
   excedeu o limite → erro amigável com CTA para `/dashboard/plano`.
-- **`src/app/actions/perfis-empresas.ts`** — no Gratuito, o slug é gerado
-  aleatoriamente na criação do perfil e a action rejeita alterações de slug; Plus/Pro
-  editam livremente. Salvar `cor_marca` exige Plus ou superior; `logo_url` exige Pro.
+- **`src/app/actions/perfis-empresas.ts`** — o perfil é **auto-provisionado** no
+  primeiro acesso ao dashboard (`obterPerfilEmpresa` cria a linha com o nome da
+  organização no Clerk e um slug aleatório), garantindo que todo tenant nasça com link
+  de agendamento. No Gratuito a action rejeita alterações de slug; Plus/Pro editam
+  livremente. Salvar `cor_marca` exige Plus ou superior. O **logo não é input do
+  usuário**: para tenants Pro, `salvarPerfilEmpresa` sincroniza em `logo_url` o logo da
+  organização configurado no Clerk (`organization.imageUrl`, apenas se `hasImage`);
+  sem o recurso no plano, `logo_url` fica nulo.
 - **`src/app/actions/whatsapp.ts`** — todas as actions de conexão/configuração exigem
   Pro (`PLANOS[plano].recursos.whatsapp`).
 
@@ -162,10 +167,11 @@ passa a escrever automaticamente na mesma tabela que hoje é editada via SQL man
 
 ## 🔒 Recursos preparados mas não implementados
 
-- **`cor_marca`** e **`logo_url`** já existem como colunas em `perfis_empresas` e como
-  campos na UI do dashboard (visíveis, porém bloqueados por cadeado conforme o plano:
-  cor exige Plus+, logo exige Pro). **A página pública de booking (`/book/[slug]`) ainda
-  não consome esses valores** — aplicar a cor personalizada e o logo no booking público
+- **`cor_marca`** e **`logo_url`** já existem como colunas em `perfis_empresas` e na UI
+  do dashboard (cor como campo bloqueado por cadeado — Plus+; logo como preview do logo
+  da organização no Clerk, sincronizado no save para tenants Pro). **A página pública de
+  booking (`/book/[slug]`) ainda não consome esses valores** — aplicar a cor
+  personalizada e o logo no booking público
   está fora do escopo desta etapa.
 - O **link personalizado (slug editável)** já é gated corretamente nas Server Actions,
   mas a experiência de "reivindicar" um slug amigável na UI segue simples (campo de

@@ -1,7 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
-import { auth } from '@clerk/nextjs/server'
+import { auth, clerkClient } from '@clerk/nextjs/server'
 import { PLANOS } from '@/lib/planos'
 import { obterAssinaturaVigente } from '@/lib/assinaturas'
 
@@ -11,7 +11,6 @@ interface PerfilEmpresaInput {
     descricao?: string;
     telefoneContato?: string;
     corMarca?: string | null;
-    logoUrl?: string | null;
 }
 
 /**
@@ -36,7 +35,47 @@ export async function obterPerfilEmpresa() {
         throw new Error('Não foi possível carregar as informações do perfil.')
     }
 
-    return data
+    if (data) {
+        return data
+    }
+
+    // Auto-provisionamento: todo tenant nasce com perfil e link de agendamento,
+    // sem depender de o usuário salvar o formulário da agenda. O nome vem da
+    // organização no Clerk e o slug é o código aleatório do plano Gratuito
+    // (personalizável depois, conforme o plano).
+    const clerk = await clerkClient()
+    const organizacao = await clerk.organizations.getOrganization({ organizationId: orgId })
+
+    const { data: novoPerfil, error: insertError } = await supabase
+        .from('perfis_empresas')
+        .upsert(
+            {
+                tenant_id: orgId,
+                slug: gerarSlugAleatorio(),
+                nome_estabelecimento: organizacao.name,
+            },
+            { onConflict: 'tenant_id', ignoreDuplicates: true }
+        )
+        .select()
+        .maybeSingle()
+
+    if (insertError) {
+        console.error('Erro ao criar perfil inicial:', insertError.message)
+        throw new Error('Não foi possível criar o perfil inicial do estabelecimento.')
+    }
+
+    if (novoPerfil) {
+        return novoPerfil
+    }
+
+    // Corrida com outra aba/request: o perfil acabou de ser criado — relê.
+    const { data: existente } = await supabase
+        .from('perfis_empresas')
+        .select('*')
+        .eq('tenant_id', orgId)
+        .maybeSingle()
+
+    return existente
 }
 
 /**
@@ -102,13 +141,19 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
 
     // Gating de personalização visual
     const corMarcaNova = input.corMarca?.trim() || null
-    const logoUrlNovo = input.logoUrl?.trim() || null
 
     if (corMarcaNova !== (perfilAtual?.cor_marca ?? null) && !recursos.corPersonalizada) {
         throw new Error('Cor personalizada é um recurso do plano Plus. Faça upgrade em Plano no menu.')
     }
-    if (logoUrlNovo !== (perfilAtual?.logo_url ?? null) && !recursos.logoPersonalizado) {
-        throw new Error('Logo personalizado é um recurso do plano Pro. Faça upgrade em Plano no menu.')
+
+    // Logo não é input do usuário: para tenants Pro, sincronizamos o logo da
+    // organização configurado no Clerk (evita URLs arbitrárias e bucket próprio).
+    // Sem o recurso no plano, o logo fica nulo.
+    let logoUrlNovo: string | null = null
+    if (recursos.logoPersonalizado) {
+        const clerk = await clerkClient()
+        const organizacao = await clerk.organizations.getOrganization({ organizationId: orgId })
+        logoUrlNovo = organizacao.hasImage ? organizacao.imageUrl : null
     }
 
     const payload = {

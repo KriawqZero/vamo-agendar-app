@@ -2,6 +2,7 @@
 
 import React, { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { useOrganization } from '@clerk/nextjs'
 import { salvarPerfilEmpresa } from '@/app/actions/perfis-empresas'
 import { salvarHorariosFuncionamento, salvarExcecaoAgenda, excluirExcecaoAgenda } from '@/app/actions/agenda'
 
@@ -79,8 +80,9 @@ export default function AgendaClient({
     const [descricao, setDescricao] = useState(perfilEmpresa?.descricao || '')
     const [telefoneContato, setTelefoneContato] = useState(perfilEmpresa?.telefone_contato || '')
     const [corMarca, setCorMarca] = useState<string | null>(perfilEmpresa?.cor_marca ?? null)
-    const [logoUrl, setLogoUrl] = useState<string>(perfilEmpresa?.logo_url ?? '')
     const [msgPerfil, setMsgPerfil] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null)
+    // Logo é o da organização no Clerk (sincronizado pelo servidor ao salvar) — aqui só exibimos o preview
+    const { organization } = useOrganization()
 
     // Estado dos Horários Comerciais
     // Inicializa a lista garantindo que tenhamos todos os 7 dias da semana
@@ -120,8 +122,7 @@ export default function AgendaClient({
                     nomeEstabelecimento,
                     descricao,
                     telefoneContato,
-                    corMarca,
-                    logoUrl: logoUrl || null
+                    corMarca
                 })
                 setMsgPerfil({ tipo: 'sucesso', texto: 'Perfil salvo com sucesso!' })
                 // Atualiza o slug local com a versão higienizada retornada do banco
@@ -293,7 +294,7 @@ export default function AgendaClient({
                                         type="text"
                                         value={slug}
                                         onChange={(e) => setSlug(e.target.value)}
-                                        placeholder="barbearia-classica"
+                                        placeholder={recursosPlano.linkPersonalizado ? 'barbearia-classica' : 'gerado automaticamente'}
                                         disabled={!recursosPlano.linkPersonalizado}
                                         className="w-full px-3.5 py-2 bg-transparent outline-hidden text-zinc-900 dark:text-zinc-50 font-mono text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                         required
@@ -325,17 +326,27 @@ export default function AgendaClient({
 
                             <div>
                                 <label className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                                    Logo (URL) {!recursosPlano.logoPersonalizado && <SeloPlano plano="Pro" />}
+                                    Logo {!recursosPlano.logoPersonalizado && <SeloPlano plano="Pro" />}
                                 </label>
-                                <input
-                                    type="url"
-                                    value={logoUrl}
-                                    onChange={(e) => setLogoUrl(e.target.value)}
-                                    disabled={!recursosPlano.logoPersonalizado}
-                                    placeholder="https://…/logo.png"
-                                    className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-                                />
-                                <p className="text-xs text-zinc-500 mt-1">Logo exibido na sua página pública (em breve).</p>
+                                <div className="flex items-center gap-3">
+                                    {organization?.hasImage ? (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img
+                                            src={organization.imageUrl}
+                                            alt="Logo da organização"
+                                            className={`h-10 w-10 rounded-lg border border-zinc-200 dark:border-zinc-700 object-cover ${!recursosPlano.logoPersonalizado ? 'opacity-50 grayscale' : ''}`}
+                                        />
+                                    ) : (
+                                        <div className="h-10 w-10 shrink-0 rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 flex items-center justify-center text-zinc-400 text-lg">
+                                            ?
+                                        </div>
+                                    )}
+                                    <p className="text-xs text-zinc-500">
+                                        {recursosPlano.logoPersonalizado
+                                            ? 'Usamos o logo da sua organização (ajuste no seletor da barra lateral). Ele aparecerá na sua página pública (em breve).'
+                                            : 'Exiba o logo da sua organização na página pública com o plano Pro.'}
+                                    </p>
+                                </div>
                             </div>
                         </div>
 
