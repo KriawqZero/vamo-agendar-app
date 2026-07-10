@@ -28,7 +28,7 @@ Toda a engenharia do projeto deve seguir estritamente as tecnologias e ferrament
 
 6. **Notificações:**
    * **Resend:** Disparo de e-mails transacionais (boas-vindas, confirmação, faturamento).
-   * **Evolution API / Z-API:** Gateway para integração de WhatsApp via QR Code para notificações instantâneas de agendamento e lembretes aos clientes finais.
+   * **Evolution API:** Gateway oficial (self-hosted, gratuito) para integração de WhatsApp via QR Code — notificações instantâneas de agendamento e lembretes aos clientes finais. Toda decisão que tangencie WhatsApp deve ser pensada em cima da Evolution API (instância por tenant; apikey global para gestão, `hash.apikey` da instância para envio).
 
 ---
 

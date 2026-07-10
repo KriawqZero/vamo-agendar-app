@@ -67,6 +67,15 @@ If you need to use any of the entities below, remember to add them through versi
 - create domain statements are ignored
 - grant statements are duplicated from default privileges
 
+> [!WARNING]
+> **Específico deste projeto**: `supabase db diff` **não emite `GRANT`/`REVOKE`**.
+> Usamos GRANTs por coluna como camada de segurança (ex.: `assinaturas` limita a
+> role `anon` às colunas `tenant_id/plano/status` — migration
+> `20260709193156_restringe_colunas_assinaturas_anon.sql`). Ao regenerar migrations
+> a partir dos schemas declarativos, esses GRANTs **não são reproduzidos** — eles
+> vivem apenas nas migrations versionadas. Nunca recrie essas tabelas por diff sem
+> reaplicar os GRANTs manualmente.
+
 ---
 
 **Non-compliance with these instructions may lead to inconsistent database states and is strictly prohibited.**

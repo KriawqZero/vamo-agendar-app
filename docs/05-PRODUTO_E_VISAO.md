@@ -29,7 +29,7 @@ flowchart LR
 
 1. **Link de Acesso:** O cliente acessa `vamoagendar.com.br/[slug_da_empresa]`.
 2. **Seleção do Serviço:** O cliente visualiza a lista de serviços com preços e durações e escolhe o que deseja.
-3. **Seleção de Profissional:** Se a empresa tiver múltiplos profissionais, o cliente escolhe com quem quer ser atendido ou seleciona "Qualquer um".
+3. **Seleção de Profissional** *(pós-MVP — ainda não implementado)*: quando a empresa tiver múltiplos profissionais, o cliente escolherá com quem quer ser atendido ou "Qualquer um". **Não** serão contas/membros separados: a própria conta do tenant cadastra seus profissionais, cada um com horários e/ou serviços próprios (ver `docs/PENDENCIAS.md`).
 4. **Seleção de Data e Horário:** O cliente vê os dias e horários livres calculados em tempo real.
 5. **Preenchimento de Contato:** O cliente preenche apenas:
    * Nome Completo
@@ -63,19 +63,18 @@ Diferente do cliente final, o profissional (empresa/tenant) autentica-se de form
 Como o cliente final realiza ações sem estar autenticado, precisamos de um desenho de segurança robusto que impeça abusos sem travar a experiência do usuário.
 
 ### 1. Políticas de RLS Públicas (`INSERT`)
-A inserção de registros na tabela de `agendamentos` e `clientes` (ou `clientes_leads`) deve permitir escrita pública pela role `anon`, mas com restrições severas:
+A inserção de registros nas tabelas `agendamentos` e `clientes` deve permitir escrita pública pela role `anon`, mas com restrições severas:
 
 ```sql
--- Exemplo conceitual para permitir criação pública de agendamento por anônimos
+-- Exemplo conceitual: criação pública de agendamento por anônimos, restrita a
+-- tenants que existem em perfis_empresas (o schema real está em supabase/schemas/)
 CREATE POLICY "Permitir inserções públicas (anônimas)"
 ON agendamentos FOR INSERT TO anon
 WITH CHECK (
-    -- Garante que o tenant_id seja preenchido e pertença a uma organização existente/ativa
-    tenant_id IS NOT NULL 
+    tenant_id IS NOT NULL
     AND EXISTS (
-        SELECT 1 FROM tenants_config 
-        WHERE tenants_config.tenant_id = agendamentos.tenant_id 
-          AND tenants_config.status = 'ativo'
+        SELECT 1 FROM perfis_empresas
+        WHERE perfis_empresas.tenant_id = agendamentos.tenant_id
     )
 );
 ```

@@ -3,12 +3,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Layout do workspace
+## Layout e documentação
 
-Este diretório é um workspace (vault Obsidian) com duas partes:
-
-- `docs/` — Documentação canônica do projeto. **Leitura obrigatória antes de qualquer mudança estrutural**: `01-ARQUITETURA_E_STACK.md`, `02-SUPABASE_CLERK_INTEGRATION.md`, `03-PADROES_DE_BANCO_DE_DADOS.md`, `04-PADROES_DE_FRONTEND.md`, `05-PRODUTO_E_VISAO.md`, `06-MENSAGERIA_E_WHATSAPP.md`. A pasta `docs/etapas/` registra o que já foi implementado (banco, engine de disponibilidade, dashboard B2B, booking B2C, mensageria). Os arquivos `docs/SUPABASE_*.md` definem estilo SQL e fluxo de migrations.
-- `vamo-agendar-app/` — O aplicativo Next.js (único repositório git). Todo código vive aqui.
+- `docs/` — Documentação canônica do projeto (numerada `01`–`07`). **Leitura obrigatória antes de qualquer mudança estrutural**: `01-ARQUITETURA_E_STACK.md`, `02-SUPABASE_CLERK_INTEGRATION.md` (integração nativa Clerk↔Supabase), `03-PADROES_DE_BANCO_DE_DADOS.md`, `04-PADROES_DE_FRONTEND.md`, `05-PRODUTO_E_VISAO.md`, `06-MENSAGERIA_E_WHATSAPP.md`, `07-PLANOS_E_MONETIZACAO.md`. Complementos: `docs/PENDENCIAS.md` (tarefas adiadas e bugs conhecidos — consulte antes de nova etapa) e `docs/SUPABASE_DECLARATIVE-DATABASE-SCHEMA.md` (exceções do fluxo de migrations).
+- `lixo/` — documentos descartados na limpeza de 2026-07-10. **Nunca use como referência** (contém tecnologias banidas e fluxos depreciados).
 
 ## O produto
 
@@ -39,8 +37,8 @@ Next.js 16 (App Router) + React 19 + Tailwind CSS v4 + Clerk (auth/multi-tenant 
 
 Não há webhooks nem tabelas de usuários sincronizadas. O isolamento é feito assim:
 
-1. Clerk emite JWT (template `supabase`) contendo `org_id` da organização ativa.
-2. `src/lib/supabase/server.ts` (`createClient()`) injeta esse token no header `Authorization` de toda chamada ao Supabase.
+1. Clerk emite o session token padrão (integração **nativa** third-party auth — o fluxo de JWT template foi depreciado; **nunca** use `getToken({ template: 'supabase' })`) com o claim customizado `org_id` da organização ativa.
+2. `src/lib/supabase/server.ts` (`createClient()`) injeta esse token no header `Authorization` **apenas quando há sessão**; sem sessão a requisição cai na role `anon`.
 3. Toda tabela operacional tem `tenant_id text NOT NULL` que armazena diretamente o `org_...` do Clerk (não é uuid; `perfis_empresas.tenant_id` é a PK referenciada pelas demais).
 4. As políticas RLS comparam `tenant_id = (SELECT auth.jwt() ->> 'org_id')`.
 
@@ -62,7 +60,7 @@ Tabelas existentes: `perfis_empresas` (identidade + slug público), `servicos`, 
 
 ### Mensageria (Evolution API + QStash)
 
-Fluxo em duas fases após criar agendamento: (1) confirmação **síncrona** via `POST /message/sendText/{instanceName}` da Evolution API (header `apikey` = `instance_token` da tabela `whatsapp_configs`); (2) lembrete **assíncrono** agendado no QStash (header `Upstash-Not-Before`) que invoca `/api/webhooks/lembrete` no horário calculado (`data_hora - tempo_lembrete_minutos`); o webhook valida o secret, checa se o agendamento não foi cancelado e dispara o lembrete. Se o WhatsApp do tenant estiver desconectado, o fluxo falha silenciosamente para o cliente (frictionless). Templates usam variáveis `{{cliente}}`, `{{empresa}}`, `{{data_hora}}`, `{{data}}`, `{{hora}}` substituídas por `src/lib/whatsapp-helper.ts`. Números sempre com código do país (`55` + DDD + número, sem formatação). Gestão de instância: `POST /instance/create` (apikey global; salvar `hash.apikey` como `instance_token`) e `GET /instance/connect/{instanceName}` para QR Code em base64 (o dashboard faz polling de 5 s).
+A integração WhatsApp é **recurso exclusivo do plano Pro** (gating nas actions + defesa nos pontos de disparo; ver `docs/07`). Fluxo em duas fases após criar agendamento: (1) confirmação **síncrona** via `POST /message/sendText/{instanceName}` da Evolution API (header `apikey` = `instance_token` da tabela `whatsapp_configs`); (2) lembrete **assíncrono** agendado no QStash (header `Upstash-Not-Before`) que invoca `/api/webhooks/lembrete` no horário calculado (`data_hora - tempo_lembrete_minutos`); o webhook valida o secret, checa se o agendamento não foi cancelado e dispara o lembrete. Se o WhatsApp do tenant estiver desconectado, o fluxo falha silenciosamente para o cliente (frictionless). Templates usam variáveis `{{cliente}}`, `{{empresa}}`, `{{data_hora}}`, `{{data}}`, `{{hora}}` substituídas por `src/lib/whatsapp-helper.ts`. Números sempre com código do país (`55` + DDD + número, sem formatação). Gestão de instância: `POST /instance/create` (apikey global; salvar `hash.apikey` como `instance_token`) e `GET /instance/connect/{instanceName}` para QR Code em base64 (o dashboard faz polling de 5 s).
 
 ## Frontend
 

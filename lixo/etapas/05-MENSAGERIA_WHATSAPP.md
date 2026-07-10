@@ -4,7 +4,7 @@ Este documento descreve a infraestrutura de mensageria assíncrona do **VamoAgen
 
 ---
 
-## 🏗️ Arquitetura do Sistema de Mensagens
+##  Arquitetura do Sistema de Mensagens
 
 O ecossistema é composto por três blocos:
 

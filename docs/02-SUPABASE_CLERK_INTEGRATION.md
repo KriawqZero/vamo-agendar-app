@@ -1,25 +1,56 @@
-# 02 - Integração Supabase + Clerk
+# 02 - Integração Supabase + Clerk (integração nativa)
 
-Este documento detalha o mecanismo de autenticação e autorização unificado entre o **Clerk** (gerenciador de identidade e multi-tenancy) e o **Supabase** (banco de dados).
+Este documento detalha o mecanismo de autenticação e autorização unificado entre o
+**Clerk** (identidade e multi-tenancy) e o **Supabase** (banco de dados).
+
+> [!IMPORTANT]
+> Usamos a **integração nativa** (third-party auth). O fluxo antigo de **JWT template**
+> (`getToken({ template: 'supabase' })`) foi **depreciado pelo Clerk em abril/2025** e
+> **não funciona** nesta instância (retorna 404 "Not Found"). Nunca reintroduza
+> `template: 'supabase'` no código.
 
 ---
 
 ## 🔗 Fluxo de Autenticação Sem Sincronização de Banco
 
-Para manter a simplicidade e performance, **não utilizamos webhooks para sincronizar usuários do Clerk com tabelas locais do Supabase**. Em vez disso, confiamos na integração nativa por JWT (Third-Party Auth).
+Não há webhooks nem tabelas de usuários sincronizadas. O isolamento multi-tenant
+funciona assim:
 
-1. O Clerk gera um token JWT assinado contendo os claims do usuário e a organização ativa (`org_id`).
-2. O Next.js intercepta ou solicita esse token usando o SDK do Clerk.
-3. O token é injetado nas requisições HTTP para a API do Supabase no header `Authorization: Bearer <TOKEN>`.
-4. O Supabase valida a assinatura do JWT contra as chaves públicas do Clerk e extrai os claims para aplicar as regras de **Row Level Security (RLS)**.
+1. O Clerk emite o **session token padrão** do usuário, contendo o claim customizado
+   `org_id` (organização ativa = tenant).
+2. `createClient()` (em `src/lib/supabase/server.ts`) injeta esse token no header
+   `Authorization` de toda chamada ao Supabase — **apenas quando há sessão**.
+3. O Supabase valida a assinatura do JWT contra as chaves públicas do Clerk
+   (third-party auth) e aplica as políticas RLS usando os claims.
+4. Sem sessão (fluxo público B2C), nenhum header é enviado e a requisição cai na role
+   `anon` — um `Bearer null` seria rejeitado pelo PostgREST.
 
 ---
 
-## 🛠️ Injeção de Token no Supabase SSR Client
+## ⚙️ Configuração necessária nos dashboards (feita em 2026-07-09)
 
-A inicialização do cliente Supabase no lado do servidor deve obter dinamicamente o token JWT específico gerado pelo Clerk para o template do Supabase.
+Se a instância do Clerk ou o projeto Supabase forem recriados, refaça:
 
-### Configuração do Cliente (`src/lib/supabase/server.ts`)
+1. **Clerk Dashboard → Configure → Integrations → Supabase**: ativar a integração
+   (adiciona o claim `role: "authenticated"` aos session tokens) e copiar o
+   **Clerk domain**.
+2. **Supabase Dashboard → Authentication → Sign In / Providers → Third Party Auth**:
+   adicionar **Clerk** com o domain copiado.
+3. **Clerk Dashboard → Sessions → Customize session token**: adicionar o claim que o
+   RLS consome (instâncias novas emitem o id da organização como `o.id`, não `org_id`):
+
+   ```json
+   { "org_id": "{{org.id}}" }
+   ```
+
+   Sem esse claim, mutações B2B falham com "new row violates row-level security
+   policy" mesmo com o usuário logado e organização ativa.
+
+---
+
+## 🛠️ Cliente Supabase no servidor (`src/lib/supabase/server.ts`)
+
+Padrão do código real (mantenha este doc em sincronia se alterá-lo):
 
 ```typescript
 import { createServerClient } from '@supabase/ssr'
@@ -30,43 +61,35 @@ export async function createClient() {
     const cookieStore = await cookies()
     const { getToken } = await auth()
 
-    // Recupera o JWT assinado pelo Clerk configurado para o Supabase
-    const supabaseAccessToken = await getToken({ template: 'supabase' })
+    // Integração nativa Clerk ↔ Supabase (third-party auth): o session token padrão
+    // do Clerk já é aceito pelo Supabase — o fluxo de JWT template foi depreciado.
+    // Retorna null quando não há sessão (fluxo B2C anônimo).
+    const supabaseAccessToken = await getToken()
 
     return createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
         {
-            cookies: {
-                getAll() {
-                    return cookieStore.getAll()
+            cookies: { /* getAll/setAll padrão do @supabase/ssr */ },
+            // Sem sessão, omitimos o header para a requisição cair na role `anon`
+            ...(supabaseAccessToken && {
+                global: {
+                    headers: {
+                        Authorization: `Bearer ${supabaseAccessToken}`,
+                    },
                 },
-                setAll(cookiesToSet) {
-                    try {
-                        cookiesToSet.forEach(({ name, value, options }) =>
-                            cookieStore.set(name, value, options)
-                        )
-                    } catch {
-                        // Ignorado em Server Components puros conforme padrão do Next.js
-                    }
-                },
-            },
-            global: {
-                headers: {
-                    // Injeta o JWT do Clerk para validação do RLS no Supabase
-                    Authorization: `Bearer ${supabaseAccessToken}`,
-                },
-            },
+            }),
         }
     )
 }
 ```
 
+O **mesmo** `createClient()` serve os dois mundos: B2B autenticado (dashboard, role
+`authenticated`) e B2C público (booking, role `anon`).
+
 ---
 
-## ⚡ Server Action Modelo com RLS
-
-Toda mutação ou consulta que dependa de autorização deve passar pelo cliente injetado. Veja o exemplo de Server Action modelo:
+## ⚡ Server Action modelo com RLS
 
 ```typescript
 'use server'
@@ -74,62 +97,56 @@ Toda mutação ou consulta que dependa de autorização deve passar pelo cliente
 import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
 
-export async function criarNovoAgendamento(clienteId: string, dataHora: string) {
-    // 1. Valida se o usuário está associado a uma organização ativa no Clerk
+export async function exemploMutacaoB2B(input: unknown) {
+    // 1. Valida a organização ativa no Clerk
     const { orgId } = await auth()
     if (!orgId) {
-        throw new Error("Usuário não está associado a nenhuma empresa no Clerk.")
+        throw new Error('Não autorizado. Nenhuma organização ativa.')
     }
 
-    // 2. Inicializa o cliente com o token injetado
+    // 2. Cliente com o token injetado
     const supabase = await createClient()
 
-    // 3. Executa a mutação. O RLS do banco rejeitará caso o tenant_id não bata com o JWT!
+    // 3. Mutação sempre com tenant_id = orgId. O RLS rejeita se o claim não bater.
     const { data, error } = await supabase
-        .from('agendamentos')
-        .insert({
-            tenant_id: orgId, // Vincula a mutação à organização atual
-            cliente_id: clienteId,
-            data_hora: dataHora,
-            status: 'pendente'
-        })
+        .from('alguma_tabela')
+        .insert({ tenant_id: orgId /* , ...campos */ })
         .select()
         .single()
 
-    if (error) {
-        console.error("Erro no Supabase RLS/Insert:", error.message)
-        throw new Error("Erro ao salvar o agendamento.")
-    }
-
-    return data;
+    if (error) throw new Error('Erro ao salvar.')
+    return data
 }
 ```
 
 ---
 
-## 🛡️ Regras de Segurança no Supabase (RLS & Performance)
+## 🛡️ RLS: performance crítica (initPlan)
 
-O isolamento multi-tenant das tabelas no Supabase é feito com políticas RLS baseadas nos claims do JWT do Clerk.
+As políticas comparam `tenant_id = (SELECT auth.jwt() ->> 'org_id')`. O `SELECT`
+envolvendo `auth.jwt()` é **obrigatório**: força o Postgres a avaliar a função uma
+única vez por statement (initPlan) em vez de por linha.
 
-### Performance Crítica: Evitando Full Table Scan no RLS
-
-Ao escrever políticas de banco, a função `auth.jwt()` do Supabase lê o token JWT e extrai o claim. Chamar essa função diretamente na cláusula `USING` ou `WITH CHECK` pode fazer com que o Postgres a execute para cada linha avaliada, degradando drasticamente o desempenho.
-
-Para forçar o Postgres a executar a função uma única vez (armazenando-a como um `initPlan`), **envolva sempre a chamada em um subquery SELECT**.
-
-#### ❌ Exemplo Incorreto (Ruim para Performance)
 ```sql
-CREATE POLICY "Permitir select para membros da org" ON agendamentos
-    FOR SELECT TO authenticated
-    USING (tenant_id = (auth.jwt() ->> 'org_id'));
+-- ❌ Ruim (avalia por linha)
+USING (tenant_id = (auth.jwt() ->> 'org_id'))
+
+-- ✅ Correto (initPlan)
+USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'))
 ```
 
-#### ✅ Exemplo Correto (Recomendado)
-```sql
-CREATE POLICY "Permitir select para membros da org" ON agendamentos
-    FOR SELECT TO authenticated
-    USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'));
-```
+---
 
-> [!IMPORTANT]
-> A subquery `(SELECT auth.jwt() ->> 'org_id')` permite que o planejador do PostgreSQL faça cache do resultado da chamada da função JWT por transação, reduzindo o custo computacional a quase zero.
+## ⚠️ Armadilhas conhecidas
+
+- **INSERT/UPDATE ... RETURNING exige passar na política de SELECT**: o `.select()`
+  do supabase-js adiciona RETURNING, e a linha resultante precisa ser visível pela
+  política de SELECT da role. Por isso tabelas com SELECT público filtrado (ex.:
+  `ativo = true`) têm também uma política de SELECT do próprio tenant.
+- **Usuário logado numa página pública de outro tenant** roda como `authenticated`,
+  não `anon` — políticas públicas devem contemplar `TO anon, authenticated` quando o
+  dado precisa ser visível no fluxo B2C (limitação conhecida da mensageria: ver
+  `docs/PENDENCIAS.md`, item 1).
+- **GRANT por coluna**: em `assinaturas`, a role `anon` só lê
+  `tenant_id/plano/status` — o código público usa `obterPlanoVigentePublico()`
+  (nunca `obterAssinaturaVigente`, que selecionaria coluna proibida).
