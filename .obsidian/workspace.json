@@ -11,10 +11,14 @@
             "id": "3ef4d88d52ed96d5",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
+              "type": "markdown",
+              "state": {
+                "file": "docs/PENDENCIAS.md",
+                "mode": "preview",
+                "source": false
+              },
               "icon": "lucide-file",
-              "title": "Nova aba"
+              "title": "PENDENCIAS"
             }
           }
         ]
