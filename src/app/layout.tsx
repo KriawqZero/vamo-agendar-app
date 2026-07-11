@@ -25,9 +25,34 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://vamoagendar.com.br"),
   title: "VamoAgendar — Seus clientes agendam sozinhos",
   description:
     "Agendamento online para profissionais: compartilhe um link, seus clientes escolhem serviço e horário sem cadastro, e você recebe confirmação e lembretes automáticos.",
+  openGraph: {
+    title: "VamoAgendar — Seus clientes agendam sozinhos",
+    description:
+      "Agendamento online para profissionais: compartilhe um link, seus clientes escolhem serviço e horário sem cadastro, e você recebe confirmação e lembretes automáticos.",
+    url: "https://vamoagendar.com.br",
+    siteName: "VamoAgendar",
+    images: [
+      {
+        url: "/og.png",
+        width: 1200,
+        height: 630,
+        alt: "VamoAgendar — Seus clientes agendam sozinhos",
+      },
+    ],
+    locale: "pt_BR",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "VamoAgendar — Seus clientes agendam sozinhos",
+    description:
+      "Agendamento online para profissionais: compartilhe um link, seus clientes escolhem serviço e horário sem cadastro, e você recebe confirmação e lembretes automáticos.",
+    images: ["/og.png"],
+  },
 };
 
 export default function RootLayout({
