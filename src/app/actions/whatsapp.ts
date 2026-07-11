@@ -113,14 +113,33 @@ export async function criarInstanciaWhatsApp() {
             })
         })
 
-        if (!response.ok) {
-            const errText = await response.text()
-            console.error('Erro na resposta do Evolution API:', errText)
-            throw new Error('Falha ao criar instância no gateway de WhatsApp.')
-        }
+        let instanceToken: string | undefined
 
-        const dataRes = await response.json()
-        const instanceToken = dataRes.hash?.apikey
+        if (response.ok) {
+            const dataRes = await response.json()
+            // v2.3.7 retorna hash como string; versões anteriores usavam hash.apikey
+            instanceToken = typeof dataRes.hash === 'string' ? dataRes.hash : dataRes.hash?.apikey
+        } else {
+            const errText = await response.text()
+
+            // Instância já existe no gateway (ex.: tentativa anterior que não concluiu
+            // o fluxo): recupera o token dela em vez de falhar.
+            if (errText.includes('already in use')) {
+                const fetchRes = await fetch(
+                    `${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`,
+                    { headers: { 'apikey': EVOLUTION_GLOBAL_API_KEY } }
+                )
+                if (fetchRes.ok) {
+                    const instancias = await fetchRes.json()
+                    instanceToken = Array.isArray(instancias) ? instancias[0]?.token : undefined
+                }
+            }
+
+            if (!instanceToken) {
+                console.error('Erro na resposta do Evolution API:', errText)
+                throw new Error('Falha ao criar instância no gateway de WhatsApp.')
+            }
+        }
 
         if (!instanceToken) {
             throw new Error('Evolution API não retornou a chave apikey da instância.')

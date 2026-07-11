@@ -18,6 +18,20 @@ function obterHojeBrasilia(): string {
     return localTime.toISOString().split('T')[0]
 }
 
+// Soma dias a uma data YYYY-MM-DD (aritmética em meio-dia para evitar borda de fuso)
+function adicionarDias(dateStr: string, dias: number): string {
+    const d = new Date(`${dateStr}T12:00:00-03:00`)
+    d.setUTCDate(d.getUTCDate() + dias)
+    return new Date(d.getTime() - 3 * 60 * 60 * 1000).toISOString().split('T')[0]
+}
+
+// Segunda-feira da semana que contém a data
+function inicioDaSemana(dateStr: string): string {
+    const d = new Date(`${dateStr}T12:00:00-03:00`)
+    const diaSemana = new Date(d.getTime() - 3 * 60 * 60 * 1000).getUTCDay() // 0=dom
+    return adicionarDias(dateStr, -((diaSemana + 6) % 7))
+}
+
 export default async function DashboardPage({ searchParams }: PageProps) {
     // 1. Validar autenticação e obter organização ativa do Clerk
     const { orgId } = await auth()
@@ -40,10 +54,15 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
     // Await dos searchParams (Next.js 16)
     const params = await searchParams
-    const dataSelecionada = params.date || obterHojeBrasilia()
+    const hoje = obterHojeBrasilia()
+    const dataSelecionada = params.date || hoje
 
-    // 2. Buscar agendamentos do dia na organização
-    const rawAgendamentos = await listarAgendamentos({ dataFiltro: dataSelecionada })
+    // 2. Buscar agendamentos da janela: semana da data selecionada + a seguinte
+    // (alimenta a régua de dias com contagens e a seção "próximos dias")
+    const inicioSemana = inicioDaSemana(dataSelecionada)
+    const rawAgendamentos = await listarAgendamentos({
+        periodo: { inicio: inicioSemana, fim: adicionarDias(inicioSemana, 13) },
+    })
 
     const agendamentos = rawAgendamentos.map((ag: any) => {
         const clienteRaw = Array.isArray(ag.clientes) ? ag.clientes[0] : ag.clientes
@@ -98,10 +117,12 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
     return (
         <DashboardClient
-            agendamentos={agendamentos}
+            agendamentosPeriodo={agendamentos}
             perfilEmpresa={perfilEmpresa}
             whatsappStatus={whatsappStatus}
             dataSelecionada={dataSelecionada}
+            inicioSemana={inicioSemana}
+            hoje={hoje}
             temServicoAtivo={temServicoAtivo}
             temHorariosConfigurados={temHorariosConfigurados}
         />

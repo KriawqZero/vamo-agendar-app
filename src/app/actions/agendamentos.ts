@@ -4,12 +4,13 @@ import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
 
 interface ListarParams {
-    dataFiltro?: string; // YYYY-MM-DD
+    dataFiltro?: string; // YYYY-MM-DD (um único dia)
+    periodo?: { inicio: string; fim: string }; // YYYY-MM-DD inclusivos, no fuso local
 }
 
 /**
  * Lista todos os agendamentos da organização autenticada.
- * Opcionalmente filtra por uma data específica no fuso local.
+ * Opcionalmente filtra por uma data específica ou por um período no fuso local.
  */
 export async function listarAgendamentos(params?: ListarParams) {
     const { orgId } = await auth()
@@ -44,6 +45,10 @@ export async function listarAgendamentos(params?: ListarParams) {
         // Filtra os limites em UTC-3 para a data fornecida
         const startUtc = new Date(`${params.dataFiltro}T00:00:00-03:00`).toISOString()
         const endUtc = new Date(`${params.dataFiltro}T23:59:59-03:00`).toISOString()
+        query = query.gte('data_hora', startUtc).lte('data_hora', endUtc)
+    } else if (params?.periodo) {
+        const startUtc = new Date(`${params.periodo.inicio}T00:00:00-03:00`).toISOString()
+        const endUtc = new Date(`${params.periodo.fim}T23:59:59-03:00`).toISOString()
         query = query.gte('data_hora', startUtc).lte('data_hora', endUtc)
     }
 

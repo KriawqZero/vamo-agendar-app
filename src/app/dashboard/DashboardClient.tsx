@@ -27,40 +27,140 @@ interface Agendamento {
 }
 
 interface DashboardClientProps {
-    agendamentos: Agendamento[];
+    /** Agendamentos da janela de duas semanas (régua + próximos dias) */
+    agendamentosPeriodo: Agendamento[];
     perfilEmpresa: { slug: string; nome_estabelecimento: string } | null;
     whatsappStatus: string;
     dataSelecionada: string; // YYYY-MM-DD
+    inicioSemana: string; // segunda-feira da semana exibida na régua
+    hoje: string; // YYYY-MM-DD em Brasília
     temServicoAtivo: boolean;
     temHorariosConfigurados: boolean;
 }
 
+const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+const horaLocal = (iso: string) =>
+    new Date(iso).toLocaleTimeString('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    })
+
+/** Dia (YYYY-MM-DD) de um instante ISO, no fuso de São Paulo. */
+const diaDe = (iso: string) =>
+    new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+    }).format(new Date(iso))
+
+/** Soma dias a uma data YYYY-MM-DD (aritmética local em meio-dia). */
+const somarDias = (dateStr: string, dias: number) => {
+    const d = new Date(`${dateStr}T12:00:00`)
+    d.setDate(d.getDate() + dias)
+    return d.toLocaleDateString('en-CA')
+}
+
+const rotuloDiaSemana = (dateStr: string) =>
+    new Date(`${dateStr}T12:00:00`)
+        .toLocaleDateString('pt-BR', { weekday: 'short' })
+        .replace('.', '')
+
+const CHAVE_PROXIMOS_VISIVEL = 'va:proximos-dias-visivel'
+
+/** Linha da timeline: um atendimento ou uma janela livre entre dois. */
+type ItemLinha =
+    | { tipo: 'atendimento'; ag: Agendamento }
+    | { tipo: 'livre'; de: string; ate: string; chave: string }
+
 export default function DashboardClient({
-    agendamentos,
+    agendamentosPeriodo,
     perfilEmpresa,
     whatsappStatus,
     dataSelecionada,
+    inicioSemana,
+    hoje,
     temServicoAtivo,
     temHorariosConfigurados
 }: DashboardClientProps) {
     const router = useRouter()
-    const [isPending, startTransition] = useTransition()
+    const [, startTransition] = useTransition()
     const [copiado, setCopiado] = useState(false)
     const [statusUpdating, setStatusUpdating] = useState<string | null>(null)
+    const [proximosVisivel, setProximosVisivel] = useState(true)
 
-    // Formata a data para exibir no cabeçalho
+    useEffect(() => {
+        const salvo = localStorage.getItem(CHAVE_PROXIMOS_VISIVEL)
+        if (salvo !== null) setProximosVisivel(salvo === '1')
+    }, [])
+
+    const alternarProximos = () => {
+        setProximosVisivel((v) => {
+            localStorage.setItem(CHAVE_PROXIMOS_VISIVEL, v ? '0' : '1')
+            return !v
+        })
+    }
+
     const dataFormatada = new Date(`${dataSelecionada}T12:00:00`).toLocaleDateString('pt-BR', {
         weekday: 'long',
         day: 'numeric',
         month: 'long',
-        year: 'numeric'
     })
 
-    // Calcula estatísticas
-    const totalHoje = agendamentos.length
+    // ── Derivações da janela ────────────────────────────────────────
+    const agendamentos = agendamentosPeriodo.filter((ag) => diaDe(ag.data_hora) === dataSelecionada)
+
+    // Contagem de ativos por dia (alimenta a régua)
+    const contagens = new Map<string, number>()
+    for (const ag of agendamentosPeriodo) {
+        if (ag.status === 'cancelado') continue
+        const dia = diaDe(ag.data_hora)
+        contagens.set(dia, (contagens.get(dia) ?? 0) + 1)
+    }
+
+    // Próximos dias com atendimentos ativos (depois do dia selecionado)
+    const proximosPorDia = new Map<string, Agendamento[]>()
+    for (const ag of agendamentosPeriodo) {
+        if (ag.status === 'cancelado') continue
+        const dia = diaDe(ag.data_hora)
+        if (dia <= dataSelecionada) continue
+        if (!proximosPorDia.has(dia)) proximosPorDia.set(dia, [])
+        proximosPorDia.get(dia)!.push(ag)
+    }
+    const diasProximos = [...proximosPorDia.keys()].sort()
+    const totalProximos = diasProximos.reduce((s, d) => s + proximosPorDia.get(d)!.length, 0)
+
+    // Estatísticas do dia em uma frase (não em caixas)
+    const ativos = agendamentos.filter(ag => ag.status !== 'cancelado')
     const faturamentoEstimado = agendamentos
         .filter(ag => ag.status === 'confirmado' || ag.status === 'concluido')
         .reduce((sum, ag) => sum + Number(ag.servicos?.preco || 0), 0)
+
+    // Régua: os 7 dias da semana exibida
+    const diasRegua = Array.from({ length: 7 }, (_, i) => somarDias(inicioSemana, i))
+
+    // Linha do dia: atendimentos em ordem + janelas livres (>= 30 min) entre eles
+    const ordenados = [...agendamentos].sort((a, b) => a.data_hora.localeCompare(b.data_hora))
+    const linha: ItemLinha[] = []
+    let fimAnterior: number | null = null
+    for (const ag of ordenados) {
+        const inicio = new Date(ag.data_hora).getTime()
+        if (ag.status !== 'cancelado') {
+            if (fimAnterior !== null && inicio - fimAnterior >= 30 * 60 * 1000) {
+                linha.push({
+                    tipo: 'livre',
+                    de: horaLocal(new Date(fimAnterior).toISOString()),
+                    ate: horaLocal(ag.data_hora),
+                    chave: `livre-${fimAnterior}`,
+                })
+            }
+            fimAnterior = inicio + (ag.servicos?.duracao_minutos || 0) * 60 * 1000
+        }
+        linha.push({ tipo: 'atendimento', ag })
+    }
 
     // `window` não existe no SSR: renderiza o caminho relativo no servidor
     // e completa com o domínio somente após montar no browser.
@@ -95,314 +195,417 @@ export default function DashboardClient({
     }
 
     const mudarData = (novaData: string) => {
-        router.push(`/dashboard?date=${novaData}`)
+        router.push(novaData === hoje ? '/dashboard' : `/dashboard?date=${novaData}`)
     }
 
+    const setupCompleto = temServicoAtivo && temHorariosConfigurados
+
     return (
-        <div className="space-y-6">
-            {/* Header com Saudação */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold tracking-tight">
-                        Olá, {perfilEmpresa?.nome_estabelecimento || 'Profissional'}
-                    </h1>
-                    <p className="text-zinc-500 dark:text-zinc-400 text-sm">
-                        Acompanhe seus horários e gerencie seus clientes.
-                    </p>
-                </div>
-
-                {/* Filtro de Data */}
-                <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2 shadow-xs shrink-0">
-                    <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 px-2">Data:</span>
-                    <input
-                        type="date"
-                        value={dataSelecionada}
-                        onChange={(e) => mudarData(e.target.value)}
-                        className="bg-transparent border-0 text-sm focus:ring-0 cursor-pointer text-zinc-900 dark:text-zinc-50 outline-hidden font-medium"
-                    />
-                </div>
-            </div>
-
-            {/* Alerta de Perfil Não Configurado */}
-            {!perfilEmpresa && (
-                <div className="flex items-center p-4 text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl gap-3">
-                    <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <div className="text-sm">
-                        <span className="font-bold">Link de agendamento inativo:</span> Você precisa configurar o perfil da sua empresa (nome e slug) para poder receber agendamentos.
-                        <button
-                            onClick={() => router.push('/dashboard/agenda')}
-                            className="underline font-semibold ml-2 hover:text-amber-950 dark:hover:text-amber-100"
-                        >
-                            Configurar agora &rarr;
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Checklist de Primeiros Passos */}
-            {perfilEmpresa && (!temServicoAtivo || !temHorariosConfigurados) && (
-                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-xs">
-                    <h2 className="text-lg font-bold tracking-tight mb-4 text-zinc-900 dark:text-zinc-50">Primeiros passos</h2>
-                    <div className="space-y-4">
-                        {/* Passo 1 */}
-                        <div className="flex items-start gap-3">
-                            <div className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 border ${temServicoAtivo ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-zinc-300 dark:border-zinc-700 text-transparent'}`}>
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h3 className={`font-semibold ${temServicoAtivo ? 'text-zinc-400 dark:text-zinc-500 line-through' : 'text-zinc-900 dark:text-zinc-100'}`}>Cadastre seus serviços</h3>
-                                {!temServicoAtivo && (
-                                    <>
-                                        <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Crie pelo menos um serviço para seus clientes agendarem.</p>
-                                        <button onClick={() => router.push('/dashboard/servicos')} className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 hover:underline mt-2">Configurar serviços &rarr;</button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Passo 2 */}
-                        <div className="flex items-start gap-3">
-                            <div className={`mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 border ${temHorariosConfigurados ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-zinc-300 dark:border-zinc-700 text-transparent'}`}>
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h3 className={`font-semibold ${temHorariosConfigurados ? 'text-zinc-400 dark:text-zinc-500 line-through' : 'text-zinc-900 dark:text-zinc-100'}`}>Configure seus horários de funcionamento</h3>
-                                {!temHorariosConfigurados && (
-                                    <>
-                                        <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">Defina os dias e horários em que você atende.</p>
-                                        <button onClick={() => router.push('/dashboard/agenda')} className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 hover:underline mt-2">Configurar agenda &rarr;</button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-
-                        {/* Passo 3 */}
-                        <div className="flex items-start gap-3">
-                            <div className="mt-0.5 w-6 h-6 rounded-full flex items-center justify-center shrink-0 border border-zinc-300 dark:border-zinc-700 text-transparent">
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                </svg>
-                            </div>
-                            <div>
-                                <h3 className="font-semibold text-zinc-900 dark:text-zinc-100">Compartilhe seu link de agendamento</h3>
-                                <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-                                    Disponível após concluir as etapas acima.
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Cards de Estatísticas */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Agendamentos */}
-                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-xs">
-                    <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider block">Agendamentos hoje</span>
-                    <div className="flex items-baseline gap-2 mt-2">
-                        <span className="text-3xl font-bold">{totalHoje}</span>
-                        <span className="text-xs text-zinc-400">reservas</span>
-                    </div>
-                </div>
-
-                {/* Faturamento */}
-                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-xs">
-                    <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider block">Faturamento estimado</span>
-                    <div className="flex items-baseline gap-2 mt-2">
-                        <span className="text-3xl font-bold text-emerald-600 dark:text-emerald-400">
-                            {faturamentoEstimado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        </span>
-                        <span className="text-xs text-zinc-400">confirmados</span>
-                    </div>
-                </div>
-
-                {/* Integração WhatsApp */}
-                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 shadow-xs flex flex-col justify-between">
-                    <div>
-                        <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider block">WhatsApp Status</span>
-                        <div className="flex items-center gap-2 mt-2">
-                            <span className={`w-2.5 h-2.5 rounded-full ${
-                                whatsappStatus === 'conectado' 
-                                    ? 'bg-emerald-500 animate-pulse' 
-                                    : whatsappStatus === 'aguardando_qrcode' 
-                                        ? 'bg-amber-500 animate-pulse' 
-                                        : 'bg-zinc-400'
-                            }`} />
-                            <span className="text-sm font-semibold capitalize">
-                                {whatsappStatus === 'conectado' 
-                                    ? 'Conectado' 
-                                    : whatsappStatus === 'aguardando_qrcode' 
-                                        ? 'Aguardando QR Code' 
-                                        : 'Desconectado'}
-                            </span>
-                        </div>
-                    </div>
-                    {whatsappStatus !== 'conectado' && (
-                        <button
-                            onClick={() => router.push('/dashboard/whatsapp')}
-                            className="text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 underline mt-2 text-left"
-                        >
-                            Conectar WhatsApp &rarr;
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {/* Link de Agendamento Compartilhável */}
-            {perfilEmpresa && (
-                <div className="bg-gradient-to-r from-zinc-900 to-zinc-800 dark:from-zinc-900 dark:to-zinc-950 border border-zinc-800 rounded-xl p-5 text-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div className="space-y-1">
-                        <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Seu link público de agendamento</span>
-                        <p className="text-sm font-medium text-zinc-200 break-all select-all font-mono">
-                            {linkPublico}
-                        </p>
-                        {(!temServicoAtivo || !temHorariosConfigurados) && (
-                            <p className="text-xs text-amber-400 mt-2 font-medium flex items-center gap-1.5">
-                                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                                Seu link ainda não mostra horários — complete os primeiros passos acima.
-                            </p>
-                        )}
-                    </div>
+        <div>
+            {/* Cabeçalho do dia */}
+            <div>
+                <p className="font-mono text-xs uppercase tracking-[0.25em] text-marca">
+                    {dataFormatada}
+                    {dataSelecionada === hoje && ' — hoje'}
+                </p>
+                <h1 className="mt-3 font-display text-3xl font-bold tracking-tight">
+                    Olá, {perfilEmpresa?.nome_estabelecimento || 'profissional'}.
+                </h1>
+                <p className="mt-3 font-mono text-sm text-nevoa">
+                    {ativos.length === 0
+                        ? 'nenhum atendimento'
+                        : `${ativos.length} atendimento${ativos.length > 1 ? 's' : ''}`}
+                    {' · '}
+                    <span className="text-giz">{brl(faturamentoEstimado)}</span> previstos
+                    {' · '}
                     <button
-                        onClick={copiarLink}
-                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all duration-200 cursor-pointer border ${
-                            copiado 
-                                ? 'bg-emerald-600 border-emerald-600 text-white' 
-                                : 'bg-white hover:bg-zinc-100 text-zinc-950 border-white'
-                        }`}
+                        onClick={() => router.push('/dashboard/whatsapp')}
+                        className="group inline-flex items-baseline gap-1.5 transition-colors hover:text-giz"
                     >
-                        {copiado ? 'Copiado!' : 'Copiar Link'}
+                        <span
+                            className={`inline-block h-1.5 w-1.5 rounded-full ${
+                                whatsappStatus === 'conectado'
+                                    ? 'bg-marca'
+                                    : whatsappStatus === 'aguardando_qrcode'
+                                        ? 'bg-amber-500 dark:bg-amber-400'
+                                        : 'bg-penumbra'
+                            }`}
+                        />
+                        whatsapp{' '}
+                        {whatsappStatus === 'conectado'
+                            ? 'conectado'
+                            : whatsappStatus === 'aguardando_qrcode'
+                                ? 'aguardando'
+                                : 'desconectado'}
+                    </button>
+                </p>
+            </div>
+
+            {/* Régua de dias: a semana com a lotação de cada dia */}
+            <div className="mt-8 flex items-center gap-2">
+                <button
+                    onClick={() => mudarData(somarDias(dataSelecionada, -7))}
+                    aria-label="Semana anterior"
+                    className="shrink-0 rounded-full border border-fio px-3 py-2 text-nevoa transition-colors hover:bg-veu hover:text-giz"
+                >
+                    ‹
+                </button>
+
+                <div className="flex flex-1 gap-1.5 overflow-x-auto pb-1 sm:gap-2">
+                    {diasRegua.map((dia) => {
+                        const selecionado = dia === dataSelecionada
+                        const ehHoje = dia === hoje
+                        const qtd = contagens.get(dia) ?? 0
+                        return (
+                            <button
+                                key={dia}
+                                onClick={() => mudarData(dia)}
+                                className={`flex min-w-[3.25rem] flex-1 flex-col items-center rounded-xl border py-2 transition-colors duration-200 ${
+                                    selecionado
+                                        ? 'border-marca/50 bg-veu'
+                                        : 'border-fio hover:border-fio-forte hover:bg-veu'
+                                }`}
+                            >
+                                <span
+                                    className={`font-mono text-[10px] uppercase tracking-widest ${
+                                        ehHoje ? 'text-marca' : 'text-penumbra'
+                                    }`}
+                                >
+                                    {rotuloDiaSemana(dia)}
+                                </span>
+                                <span
+                                    className={`font-display text-lg font-semibold leading-tight ${
+                                        selecionado ? 'text-giz' : 'text-nevoa'
+                                    }`}
+                                >
+                                    {dia.slice(8, 10)}
+                                </span>
+                                <span
+                                    className={`font-mono text-[11px] ${
+                                        qtd === 0
+                                            ? 'text-penumbra/60'
+                                            : selecionado
+                                                ? 'text-marca'
+                                                : 'text-nevoa'
+                                    }`}
+                                >
+                                    {qtd === 0 ? '·' : qtd}
+                                </span>
+                            </button>
+                        )
+                    })}
+                </div>
+
+                <button
+                    onClick={() => mudarData(somarDias(dataSelecionada, 7))}
+                    aria-label="Próxima semana"
+                    className="shrink-0 rounded-full border border-fio px-3 py-2 text-nevoa transition-colors hover:bg-veu hover:text-giz"
+                >
+                    ›
+                </button>
+
+                {dataSelecionada !== hoje && (
+                    <button
+                        onClick={() => mudarData(hoje)}
+                        className="shrink-0 rounded-full border border-fio px-3 py-2 font-mono text-xs uppercase tracking-widest text-nevoa transition-colors hover:bg-veu hover:text-giz"
+                    >
+                        hoje
+                    </button>
+                )}
+            </div>
+
+            {/* Perfil não configurado */}
+            {!perfilEmpresa && (
+                <div className="mt-8 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] p-4 text-sm text-amber-800 dark:border-amber-400/20 dark:bg-amber-400/[0.06] dark:text-amber-200">
+                    <span className="font-semibold">Link de agendamento inativo:</span> configure o
+                    perfil da sua empresa (nome e link) para receber agendamentos.
+                    <button
+                        onClick={() => router.push('/dashboard/agenda')}
+                        className="ml-2 font-semibold underline underline-offset-4 transition-colors hover:text-amber-950 dark:hover:text-amber-100"
+                    >
+                        Configurar agora
                     </button>
                 </div>
             )}
 
-            {/* Listagem de Horários */}
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-xs overflow-hidden">
-                <div className="p-5 border-b border-zinc-200 dark:border-zinc-800">
-                    <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-50">
-                        Agendamentos para {dataFormatada}
-                    </h2>
+            {/* Primeiros passos */}
+            {perfilEmpresa && !setupCompleto && (
+                <div className="mt-8 rounded-2xl border border-fio bg-bastidor p-6">
+                    <p className="font-mono text-xs uppercase tracking-[0.25em] text-penumbra">
+                        primeiros passos
+                    </p>
+                    <ol className="mt-5 space-y-5">
+                        {[
+                            {
+                                numero: '01',
+                                feito: temServicoAtivo,
+                                titulo: 'Cadastre seus serviços',
+                                descricao: 'Crie pelo menos um serviço para seus clientes agendarem.',
+                                acao: 'Configurar serviços',
+                                href: '/dashboard/servicos',
+                            },
+                            {
+                                numero: '02',
+                                feito: temHorariosConfigurados,
+                                titulo: 'Configure seus horários de atendimento',
+                                descricao: 'Defina os dias e horários em que você atende.',
+                                acao: 'Configurar agenda',
+                                href: '/dashboard/agenda',
+                            },
+                            {
+                                numero: '03',
+                                feito: false,
+                                titulo: 'Compartilhe seu link de agendamento',
+                                descricao: 'Disponível assim que as etapas acima estiverem completas.',
+                                acao: null,
+                                href: null,
+                            },
+                        ].map((passo) => (
+                            <li key={passo.numero} className="flex items-start gap-4">
+                                <span
+                                    className={`font-mono text-sm ${passo.feito ? 'text-marca' : 'text-penumbra'}`}
+                                >
+                                    {passo.feito ? '✓' : passo.numero}
+                                </span>
+                                <div>
+                                    <p
+                                        className={`text-sm font-medium ${
+                                            passo.feito ? 'text-penumbra line-through' : 'text-giz'
+                                        }`}
+                                    >
+                                        {passo.titulo}
+                                    </p>
+                                    {!passo.feito && (
+                                        <>
+                                            <p className="mt-1 text-sm text-nevoa">{passo.descricao}</p>
+                                            {passo.acao && passo.href && (
+                                                <button
+                                                    onClick={() => router.push(passo.href!)}
+                                                    className="mt-2 font-mono text-xs uppercase tracking-widest text-marca transition-colors hover:text-marca-suave"
+                                                >
+                                                    {passo.acao} →
+                                                </button>
+                                            )}
+                                        </>
+                                    )}
+                                </div>
+                            </li>
+                        ))}
+                    </ol>
                 </div>
+            )}
+
+            {/* Link público */}
+            {perfilEmpresa && (
+                <div className="mt-8 rounded-xl border border-fio bg-bastidor px-4 py-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="min-w-0 truncate font-mono text-sm text-nevoa">
+                            <span className="mr-3 hidden font-mono text-[10px] uppercase tracking-widest text-penumbra sm:inline">
+                                seu link
+                            </span>
+                            {linkPublico}
+                        </p>
+                        <button
+                            onClick={copiarLink}
+                            className={`shrink-0 self-start font-mono text-xs uppercase tracking-widest transition-colors sm:self-auto ${
+                                copiado ? 'text-marca' : 'text-nevoa hover:text-giz'
+                            }`}
+                        >
+                            {copiado ? 'copiado ✓' : 'copiar'}
+                        </button>
+                    </div>
+                    {!setupCompleto && (
+                        <p className="mt-2 text-xs text-amber-700/90 dark:text-amber-300/80">
+                            Seu link ainda não mostra horários — complete os primeiros passos.
+                        </p>
+                    )}
+                </div>
+            )}
+
+            {/* Linha do dia */}
+            <div className="mt-12">
+                <p className="font-mono text-xs uppercase tracking-[0.25em] text-penumbra">
+                    linha do dia
+                </p>
 
                 {agendamentos.length === 0 ? (
-                    <div className="p-8 text-center text-zinc-500 dark:text-zinc-400">
-                        Nenhum agendamento para este dia.
+                    <div className="mt-6 py-14 text-center">
+                        <p className="font-mono text-sm text-penumbra">Nenhum atendimento neste dia.</p>
+                        {setupCompleto && (
+                            <p className="mt-2 text-sm text-nevoa">
+                                Compartilhe seu link para preencher a agenda.
+                            </p>
+                        )}
                     </div>
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm border-collapse">
-                            <thead>
-                                <tr className="bg-zinc-50 dark:bg-zinc-900/50 text-zinc-500 border-b border-zinc-200 dark:border-zinc-800">
-                                    <th className="px-5 py-3 font-semibold text-xs uppercase tracking-wider">Horário</th>
-                                    <th className="px-5 py-3 font-semibold text-xs uppercase tracking-wider">Cliente</th>
-                                    <th className="px-5 py-3 font-semibold text-xs uppercase tracking-wider">Serviço</th>
-                                    <th className="px-5 py-3 font-semibold text-xs uppercase tracking-wider">Valor</th>
-                                    <th className="px-5 py-3 font-semibold text-xs uppercase tracking-wider">Status</th>
-                                    <th className="px-5 py-3 font-semibold text-xs uppercase tracking-wider text-right">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                                {agendamentos.map(ag => {
-                                    const hora = new Date(ag.data_hora).toLocaleTimeString('pt-BR', {
-                                        timeZone: 'America/Sao_Paulo',
-                                        hour: 'numeric',
-                                        minute: 'numeric',
-                                        hour12: false
-                                    })
-                                    const telLimpo = ag.clientes?.telefone || ''
-                                    const waLink = telLimpo ? `https://wa.me/55${telLimpo}` : '#'
+                    <ol className="mt-8">
+                        {linha.map((item) => {
+                            if (item.tipo === 'livre') {
+                                return (
+                                    <li
+                                        key={item.chave}
+                                        className="relative border-l border-dashed border-fio py-5 pl-7"
+                                    >
+                                        <p className="font-mono text-xs text-penumbra">
+                                            janela livre · {item.de} — {item.ate}
+                                        </p>
+                                    </li>
+                                )
+                            }
 
-                                    return (
-                                        <tr key={ag.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/10 transition-colors">
-                                            <td className="px-5 py-4 font-bold text-zinc-900 dark:text-zinc-100 font-mono">
-                                                {hora}
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <div className="font-semibold text-zinc-900 dark:text-zinc-100">
-                                                    {ag.clientes?.nome || 'N/A'}
-                                                </div>
-                                                <div className="flex items-center gap-1.5 text-xs text-zinc-500 mt-0.5">
-                                                    <span>{ag.clientes?.telefone}</span>
-                                                    {telLimpo && (
-                                                        <a
-                                                            href={waLink}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
-                                                            className="text-emerald-500 hover:text-emerald-600 inline-flex items-center"
-                                                            title="Enviar mensagem no WhatsApp"
-                                                        >
-                                                            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                                                                <path d="M12.012 2c-5.506 0-9.989 4.478-9.99 9.984a9.96 9.96 0 0 0 1.333 4.982L2 22l5.233-1.371a9.936 9.936 0 0 0 4.779 1.229h.004c5.505 0 9.988-4.478 9.989-9.985a9.964 9.964 0 0 0-2.925-7.062A9.94 9.94 0 0 0 12.012 2zm5.748 14.185c-.316.892-1.844 1.637-2.529 1.745-.623.098-1.439.123-2.316-.164-3.535-1.157-5.834-4.71-6.011-4.945-.176-.234-1.434-1.902-1.434-3.626 0-1.725.901-2.574 1.222-2.923.32-.349.704-.436.939-.436.236 0 .47.001.677.011.215.01.503-.08.789.606.295.707 1.009 2.459 1.097 2.637.088.178.147.385.029.62-.117.234-.176.381-.352.583-.176.203-.37.452-.529.606-.176.17-.361.355-.156.707.206.353.916 1.507 1.963 2.438 1.348 1.198 2.488 1.567 2.84 1.743.353.176.558.147.763-.089.206-.236.88-1.025 1.116-1.378.234-.352.47-.294.791-.176.323.118 2.053 1.008 2.406 1.184.353.176.588.264.675.41.088.147.088.851-.228 1.743z"/>
-                                                            </svg>
-                                                        </a>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <div className="font-semibold text-zinc-900 dark:text-zinc-100">
-                                                    {ag.servicos?.nome || 'N/A'}
-                                                </div>
-                                                <div className="text-xs text-zinc-500 mt-0.5">
-                                                    {ag.servicos?.duracao_minutos} min
-                                                </div>
-                                            </td>
-                                            <td className="px-5 py-4 font-semibold text-zinc-900 dark:text-zinc-100 font-mono">
-                                                {Number(ag.servicos?.preco || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                            </td>
-                                            <td className="px-5 py-4">
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold capitalize ${
-                                                    ag.status === 'concluido'
-                                                        ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
-                                                        : ag.status === 'cancelado'
-                                                            ? 'bg-red-50 text-red-800 dark:bg-red-950/30 dark:text-red-300'
-                                                            : ag.status === 'confirmado'
-                                                                ? 'bg-blue-50 text-blue-800 dark:bg-blue-950/30 dark:text-blue-300'
-                                                                : 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-300'
-                                                }`}>
-                                                    {ag.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-5 py-4 text-right">
-                                                <div className="flex items-center justify-end gap-2">
-                                                    {ag.status !== 'concluido' && ag.status !== 'cancelado' && (
-                                                        <>
-                                                            <button
-                                                                onClick={() => alterarStatus(ag.id, 'concluido')}
-                                                                disabled={statusUpdating === ag.id}
-                                                                className="px-2.5 py-1 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:hover:bg-emerald-900/50 dark:text-emerald-400 rounded-lg cursor-pointer transition-colors"
-                                                            >
-                                                                Concluir
-                                                            </button>
-                                                            <button
-                                                                onClick={() => alterarStatus(ag.id, 'cancelado')}
-                                                                disabled={statusUpdating === ag.id}
-                                                                className="px-2.5 py-1 text-xs font-bold bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/30 dark:hover:bg-red-900/50 dark:text-red-400 rounded-lg cursor-pointer transition-colors"
-                                                            >
-                                                                Cancelar
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                    {statusUpdating === ag.id && (
-                                                        <span className="text-xs text-zinc-400 animate-pulse">Atualizando...</span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
+                            const { ag } = item
+                            const hora = horaLocal(ag.data_hora)
+                            const telLimpo = ag.clientes?.telefone || ''
+                            const waLink = telLimpo ? `https://wa.me/55${telLimpo}` : null
+                            const cancelado = ag.status === 'cancelado'
+                            const concluido = ag.status === 'concluido'
+
+                            return (
+                                <li
+                                    key={ag.id}
+                                    className={`relative border-l border-fio pb-9 pl-7 last:pb-0 ${
+                                        cancelado ? 'opacity-45' : ''
+                                    }`}
+                                >
+                                    <span
+                                        className={`absolute -left-[4.5px] top-2 h-2 w-2 rounded-full ${
+                                            concluido
+                                                ? 'bg-marca'
+                                                : cancelado
+                                                    ? 'bg-red-500/70 dark:bg-red-400/70'
+                                                    : ag.status === 'pendente'
+                                                        ? 'bg-amber-500 dark:bg-amber-400'
+                                                        : 'bg-fio-forte'
+                                        }`}
+                                    />
+                                    <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                                        <span className="font-mono text-lg text-giz">{hora}</span>
+                                        <span className={`font-medium text-giz ${cancelado ? 'line-through' : ''}`}>
+                                            {ag.clientes?.nome || 'Cliente'}
+                                        </span>
+                                        <span className="text-sm text-nevoa">
+                                            {ag.servicos?.nome}
+                                            {ag.servicos ? ` · ${ag.servicos.duracao_minutos} min` : ''}
+                                        </span>
+                                        <span className="ml-auto font-mono text-sm text-nevoa">
+                                            {brl(Number(ag.servicos?.preco || 0))}
+                                        </span>
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
+                                        <span
+                                            className={`font-mono text-xs uppercase tracking-widest ${
+                                                concluido
+                                                    ? 'text-marca'
+                                                    : cancelado
+                                                        ? 'text-red-700/80 dark:text-red-300/80'
+                                                        : ag.status === 'pendente'
+                                                            ? 'text-amber-700 dark:text-amber-300'
+                                                            : 'text-penumbra'
+                                            }`}
+                                        >
+                                            {ag.status}
+                                        </span>
+                                        {telLimpo && (
+                                            <a
+                                                href={waLink!}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-xs text-nevoa transition-colors hover:text-marca"
+                                            >
+                                                {ag.clientes?.telefone} ↗
+                                            </a>
+                                        )}
+                                        {!cancelado && !concluido && (
+                                            <span className="flex items-center gap-3">
+                                                <button
+                                                    onClick={() => alterarStatus(ag.id, 'concluido')}
+                                                    disabled={statusUpdating === ag.id}
+                                                    className="font-mono text-xs uppercase tracking-widest text-marca transition-colors hover:text-marca-suave disabled:opacity-50"
+                                                >
+                                                    concluir
+                                                </button>
+                                                <button
+                                                    onClick={() => alterarStatus(ag.id, 'cancelado')}
+                                                    disabled={statusUpdating === ag.id}
+                                                    className="font-mono text-xs uppercase tracking-widest text-red-700/70 transition-colors hover:text-red-700 disabled:opacity-50 dark:text-red-300/70 dark:hover:text-red-300"
+                                                >
+                                                    cancelar
+                                                </button>
+                                            </span>
+                                        )}
+                                        {statusUpdating === ag.id && (
+                                            <span className="animate-pulse font-mono text-xs text-penumbra">
+                                                atualizando…
+                                            </span>
+                                        )}
+                                    </div>
+                                </li>
+                            )
+                        })}
+                    </ol>
                 )}
             </div>
+
+            {/* Próximos dias */}
+            {totalProximos > 0 && (
+                <div className="mt-14">
+                    <button
+                        onClick={alternarProximos}
+                        className="flex items-center gap-3 font-mono text-xs uppercase tracking-[0.25em] text-penumbra transition-colors hover:text-nevoa"
+                    >
+                        <span>próximos dias</span>
+                        <span className="text-marca">{totalProximos}</span>
+                        <span className="text-[10px]">{proximosVisivel ? 'ocultar' : 'mostrar'}</span>
+                    </button>
+
+                    {proximosVisivel && (
+                        <div className="mt-6 space-y-8">
+                            {diasProximos.map((dia) => {
+                                const doDia = proximosPorDia.get(dia)!
+                                const rotulo = new Date(`${dia}T12:00:00`).toLocaleDateString('pt-BR', {
+                                    weekday: 'long',
+                                    day: 'numeric',
+                                    month: 'long',
+                                })
+                                return (
+                                    <div key={dia}>
+                                        <button
+                                            onClick={() => mudarData(dia)}
+                                            className="group flex items-baseline gap-3 text-sm text-nevoa transition-colors hover:text-giz"
+                                        >
+                                            <span className="font-medium capitalize">{rotulo}</span>
+                                            <span className="font-mono text-xs text-penumbra group-hover:text-marca">
+                                                abrir dia →
+                                            </span>
+                                        </button>
+                                        <ul className="mt-3 space-y-2">
+                                            {doDia
+                                                .sort((a, b) => a.data_hora.localeCompare(b.data_hora))
+                                                .map((ag) => (
+                                                    <li
+                                                        key={ag.id}
+                                                        className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 border-l border-fio pl-7 text-sm"
+                                                    >
+                                                        <span className="font-mono text-nevoa">
+                                                            {horaLocal(ag.data_hora)}
+                                                        </span>
+                                                        <span className="text-giz">
+                                                            {ag.clientes?.nome || 'Cliente'}
+                                                        </span>
+                                                        <span className="text-nevoa">{ag.servicos?.nome}</span>
+                                                        <span className="ml-auto font-mono text-xs text-penumbra">
+                                                            {brl(Number(ag.servicos?.preco || 0))}
+                                                        </span>
+                                                    </li>
+                                                ))}
+                                        </ul>
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     )
 }

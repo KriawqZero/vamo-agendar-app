@@ -315,7 +315,7 @@ export default function BookingWizard({ perfil, servicos }: BookingWizardProps) 
                                 className={`px-4 py-3 rounded-2xl border text-center flex flex-col items-center min-w-16 snap-start cursor-pointer transition-all duration-200 ${
                                     dataSelecionada === dt.dateStr
                                         ? 'border-zinc-900 dark:border-zinc-50 bg-zinc-900 text-white dark:bg-zinc-50 dark:text-zinc-950 shadow-sm'
-                                        : 'border-zinc-250 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400'
+                                        : 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400'
                                 }`}
                             >
                                 <span className="text-[10px] font-bold uppercase tracking-wider">{dt.diaSemana}</span>
@@ -376,7 +376,7 @@ export default function BookingWizard({ perfil, servicos }: BookingWizardProps) 
                     </div>
 
                     {/* Resumo do pedido */}
-                    <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-250/50 dark:border-zinc-800/50 p-4 rounded-2xl text-xs space-y-2">
+                    <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200/50 dark:border-zinc-800/50 p-4 rounded-2xl text-xs space-y-2">
                         <div className="flex justify-between">
                             <span className="text-zinc-400">Serviço:</span>
                             <span className="font-bold text-zinc-900 dark:text-zinc-50">{servicoSelecionado?.nome}</span>

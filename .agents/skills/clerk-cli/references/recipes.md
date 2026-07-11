@@ -1,4 +1,4 @@
-# Clerk CLI — Recipes
+# Clerk CLI - Recipes
 
 Copy-pasteable patterns for common tasks. Treat these as starting points; confirm exact paths and parameters with `clerk api ls <keyword>` and `clerk <command> --help`, since the Clerk API evolves.
 
@@ -10,7 +10,7 @@ clerk api ls users            # filter by keyword
 clerk api ls --platform       # Platform API (account-level)
 ```
 
-The bundled catalog is cached locally for 1 hour. There is no force-refresh flag — once the TTL expires the next `clerk api ls` re-fetches automatically; on fetch failure the CLI falls back to the stale cache and prints a warning.
+The bundled catalog is cached locally for 1 hour. There is no force-refresh flag - once the TTL expires the next `clerk api ls` re-fetches automatically; on fetch failure the CLI falls back to the stale cache and prints a warning.
 
 ## Users
 
@@ -168,7 +168,7 @@ clerk api /jwt_templates -d '{
 
 ## Instance configuration
 
-Prefer the dedicated `config` commands over raw `api` calls — they handle confirmation, dry-run, and formatting.
+Prefer the dedicated `config` commands over raw `api` calls - they handle confirmation, dry-run, and formatting.
 
 ```sh
 # Pull the current dev config
@@ -185,7 +185,7 @@ clerk config schema --keys session sign_in social
 clerk config patch --json '{"session":{"lifetime":3600}}' --dry-run
 clerk config patch --json '{"session":{"lifetime":3600}}' --yes
 
-# PUT: replace everything (destructive — always --dry-run first)
+# PUT: replace everything (destructive - always --dry-run first)
 clerk config put --file config.prod.json --dry-run
 clerk config put --file config.prod.json --instance prod --yes
 ```

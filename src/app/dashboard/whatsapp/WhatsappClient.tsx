@@ -293,7 +293,7 @@ export default function WhatsappClient({ config }: WhatsappClientProps) {
                             <p className="text-[10px] text-zinc-400 mt-1">Ex: 120 minutos = 2 horas antes do início marcado.</p>
                         </div>
 
-                        <div className="pt-2 border-t border-zinc-150 dark:border-zinc-800 flex justify-end">
+                        <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800 flex justify-end">
                             <button
                                 type="submit"
                                 disabled={isPending}

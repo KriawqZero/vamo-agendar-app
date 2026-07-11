@@ -1,41 +1,178 @@
 @import "tailwindcss";
 
+/* dark vira variante por CLASSE (não media query): a classe é aplicada no
+   <html> pelo next-themes (seletor escuro/claro/sistema, chave va:tema). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Palco — sistema de design do site inteiro ───────────────────
+   Os mesmos tokens servem às duas cenas: o palco à noite (escuro,
+   o design original) e o palco de dia (claro, derivado do manual da
+   marca — papel, tinta-navy, wordmark roxo). Profundidade só por
+   fios (bordas), nunca sombra. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --clerk-color-primary: light-dark(#2F3037, #FFFFFF);
-  --clerk-color-primary-foreground: light-dark(#FFFFFF, black);
-  --clerk-color-danger: #EF4444;
-  --clerk-color-success: #22C543;
-  --clerk-color-warning: #F36B16;
-  --clerk-color-neutral: light-dark(#000000, white);
-  --clerk-color-foreground: light-dark(#000000, white);
-  --clerk-color-background: light-dark(#FFFFFF, #212126);
-  --clerk-color-input: light-dark(#FFFFFF, #26262B);
-  --clerk-color-input-foreground: light-dark(#000000, white);
-  --clerk-color-ring: light-dark(color-mix(in srgb, #000000 15.000000000000002%, transparent), color-mix(in srgb, #ffffff 15.000000000000002%, transparent));
-  --clerk-color-shimmer: #FFFFFF;
-  --clerk-color-modal-backdrop: #000000;
-  --clerk-border-radius: 0rem;
-  --clerk-spacing: 1.125rem;
+  /* claro — "o palco de dia" */
+  --palco: #f7f8fc; /* papel com leve frio de periwinkle */
+  --bastidor: #ffffff; /* superfície elevada (cards) */
+  --camarim: #eef1fa; /* superfície +1 (hover, dropdown) */
+  --giz: #14172b; /* texto primário: tinta-navy do manual */
+  --nevoa: #565c76; /* texto secundário */
+  --penumbra: #8a8fa6; /* texto terciário / metadados */
+  --fio: rgba(20, 23, 43, 0.08); /* borda padrão */
+  --fio-forte: rgba(20, 23, 43, 0.16); /* borda ênfase */
+  --veu: rgba(20, 23, 43, 0.04); /* overlay de hover/seleção */
+  --fantasma: rgba(20, 23, 43, 0.04); /* horários fantasma gigantes */
+  /* Paleta oficial da marca (Mini-manual): gradiente #3DBAED→#3961D5,
+     roxo #4219B0, periwinkle #ACC6FF. Sobre claro, o acento legível é
+     o azul royal e o "forte" é o roxo do wordmark. */
+  --marca: #3961d5;
+  --marca-forte: #4219b0;
+  --marca-suave: #4219b0; /* hover de texto: azul→roxo (periwinkle não lê sobre papel) */
 }
 
+.dark {
+  /* escuro — "o palco à noite", o design original */
+  --palco: #09090b;
+  --bastidor: #101014;
+  --camarim: #17171c;
+  --giz: #fafaf9;
+  --nevoa: #a1a1ab;
+  --penumbra: #6b6b76;
+  --fio: rgba(255, 255, 255, 0.07);
+  --fio-forte: rgba(255, 255, 255, 0.14);
+  --veu: rgba(255, 255, 255, 0.04);
+  --fantasma: rgba(255, 255, 255, 0.03);
+  /* No palco escuro, o ciano é a luz. */
+  --marca: #3dbaed;
+  --marca-forte: #3961d5;
+  --marca-suave: #acc6ff;
+}
+
+/* Tokens → utilities (bg-palco, text-giz, border-fio...). `inline` faz a
+   utility referenciar a var em runtime, permitindo a troca de tema. */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-palco: var(--palco);
+  --color-bastidor: var(--bastidor);
+  --color-camarim: var(--camarim);
+  --color-giz: var(--giz);
+  --color-nevoa: var(--nevoa);
+  --color-penumbra: var(--penumbra);
+  --color-fio: var(--fio);
+  --color-fio-forte: var(--fio-forte);
+  --color-veu: var(--veu);
+  --color-fantasma: var(--fantasma);
+  --color-marca: var(--marca);
+  --color-marca-forte: var(--marca-forte);
+  --color-marca-suave: var(--marca-suave);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-poppins);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ── Coreografia da landing page ─────────────────────────────────
+   Entrada do hero: texto sobe de dentro de uma máscara (overflow hidden),
+   escalonado por animation-delay inline. Demais seções: .reveal via
+   IntersectionObserver (componente Reveal). */
+
+.mascara {
+  overflow: hidden;
+}
+
+.mascara > * {
+  animation: subir 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes subir {
+  from {
+    transform: translateY(110%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+.aparecer {
+  animation: aparecer 1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition:
+    opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.9s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.reveal-visivel {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascara > *,
+  .aparecer {
+    animation: none;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* Transições de etapa do widget de demonstração da landing */
+@keyframes demo-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes demo-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  60% {
+    transform: scale(1.08);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.demo-in {
+  animation: demo-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.demo-pop {
+  animation: demo-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-in,
+  .demo-pop {
+    animation: none;
   }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--palco);
+  color: var(--giz);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }

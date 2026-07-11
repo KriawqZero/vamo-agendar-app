@@ -47,7 +47,7 @@ export default async function BookingPage({ params }: PageProps) {
                 {/* Footer discreto e profissional */}
                 <div className="text-center text-[10px] text-zinc-400 dark:text-zinc-500 flex items-center justify-center gap-1.5 pt-4">
                     <span>Agendamento facilitado por</span>
-                    <span className="font-bold text-zinc-650 dark:text-zinc-300 font-mono tracking-wider">VamoAgendar</span>
+                    <span className="font-bold text-zinc-600 dark:text-zinc-300 font-mono tracking-wider">VamoAgendar</span>
                 </div>
 
             </div>

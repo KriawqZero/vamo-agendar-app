@@ -388,7 +388,7 @@ export default function AgendaClient({
                             />
                         </div>
 
-                        <div className="pt-2 border-t border-zinc-150 dark:border-zinc-800 flex justify-end">
+                        <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800 flex justify-end">
                             <button
                                 type="submit"
                                 disabled={isPending}
@@ -470,7 +470,7 @@ export default function AgendaClient({
                             ))}
                         </div>
 
-                        <div className="pt-4 border-t border-zinc-150 dark:border-zinc-800 flex justify-end">
+                        <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800 flex justify-end">
                             <button
                                 type="submit"
                                 disabled={isPending}

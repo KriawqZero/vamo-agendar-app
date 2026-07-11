@@ -1,4 +1,4 @@
-# Clerk CLI — Agent Mode Reference
+# Clerk CLI - Agent Mode Reference
 
 The Clerk CLI has a first-class "agent" mode that's designed for non-interactive and AI-driven use. Read this before writing scripts or letting an LLM drive the CLI.
 
@@ -58,7 +58,7 @@ Force human mode with `--mode human` or `CLERK_MODE=human`. Typical AI-agent inv
 | `clerk apps list` default output                                 | Table                                     | JSON (when piped)                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `clerk apps create <name>` output                                | Human-readable summary                    | JSON (auto-detected, same as `apps list`); `--json` also works explicitly                                                                                                                                                                                                                                                                                                                                                            |
 | `clerk users list` / `clerk users create` default output         | Table / human-readable                    | JSON (auto-detected when piped); `--json` also works explicitly                                                                                                                                                                                                                                                                                                                                                                      |
-| `clerk users` (no subcommand)                                    | Interactive action picker                 | Prints the action list and exits with a usage error (code `2`) — pass `list` / `create` / `open`                                                                                                                                                                                                                                                                                                                                     |
+| `clerk users` (no subcommand)                                    | Interactive action picker                 | Prints the action list and exits with a usage error (code `2`) - pass `list` / `create` / `open`                                                                                                                                                                                                                                                                                                                                     |
 | `clerk users open [user-id]`                                     | Picks a user interactively, opens browser | Requires `user-id`; prints `{url, appId, appName, instanceId, instanceLabel, userId, opened: false}` and does not open a browser                                                                                                                                                                                                                                                                                                     |
 | `clerk open [subpath]`                                           | Opens the browser to the URL              | Does not open a browser. Prints a JSON descriptor (`{url, appId, appName, instanceId, instanceLabel, subpath, opened: false}`) on stdout so the agent can surface it                                                                                                                                                                                                                                                                 |
 | `clerk deploy`                                                   | Interactive production deploy wizard      | Read-only handoff. Emits deploy status JSON on stdout and exits `0` for linked projects. Does not prompt, mutate, trigger DNS checks, or poll.                                                                                                                                                                                                                                                                                       |
@@ -74,7 +74,7 @@ per CLI invocation when a host-sensitive operation is blocked.
 
 ## Passing options as JSON: `--input-json`
 
-Every command accepts `--input-json <json|@file|->`. Keys convert from camelCase/snake_case to kebab-case and expand into flags before Commander parses argv — so anything a command accepts as a flag can come from JSON instead.
+Every command accepts `--input-json <json|@file|->`. Keys convert from camelCase/snake_case to kebab-case and expand into flags before Commander parses argv - so anything a command accepts as a flag can come from JSON instead.
 
 ```sh
 clerk init --input-json '{"framework":"next","yes":true}'
@@ -84,9 +84,9 @@ clerk init --input-json -                                           # read JSON 
 echo '{"framework":"next","yes":true}' | clerk init                 # auto-detect piped stdin
 ```
 
-When `--input-json` is omitted and stdin is piped (not a TTY), the CLI automatically reads JSON from stdin — no flag needed. This lets agents pipe options directly: `echo '{"yes":true}' | clerk init`.
+When `--input-json` is omitted and stdin is piped (not a TTY), the CLI automatically reads JSON from stdin - no flag needed. This lets agents pipe options directly: `echo '{"yes":true}' | clerk init`.
 
-Positional arguments (e.g. the `<name>` in `clerk apps create <name>`) cannot come from JSON — only flag-style options can.
+Positional arguments (e.g. the `<name>` in `clerk apps create <name>`) cannot come from JSON - only flag-style options can.
 
 | JSON             | Expansion                               |
 | ---------------- | --------------------------------------- |
@@ -94,9 +94,9 @@ Positional arguments (e.g. the `<name>` in `clerk apps create <name>`) cannot co
 | `true`           | `--flag`                                |
 | `false` / `null` | omitted                                 |
 | `["a","b"]`      | `--flag a --flag b` (empty arrays omit) |
-| `{…}` (nested)   | rejected — `invalid_json`, exit `2`     |
+| `{…}` (nested)   | rejected - `invalid_json`, exit `2`     |
 
-**Placement.** Put `--input-json` after the leaf subcommand. Before it, flags land on the root program, so only `--mode` / `--verbose` work there — subcommand flags (`--json`, `--app`, etc.) error as unknown. Explicit flags after `--input-json` override its values (last-flag-wins).
+**Placement.** Put `--input-json` after the leaf subcommand. Before it, flags land on the root program, so only `--mode` / `--verbose` work there - subcommand flags (`--json`, `--app`, etc.) error as unknown. Explicit flags after `--input-json` override its values (last-flag-wins).
 
 Errors use the standard agent-mode format: bad JSON → `invalid_json`, missing `@file` → `file_not_found`, unknown expanded flags → Commander's `unknown option`. All exit `2`.
 
@@ -160,7 +160,7 @@ For commands without an explicit `--json` flag, `clerk api` is your escape hatch
 clerk doctor --json --spotlight
 ```
 
-Parse the output, then for each failing check read `remedy` and act. Never call `--fix` from an agent — it's interactive.
+Parse the output, then for each failing check read `remedy` and act. Never call `--fix` from an agent - it's interactive.
 
 In agent mode, `doctor` also includes a **`Host execution`** check when it can
 detect that Clerk's host-side state is not writable. If that check warns, stop
@@ -258,7 +258,7 @@ clerk api ls --platform apps   # platform-side endpoints
 
 ### Surface doctor remedies to the user
 
-When `clerk doctor --json` reports a failure, show the user the `name`, `message`, and `remedy` — don't just silently try to fix it, because the underlying fix (e.g., `clerk auth login`) usually requires human interaction.
+When `clerk doctor --json` reports a failure, show the user the `name`, `message`, and `remedy` - don't just silently try to fix it, because the underlying fix (e.g., `clerk auth login`) usually requires human interaction.
 
 `clerk doctor --fix` is disabled in agent mode, so you cannot rely on it. If a caller wants to attempt remediation anyway, map the failing check to the command that would fix it in human mode. Each check exposes this mapping via the optional `fix.label` field on the JSON result:
 
@@ -279,9 +279,9 @@ All three remediation commands are themselves interactive by default: `auth logi
 ## What NOT to do in agent mode
 
 - **Don't ignore the sandbox warning.** If the CLI says host-only Clerk state or system capabilities may be unavailable, rerun the same command on the host before trusting the result.
-- **Don't assume `clerk auth login` is fully unattended from an agent** — it opens a browser and waits for a callback. Prefer `CLERK_PLATFORM_API_KEY` for headless automation. `clerk init --app <id>` or init in an already linked project may still invoke the normal login fallback when a real app target is explicit.
-- **Don't call `clerk link` without `--app` and assume the agent can pick for you** — it only succeeds when silent autolink can determine the app from detected keys.
-- **Don't run `clerk unlink` in agent mode without `--yes`** — it exits with a usage error instead of prompting.
-- **Don't run `clerk config put` without `--dry-run` first** — it's a full replacement and is destructive.
-- **Don't skip `--yes` on mutations and expect them to work** — agent mode disables prompts, so commands that require confirmation will error.
-- **Don't leak secret keys into logs** — the CLI never prints the raw secret key, and you shouldn't either.
+- **Don't assume `clerk auth login` is fully unattended from an agent** - it opens a browser and waits for a callback. Prefer `CLERK_PLATFORM_API_KEY` for headless automation. `clerk init --app <id>` or init in an already linked project may still invoke the normal login fallback when a real app target is explicit.
+- **Don't call `clerk link` without `--app` and assume the agent can pick for you** - it only succeeds when silent autolink can determine the app from detected keys.
+- **Don't run `clerk unlink` in agent mode without `--yes`** - it exits with a usage error instead of prompting.
+- **Don't run `clerk config put` without `--dry-run` first** - it's a full replacement and is destructive.
+- **Don't skip `--yes` on mutations and expect them to work** - agent mode disables prompts, so commands that require confirmation will error.
+- **Don't leak secret keys into logs** - the CLI never prints the raw secret key, and you shouldn't either.
