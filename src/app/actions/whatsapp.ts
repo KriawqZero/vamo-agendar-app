@@ -222,7 +222,8 @@ export async function obterQrCodeWhatsApp(instanceName: string) {
         const dataRes = await response.json()
 
         // Se retornar conectado diretamente na resposta
-        if (dataRes.status === 'CONNECTED' || dataRes.state === 'open') {
+        // (o formato atual da Evolution API aninha o estado em instance.state)
+        if (dataRes.status === 'CONNECTED' || dataRes.state === 'open' || dataRes.instance?.state === 'open') {
             const supabase = await createClient()
             await supabase
                 .from('whatsapp_configs')
