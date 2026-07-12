@@ -33,7 +33,7 @@ Página de debug `/debug/qstash` no próprio app, protegida, que dá visibilidad
 ### Ações manuais (ilha client + Server Actions)
 
 - **Disparar lembrete agora** (por agendamento): a action faz `POST` no próprio `/api/webhooks/lembrete?secret=...` (origem local da própria instância) e devolve o status + corpo da resposta ao client. Testa a lógica do webhook sem QStash — funciona em localhost.
-- **Publicar teste no QStash (+60s)** (por agendamento): reusa `agendarLembreteQStash` com `Date.now() + 60_000`. Testa o ciclo completo (só útil quando `APP_URL` é alcançável publicamente). Devolve sucesso/falha do publish, incluindo status e corpo do erro do QStash.
+- **Publicar teste no QStash (+60s)** (por agendamento): replica o publish de `agendarLembreteQStash` inline na action (com `Date.now() + 60_000`), porque o helper só retorna boolean e o objetivo aqui é capturar status e corpo da resposta do QStash. Testa o ciclo completo (só útil quando `APP_URL` é alcançável publicamente).
 - **Refresh** da página (`router.refresh()`) para acompanhar tentativas de entrega.
 
 Resultado de cada ação exibido inline na página (status + JSON de resposta), com feedback de pending (`useActionState`/`useFormStatus`).
