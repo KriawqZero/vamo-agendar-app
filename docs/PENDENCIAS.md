@@ -106,6 +106,13 @@ mensagem não entregue olhando o registro de disparos.
 **Dependências/decisões:** definir os novos valores de `status` (exige migration do
 CHECK); decidir formato do log de disparos (tabela dedicada é o caminho simples).
 
+**Ferramenta temporária ativa (2026-07-12):** página `/debug/qstash` (gated por
+`DEBUG_QSTASH=1` + login Clerk) para diagnosticar os lembretes — lista os logs do
+QStash (`GET /v2/logs`), agendamentos recentes e sanidade de env, e permite disparar
+o webhook diretamente ou publicar teste no QStash. **Remover após o diagnóstico**:
+apagar `src/app/debug/qstash/` e `src/app/actions/debug-qstash.ts` e a flag
+`DEBUG_QSTASH` dos ambientes.
+
 ### 2. Bug crítico — booking público quebrado para visitante anônimo
 
 O fluxo principal do produto (Fricção Zero) **não funciona** para um visitante
