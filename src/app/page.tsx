@@ -139,7 +139,7 @@ export default async function Home() {
                                     href="/sign-up"
                                     className="rounded-full bg-gradient-to-br from-[#3DBAED] to-[#3961D5] px-4 py-2 text-sm font-semibold text-white transition-all duration-200 hover:brightness-110"
                                 >
-                                    Criar conta grátis
+                                    Cadastrar
                                 </Link>
                             </>
                         )}
@@ -457,19 +457,18 @@ export default async function Home() {
                                                 ) : (
                                                     <Link
                                                         href={user ? '/dashboard/plano' : '/sign-up'}
-                                                        className={`block rounded-full py-2.5 text-center text-sm font-semibold transition-colors duration-200 ${
-                                                            (planoAtual ? ordem[p.id] > ordem[planoAtual] : p.id === 'pro')
-                                                                ? 'bg-gradient-to-br from-[#3DBAED] to-[#3961D5] text-white hover:brightness-110'
-                                                                : 'border border-fio-forte text-nevoa hover:border-penumbra hover:text-giz'
-                                                        }`}
+                                                        className={`block rounded-full py-2.5 text-center text-sm font-semibold transition-colors duration-200 ${(planoAtual ? ordem[p.id] > ordem[planoAtual] : p.id === 'pro')
+                                                            ? 'bg-gradient-to-br from-[#3DBAED] to-[#3961D5] text-white hover:brightness-110'
+                                                            : 'border border-fio-forte text-nevoa hover:border-penumbra hover:text-giz'
+                                                            }`}
                                                     >
                                                         {planoAtual
                                                             ? ordem[p.id] > ordem[planoAtual]
                                                                 ? `Assinar ${p.nome}`
                                                                 : `Voltar ao ${p.nome}`
                                                             : p.id === 'gratuito'
-                                                              ? 'Começar grátis'
-                                                              : `Assinar ${p.nome}`}
+                                                                ? 'Começar grátis'
+                                                                : `Assinar ${p.nome}`}
                                                     </Link>
                                                 )}
                                             </td>
