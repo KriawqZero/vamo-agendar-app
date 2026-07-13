@@ -102,10 +102,12 @@ function nomeClienteDoDisparo(disparo: Disparo): string | null {
     return cli?.nome ?? null
 }
 
+// Carimbo de auditoria do log de disparos: exibido no fuso do próprio navegador
+// do profissional (não é um horário de agendamento, e sim o instante em que o
+// disparo aconteceu — o fuso local de quem lê é o mais intuitivo aqui).
 function formatarQuando(iso: string): string {
     const d = new Date(iso)
     return d.toLocaleString('pt-BR', {
-        timeZone: 'America/Sao_Paulo',
         day: '2-digit',
         month: '2-digit',
         hour: '2-digit',

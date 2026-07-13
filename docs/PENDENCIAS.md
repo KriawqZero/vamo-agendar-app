@@ -177,7 +177,16 @@ normal = produto). A proteção **atômica** contra requisições simultâneas f
 "Obrigatório antes do lançamento" — quando ela existir, a action manual adota a mesma
 proteção.
 
-### 4. Fuso horário por tenant
+### 4. ~~Fuso horário por tenant~~ — ✅ Resolvido
+
+**Resolvido em 2026-07-13** (ver "Itens resolvidos" no fim deste documento).
+Coluna `timezone` IANA em `perfis_empresas`, helper central `src/lib/timezone.ts`
+e eliminação de todos os offsets fixos. A seção original segue abaixo como
+referência histórica do escopo.
+
+<details><summary>Escopo original (histórico)</summary>
+
+### (histórico) 4. Fuso horário por tenant
 
 Remover a suposição global de `America/Sao_Paulo` e o offset fixo `-03:00`. O produto
 atende o Brasil inteiro e precisa funcionar em `America/Campo_Grande`, `America/Manaus`
@@ -219,6 +228,8 @@ fuso por profissional/serviço.
 **Dependências/decisões:** nenhuma externa. Os limites de dia centralizados aqui serão
 reutilizados pela proteção atômica de double-booking (pré-lançamento) — mais um motivo
 para o helper único.
+
+</details>
 
 ### 5. Eventos de funil do produto
 
@@ -625,6 +636,33 @@ primeiro item P0 com testes for implementado.
 
 ## ✅ Itens resolvidos (histórico)
 
+- **2026-07-13 — P0.4: fuso horário IANA por tenant**:
+  - Coluna `timezone text NOT NULL DEFAULT 'America/Sao_Paulo'` em `perfis_empresas`
+    (migration `20260713165137`, validada com `db reset` local; DEFAULT cobre linhas
+    e o auto-provisionamento existentes). Configurável na aba Perfil do dashboard
+    (select com 10 fusos brasileiros), validado no servidor com
+    `Intl.supportedValuesOf('timeZone')` — sem gating de plano.
+  - Novo helper único `src/lib/timezone.ts` (isomórfico, sem lib nova — Intl):
+    `diaLocal`, `horaLocal`, `diaDaSemana` (independente do fuso do servidor),
+    `somarDias`, `instanteDe` (parede local→UTC por ponto fixo), `limitesDoDia`
+    (fim **exclusivo** — corrige a janela perdida de 23:59:59–00:00),
+    `formatarDataHora(Longa)`, `TIMEZONES_BRASIL`.
+  - Offsets fixos `-03:00`/suposições de São Paulo eliminados de: booking-engine
+    (limites, ISO do slot, dia da semana), public-booking (dia local + formatação
+    WhatsApp), listarAgendamentos (filtros gte/lt), dashboard (page + client),
+    BookingWizard (14 dias + formatação final), webhook de lembrete. O fuso vem
+    SEMPRE do banco no servidor; rótulos de calendário renderizados em UTC-noon
+    (independem do navegador). Carimbo do log de disparos fica no fuso do leitor
+    (decisão documentada no código).
+  - Engine ganhou `ignorarAgendamentoId` (`.neq`) — preparo da remarcação do P0.3.
+  - Testes: 18 novos (32 no total) cobrindo São Paulo E Campo Grande (limites de
+    dia, round-trip, slots distintos por fuso, ocupação correta) + **teste de
+    regressão byte a byte**: para America/Sao_Paulo os slots são idênticos ao
+    formato antigo (a validação do booking público compara string exata).
+  - Revisão independente sem achados críticos/importantes. Observação registrada:
+    se o Brasil readotar horário de verão com transição à meia-noite, `instanteDe`
+    pode desviar ~1h no dia da virada (horário-parede inexistente) — considerar no
+    item de double-booking atômico (pré-lançamento), que reutilizará os limites.
 - **2026-07-13 — P0.1: confiabilidade funcional do WhatsApp (Evolution/Baileys)**:
   - **Estados reais**: CHECK de `whatsapp_configs.status` ampliado para 6 estados
     (`desconectado|conectando|aguardando_qrcode|conectado|instavel|falha`) + coluna

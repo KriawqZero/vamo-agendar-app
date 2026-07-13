@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { atualizarStatusAgendamento } from '@/app/actions/agendamentos'
+import { diaLocal, horaLocal, somarDias } from '@/lib/timezone'
 
 interface Cliente {
     id: string;
@@ -33,41 +34,28 @@ interface DashboardClientProps {
     whatsappStatus: string;
     dataSelecionada: string; // YYYY-MM-DD
     inicioSemana: string; // segunda-feira da semana exibida na régua
-    hoje: string; // YYYY-MM-DD em Brasília
+    hoje: string; // YYYY-MM-DD no fuso do estabelecimento
+    timezone: string; // Fuso IANA do estabelecimento
     temServicoAtivo: boolean;
     temHorariosConfigurados: boolean;
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-const horaLocal = (iso: string) =>
-    new Date(iso).toLocaleTimeString('pt-BR', {
-        timeZone: 'America/Sao_Paulo',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-    })
-
-/** Dia (YYYY-MM-DD) de um instante ISO, no fuso de São Paulo. */
-const diaDe = (iso: string) =>
-    new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Sao_Paulo',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-    }).format(new Date(iso))
-
-/** Soma dias a uma data YYYY-MM-DD (aritmética local em meio-dia). */
-const somarDias = (dateStr: string, dias: number) => {
-    const d = new Date(`${dateStr}T12:00:00`)
-    d.setDate(d.getDate() + dias)
-    return d.toLocaleDateString('en-CA')
-}
-
+/** Rótulo curto do dia da semana a partir de "YYYY-MM-DD" (independe do fuso do navegador). */
 const rotuloDiaSemana = (dateStr: string) =>
-    new Date(`${dateStr}T12:00:00`)
-        .toLocaleDateString('pt-BR', { weekday: 'short' })
+    new Date(`${dateStr}T12:00:00Z`)
+        .toLocaleDateString('pt-BR', { weekday: 'short', timeZone: 'UTC' })
         .replace('.', '')
+
+/** Rótulo longo do dia a partir de "YYYY-MM-DD" (independe do fuso do navegador). */
+const rotuloDiaLongo = (dateStr: string) =>
+    new Date(`${dateStr}T12:00:00Z`).toLocaleDateString('pt-BR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        timeZone: 'UTC',
+    })
 
 const CHAVE_PROXIMOS_VISIVEL = 'va:proximos-dias-visivel'
 
@@ -83,10 +71,15 @@ export default function DashboardClient({
     dataSelecionada,
     inicioSemana,
     hoje,
+    timezone,
     temServicoAtivo,
     temHorariosConfigurados
 }: DashboardClientProps) {
     const router = useRouter()
+
+    // Interpretação de instantes no fuso do estabelecimento (vindo do servidor).
+    const diaDe = (iso: string) => diaLocal(iso, timezone)
+    const horaDe = (iso: string) => horaLocal(iso, timezone)
     const [, startTransition] = useTransition()
     const [copiado, setCopiado] = useState(false)
     const [statusUpdating, setStatusUpdating] = useState<string | null>(null)
@@ -104,11 +97,7 @@ export default function DashboardClient({
         })
     }
 
-    const dataFormatada = new Date(`${dataSelecionada}T12:00:00`).toLocaleDateString('pt-BR', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-    })
+    const dataFormatada = rotuloDiaLongo(dataSelecionada)
 
     // ── Derivações da janela ────────────────────────────────────────
     const agendamentos = agendamentosPeriodo.filter((ag) => diaDe(ag.data_hora) === dataSelecionada)
@@ -152,8 +141,8 @@ export default function DashboardClient({
             if (fimAnterior !== null && inicio - fimAnterior >= 30 * 60 * 1000) {
                 linha.push({
                     tipo: 'livre',
-                    de: horaLocal(new Date(fimAnterior).toISOString()),
-                    ate: horaLocal(ag.data_hora),
+                    de: horaDe(new Date(fimAnterior).toISOString()),
+                    ate: horaDe(ag.data_hora),
                     chave: `livre-${fimAnterior}`,
                 })
             }
@@ -454,7 +443,7 @@ export default function DashboardClient({
                             }
 
                             const { ag } = item
-                            const hora = horaLocal(ag.data_hora)
+                            const hora = horaDe(ag.data_hora)
                             const telLimpo = ag.clientes?.telefone || ''
                             const waLink = telLimpo ? `https://wa.me/55${telLimpo}` : null
                             const cancelado = ag.status === 'cancelado'
@@ -562,11 +551,7 @@ export default function DashboardClient({
                         <div className="mt-6 space-y-8">
                             {diasProximos.map((dia) => {
                                 const doDia = proximosPorDia.get(dia)!
-                                const rotulo = new Date(`${dia}T12:00:00`).toLocaleDateString('pt-BR', {
-                                    weekday: 'long',
-                                    day: 'numeric',
-                                    month: 'long',
-                                })
+                                const rotulo = rotuloDiaLongo(dia)
                                 return (
                                     <div key={dia}>
                                         <button
@@ -587,7 +572,7 @@ export default function DashboardClient({
                                                         className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 border-l border-fio pl-7 text-sm"
                                                     >
                                                         <span className="font-mono text-nevoa">
-                                                            {horaLocal(ag.data_hora)}
+                                                            {horaDe(ag.data_hora)}
                                                         </span>
                                                         <span className="text-giz">
                                                             {ag.clientes?.nome || 'Cliente'}

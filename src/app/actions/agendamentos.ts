@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
+import { limitesDoDia, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { cancelarLembreteQStash, registrarDisparo } from '@/lib/whatsapp-helper'
 
 interface ListarParams {
@@ -20,6 +21,15 @@ export async function listarAgendamentos(params?: ListarParams) {
     }
 
     const supabase = await createClient()
+
+    // Fuso do estabelecimento: os limites de dia dos filtros são interpretados nele.
+    const { data: perfil } = await supabase
+        .from('perfis_empresas')
+        .select('timezone')
+        .eq('tenant_id', orgId)
+        .maybeSingle()
+
+    const timezone = perfil?.timezone || TIMEZONE_PADRAO
 
     let query = supabase
         .from('agendamentos')
@@ -43,14 +53,14 @@ export async function listarAgendamentos(params?: ListarParams) {
         .eq('tenant_id', orgId)
 
     if (params?.dataFiltro) {
-        // Filtra os limites em UTC-3 para a data fornecida
-        const startUtc = new Date(`${params.dataFiltro}T00:00:00-03:00`).toISOString()
-        const endUtc = new Date(`${params.dataFiltro}T23:59:59-03:00`).toISOString()
-        query = query.gte('data_hora', startUtc).lte('data_hora', endUtc)
+        // Limites do dia no fuso do estabelecimento (fim EXCLUSIVO).
+        const { inicio, fim } = limitesDoDia(params.dataFiltro, timezone)
+        query = query.gte('data_hora', inicio.toISOString()).lt('data_hora', fim.toISOString())
     } else if (params?.periodo) {
-        const startUtc = new Date(`${params.periodo.inicio}T00:00:00-03:00`).toISOString()
-        const endUtc = new Date(`${params.periodo.fim}T23:59:59-03:00`).toISOString()
-        query = query.gte('data_hora', startUtc).lte('data_hora', endUtc)
+        // Início do primeiro dia até o início do dia seguinte ao último (fim EXCLUSIVO).
+        const inicio = limitesDoDia(params.periodo.inicio, timezone).inicio
+        const fim = limitesDoDia(params.periodo.fim, timezone).fim
+        query = query.gte('data_hora', inicio.toISOString()).lt('data_hora', fim.toISOString())
     }
 
     const { data, error } = await query.order('data_hora', { ascending: true })

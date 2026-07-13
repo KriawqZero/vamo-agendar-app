@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useOrganization } from '@clerk/nextjs'
 import { salvarPerfilEmpresa } from '@/app/actions/perfis-empresas'
 import { salvarHorariosFuncionamento, salvarExcecaoAgenda, excluirExcecaoAgenda } from '@/app/actions/agenda'
+import { TIMEZONES_BRASIL, TIMEZONE_PADRAO } from '@/lib/timezone'
 
 interface PerfilEmpresa {
     tenant_id: string;
@@ -16,6 +17,7 @@ interface PerfilEmpresa {
     cor_marca: string | null;
     logo_url: string | null;
     exibir_logo: boolean;
+    timezone: string;
 }
 
 interface HorarioFuncionamento {
@@ -83,6 +85,7 @@ export default function AgendaClient({
     const [telefoneContato, setTelefoneContato] = useState(perfilEmpresa?.telefone_contato || '')
     const [corMarca, setCorMarca] = useState<string | null>(perfilEmpresa?.cor_marca ?? null)
     const [exibirLogo, setExibirLogo] = useState<boolean>(perfilEmpresa?.exibir_logo ?? true)
+    const [timezone, setTimezone] = useState<string>(perfilEmpresa?.timezone || TIMEZONE_PADRAO)
     const [msgPerfil, setMsgPerfil] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null)
     // Logo é o da organização no Clerk (sincronizado pelo servidor ao salvar) — aqui só exibimos o preview
     const { organization } = useOrganization()
@@ -126,7 +129,8 @@ export default function AgendaClient({
                     descricao,
                     telefoneContato,
                     corMarca,
-                    exibirLogo
+                    exibirLogo,
+                    timezone
                 })
                 setMsgPerfil({ tipo: 'sucesso', texto: 'Perfil salvo com sucesso!' })
                 // Atualiza o slug local com a versão higienizada retornada do banco
@@ -374,6 +378,22 @@ export default function AgendaClient({
                                     placeholder="DDD + Telefone (ex: 11999999999)"
                                     className="w-full px-3.5 py-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm bg-zinc-50 dark:bg-zinc-900 outline-hidden text-zinc-900 dark:text-zinc-50"
                                 />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold uppercase text-zinc-400 block">Fuso horário</label>
+                                <select
+                                    value={timezone}
+                                    onChange={(e) => setTimezone(e.target.value)}
+                                    className="w-full px-3.5 py-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm bg-zinc-50 dark:bg-zinc-900 outline-hidden text-zinc-900 dark:text-zinc-50"
+                                >
+                                    {TIMEZONES_BRASIL.map((tz) => (
+                                        <option key={tz.valor} value={tz.valor}>{tz.rotulo}</option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-zinc-500 mt-1">
+                                    Usado para calcular os horários da sua agenda e as mensagens de confirmação/lembrete.
+                                </p>
                             </div>
                         </div>
 

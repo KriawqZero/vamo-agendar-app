@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { processarMensagemTemplate, enviarMensagemWhatsApp, registrarDisparo } from '@/lib/whatsapp-helper'
+import { formatarDataHora, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { PLANOS } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
         // 5. Buscar perfil do estabelecimento e configurações do WhatsApp
         const { data: perfil } = await supabase
             .from('perfis_empresas')
-            .select('nome_estabelecimento')
+            .select('nome_estabelecimento, timezone')
             .eq('tenant_id', tenantId)
             .maybeSingle()
 
@@ -113,16 +114,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: true, message: 'Notificações de WhatsApp inativas para o tenant.' })
         }
 
-        // 6. Formatar data e hora local
-        const dateObj = new Date(agendamento.data_hora)
-        const datePart = dateObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-        const timePart = dateObj.toLocaleTimeString('pt-BR', {
-            timeZone: 'America/Sao_Paulo',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-        })
-        const dataHoraStr = `${datePart} às ${timePart}`
+        // 6. Formatar data e hora no fuso do estabelecimento
+        const dataHoraStr = formatarDataHora(agendamento.data_hora, perfil?.timezone || TIMEZONE_PADRAO)
 
         // 7. Substituir variáveis e disparar lembrete via WhatsApp
         const textoLembrete = processarMensagemTemplate({

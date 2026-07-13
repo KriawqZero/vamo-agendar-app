@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { obterSlotsDisponiveis } from '@/lib/booking-engine'
+import { diaLocal, formatarDataHora, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { processarMensagemTemplate, enviarMensagemWhatsApp, agendarLembreteQStash, registrarDisparo } from '@/lib/whatsapp-helper'
 import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
@@ -44,16 +45,18 @@ export async function criarAgendamentoPublico({
 
     const supabase = await createClient()
 
-    // 2. Validar que o tenant existe
+    // 2. Validar que o tenant existe (e obter o fuso do estabelecimento)
     const { data: tenant, error: tError } = await supabase
         .from('perfis_empresas')
-        .select('tenant_id')
+        .select('tenant_id, timezone')
         .eq('tenant_id', tenantId)
         .maybeSingle()
 
     if (tError || !tenant) {
         throw new Error('Estabelecimento inválido ou indisponível.')
     }
+
+    const timezone = tenant.timezone || TIMEZONE_PADRAO
 
     // 3. Buscar informações do serviço (duração), exigindo que esteja ativo e
     // pertença ao MESMO tenant — impede agendamento cruzado entre tenants.
@@ -70,24 +73,15 @@ export async function criarAgendamentoPublico({
     }
 
     // 4. Validar se o slot de horário escolhido ainda está livre
-    // Extrai a data YYYY-MM-DD da dataHora (que está no offset local -03:00)
-    // Para converter a data_hora ISO (UTC) de volta para o dia local -03:00:
-    const formatter = new Intl.DateTimeFormat('pt-BR', {
-        timeZone: 'America/Sao_Paulo',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    })
-    
-    const partes = formatter.formatToParts(dataLocal)
-    const map = Object.fromEntries(partes.map(p => [p.type, p.value]))
-    const dateStr = `${map.year}-${map.month}-${map.day}`
+    // Extrai a data YYYY-MM-DD do instante escolhido, no fuso do estabelecimento.
+    const dateStr = diaLocal(dataLocal, timezone)
 
     const slotsLivres = await obterSlotsDisponiveis({
         tenantId,
         dateStr,
         duracaoServicoMinutos: servico.duracao_minutos,
-        supabase
+        supabase,
+        timezone
     })
 
     const horarioEscolhidoValido = slotsLivres.some(sl => sl.datetime === dataHora)
@@ -195,14 +189,7 @@ export async function criarAgendamentoPublico({
                 })
             } else {
                 const dateObj = new Date(dataHora)
-                const datePart = dateObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-                const timePart = dateObj.toLocaleTimeString('pt-BR', {
-                    timeZone: 'America/Sao_Paulo',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                })
-                const dataHoraStr = `${datePart} às ${timePart}`
+                const dataHoraStr = formatarDataHora(dataHora, timezone)
 
                 const textoConfirmacao = processarMensagemTemplate({
                     template: config.mensagem_confirmacao,
@@ -319,10 +306,19 @@ export async function obterDadosBookingPublico(slug: string) {
  */
 export async function obterSlotsPublicos(tenantId: string, dateStr: string, duracaoMinutos: number) {
     const supabase = await createClient()
+
+    // Fuso do estabelecimento (SELECT anon permitido em perfis_empresas).
+    const { data: perfil } = await supabase
+        .from('perfis_empresas')
+        .select('timezone')
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+
     return obterSlotsDisponiveis({
         tenantId,
         dateStr,
         duracaoServicoMinutos: duracaoMinutos,
-        supabase
+        supabase,
+        timezone: perfil?.timezone || TIMEZONE_PADRAO
     })
 }

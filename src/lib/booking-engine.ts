@@ -1,4 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js'
+import { TIMEZONE_PADRAO, diaDaSemana, diaLocal, horaLocal, instanteDe, limitesDoDia } from './timezone'
 
 interface Slot {
     time: string; // "HH:MM"
@@ -10,7 +11,8 @@ interface BookingEngineParams {
     dateStr: string; // "YYYY-MM-DD"
     duracaoServicoMinutos: number;
     supabase: SupabaseClient;
-    timezone?: string; // Padrão: 'America/Sao_Paulo'
+    timezone?: string; // Fuso IANA do estabelecimento (padrão: TIMEZONE_PADRAO)
+    ignorarAgendamentoId?: string; // Exclui este agendamento da checagem de colisão (remarcação)
 }
 
 /**
@@ -42,12 +44,11 @@ export async function obterSlotsDisponiveis({
     dateStr,
     duracaoServicoMinutos,
     supabase,
-    timezone = 'America/Sao_Paulo'
+    timezone = TIMEZONE_PADRAO,
+    ignorarAgendamentoId
 }: BookingEngineParams): Promise<Slot[]> {
     // 1. Determinar o dia da semana (0 = Domingo, 1 = Segunda, ..., 6 = Sábado)
-    // Usamos T12:00:00 para evitar que problemas de timezone alterem o dia avaliado
-    const dataLocal = new Date(`${dateStr}T12:00:00`)
-    const diaSemana = dataLocal.getDay()
+    const diaSemana = diaDaSemana(dateStr)
 
     // 2. Buscar Horário de Funcionamento padrão do tenant para o dia da semana
     const { data: funcData, error: funcError } = await supabase
@@ -99,13 +100,12 @@ export async function obterSlotsDisponiveis({
         }))
 
     // 4. Buscar Agendamentos existentes não cancelados para esta data
-    // Como os agendamentos são guardados como timestamp with time zone,
-    // buscamos tudo que cai no dia dateStr na timezone do Brasil (America/Sao_Paulo).
-    // offset fixo de -03:00 para o Brasil (sem horário de verão)
-    const startUtc = new Date(`${dateStr}T00:00:00-03:00`).toISOString()
-    const endUtc = new Date(`${dateStr}T23:59:59-03:00`).toISOString()
+    // Os agendamentos são gravados como timestamp UTC; buscamos tudo que cai no
+    // dia local `dateStr` no fuso do estabelecimento. `fim` é EXCLUSIVO (00:00 do
+    // dia seguinte), evitando o buraco/overlap do antigo 23:59:59.
+    const { inicio, fim } = limitesDoDia(dateStr, timezone)
 
-    const { data: agendamentos, error: agError } = await supabase
+    let queryAgendamentos = supabase
         .from('agendamentos')
         .select(`
             data_hora,
@@ -116,8 +116,15 @@ export async function obterSlotsDisponiveis({
         `)
         .eq('tenant_id', tenantId)
         .neq('status', 'cancelado')
-        .gte('data_hora', startUtc)
-        .lte('data_hora', endUtc)
+        .gte('data_hora', inicio.toISOString())
+        .lt('data_hora', fim.toISOString())
+
+    // Remarcação: o próprio agendamento não deve colidir consigo mesmo.
+    if (ignorarAgendamentoId) {
+        queryAgendamentos = queryAgendamentos.neq('id', ignorarAgendamentoId)
+    }
+
+    const { data: agendamentos, error: agError } = await queryAgendamentos
 
     if (agError) {
         console.error('Erro ao buscar agendamentos:', agError.message)
@@ -126,17 +133,8 @@ export async function obterSlotsDisponiveis({
 
     // Converte os agendamentos existentes em janelas de minutos ocupados
     const slotsOcupados = (agendamentos || []).map(ag => {
-        const dataAg = new Date(ag.data_hora)
-        
-        // Formata a hora do agendamento de volta para a timezone local
-        const formatter = new Intl.DateTimeFormat('pt-BR', {
-            timeZone: timezone,
-            hour: 'numeric',
-            minute: 'numeric',
-            hour12: false
-        })
-        
-        const [h, m] = formatter.format(dataAg).split(':').map(Number)
+        // Hora do agendamento de volta para a parede local do estabelecimento
+        const [h, m] = horaLocal(ag.data_hora, timezone).split(':').map(Number)
         const start = h * 60 + m
         // Se a duração do serviço não estiver disponível, assume 30min padrão
         // @ts-ignore
@@ -146,26 +144,12 @@ export async function obterSlotsDisponiveis({
         return { start, end }
     })
 
-    // 5. Determinar hora atual caso a consulta seja para HOJE
-    // Evita sugerir horários do passado
-    const hojeDtf = new Intl.DateTimeFormat('pt-BR', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: 'numeric',
-        minute: 'numeric',
-        hour12: false
-    })
-    
-    const partesHoje = hojeDtf.formatToParts(new Date())
-    const hojeMap = Object.fromEntries(partesHoje.map(p => [p.type, p.value]))
-    const hojeStr = `${hojeMap.year}-${hojeMap.month}-${hojeMap.day}`
-    
+    // 5. Determinar hora atual caso a consulta seja para HOJE (no fuso do
+    // estabelecimento). Evita sugerir horários do passado.
+    const agora = new Date()
     let limiteMinutosHoje = -1
-    if (hojeStr === dateStr) {
-        const horaAtual = parseInt(hojeMap.hour, 10)
-        const minutoAtual = parseInt(hojeMap.minute, 10)
+    if (diaLocal(agora, timezone) === dateStr) {
+        const [horaAtual, minutoAtual] = horaLocal(agora, timezone).split(':').map(Number)
         // Adiciona uma margem de segurança de 15 minutos para agendamento
         limiteMinutosHoje = horaAtual * 60 + minutoAtual + 15
     }
@@ -202,8 +186,8 @@ export async function obterSlotsDisponiveis({
 
         // Se passar por todas as regras, o slot está livre
         const timeStr = minutesToTimeStr(slotStart)
-        // Cria a string de data/hora ISO no timezone correto
-        const isoString = new Date(`${dateStr}T${timeStr}:00-03:00`).toISOString()
+        // Cria a string de data/hora ISO (UTC) da parede local no fuso do estabelecimento
+        const isoString = instanteDe(dateStr, timeStr, timezone).toISOString()
 
         slotsDisponiveis.push({
             time: timeStr,

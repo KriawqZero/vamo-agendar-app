@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useTransition } from 'react'
 import { obterSlotsPublicos, criarAgendamentoPublico } from '@/app/actions/public-booking'
+import { diaLocal, somarDias, formatarDataHoraLonga, TIMEZONE_PADRAO } from '@/lib/timezone'
 
 interface PerfilEmpresa {
     tenant_id: string;
@@ -9,6 +10,7 @@ interface PerfilEmpresa {
     nome_estabelecimento: string;
     descricao: string | null;
     telefone_contato: string | null;
+    timezone: string;
 }
 
 interface Servico {
@@ -66,19 +68,17 @@ export default function BookingWizard({ perfil, servicos }: BookingWizardProps) 
     const [datasDisponiveis, setDatasDisponiveis] = useState<{ label: string; dateStr: string; diaSemana: string }[]>([])
 
     useEffect(() => {
-        // Gera os próximos 14 dias a partir de hoje
+        // Gera os próximos 14 dias a partir de hoje, no fuso do estabelecimento.
+        const tz = perfil.timezone || TIMEZONE_PADRAO
+        const hojeStr = diaLocal(new Date(), tz)
         const datas = []
-        const hoje = new Date()
         for (let i = 0; i < 14; i++) {
-            const d = new Date()
-            d.setDate(hoje.getDate() + i)
-            
-            // Corrige fuso horário para BRT (UTC-3)
-            const localDate = new Date(d.getTime() - 3 * 60 * 60 * 1000)
-            const dateStr = localDate.toISOString().split('T')[0]
-
-            const label = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
-            const diaSemana = d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')
+            const dateStr = somarDias(hojeStr, i)
+            // Rótulos derivados da data de calendário (meio-dia UTC) — não dependem
+            // do fuso do navegador do cliente.
+            const dataRotulo = new Date(`${dateStr}T12:00:00Z`)
+            const label = dataRotulo.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' })
+            const diaSemana = dataRotulo.toLocaleDateString('pt-BR', { weekday: 'short', timeZone: 'UTC' }).replace('.', '')
 
             datas.push({ label, dateStr, diaSemana })
         }
@@ -87,7 +87,7 @@ export default function BookingWizard({ perfil, servicos }: BookingWizardProps) 
         if (datas.length > 0) {
             setDataSelecionada(datas[0].dateStr)
         }
-    }, [])
+    }, [perfil.timezone])
 
     // Busca slots quando muda o serviço ou a data selecionada
     useEffect(() => {
@@ -174,24 +174,9 @@ export default function BookingWizard({ perfil, servicos }: BookingWizardProps) 
         })
     }
 
-    // Formata a data/hora para exibição final
-    const formatarDataHoraFinal = (isoString: string) => {
-        const dataObj = new Date(isoString)
-        const dataStr = dataObj.toLocaleDateString('pt-BR', {
-            timeZone: 'America/Sao_Paulo',
-            weekday: 'long',
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric'
-        })
-        const horaStr = dataObj.toLocaleTimeString('pt-BR', {
-            timeZone: 'America/Sao_Paulo',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-        })
-        return `${dataStr} às ${horaStr}`
-    }
+    // Formata a data/hora para exibição final, no fuso do estabelecimento
+    const formatarDataHoraFinal = (isoString: string) =>
+        formatarDataHoraLonga(isoString, perfil.timezone || TIMEZONE_PADRAO)
 
     return (
         <div className="max-w-xl mx-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl overflow-hidden shadow-xl">

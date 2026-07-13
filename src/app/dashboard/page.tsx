@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { createClient } from '@/lib/supabase/server'
 import { listarAgendamentos } from '@/app/actions/agendamentos'
 import { obterPerfilEmpresa } from '@/app/actions/perfis-empresas'
+import { diaLocal, somarDias, diaDaSemana, TIMEZONE_PADRAO } from '@/lib/timezone'
 import DashboardClient from './DashboardClient'
 
 // Define tipo dos parâmetros de busca compatível com Next.js 16
@@ -10,26 +11,10 @@ interface PageProps {
     searchParams: Promise<{ date?: string }>
 }
 
-// Obtém a data de hoje formatada YYYY-MM-DD no fuso de Brasília
-function obterHojeBrasilia(): string {
-    const date = new Date()
-    // Subtrai 3 horas para alinhar com o fuso UTC-3 do Brasil
-    const localTime = new Date(date.getTime() - 3 * 60 * 60 * 1000)
-    return localTime.toISOString().split('T')[0]
-}
-
-// Soma dias a uma data YYYY-MM-DD (aritmética em meio-dia para evitar borda de fuso)
-function adicionarDias(dateStr: string, dias: number): string {
-    const d = new Date(`${dateStr}T12:00:00-03:00`)
-    d.setUTCDate(d.getUTCDate() + dias)
-    return new Date(d.getTime() - 3 * 60 * 60 * 1000).toISOString().split('T')[0]
-}
-
-// Segunda-feira da semana que contém a data
+// Segunda-feira da semana que contém a data (dateStr no fuso do estabelecimento)
 function inicioDaSemana(dateStr: string): string {
-    const d = new Date(`${dateStr}T12:00:00-03:00`)
-    const diaSemana = new Date(d.getTime() - 3 * 60 * 60 * 1000).getUTCDay() // 0=dom
-    return adicionarDias(dateStr, -((diaSemana + 6) % 7))
+    const dow = diaDaSemana(dateStr) // 0=dom
+    return somarDias(dateStr, -((dow + 6) % 7))
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
@@ -54,14 +39,20 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
     // Await dos searchParams (Next.js 16)
     const params = await searchParams
-    const hoje = obterHojeBrasilia()
+
+    // 1b. Perfil da empresa primeiro: o fuso do estabelecimento define "hoje" e
+    // os limites de dia de todas as consultas abaixo.
+    const perfilEmpresa = await obterPerfilEmpresa()
+    const timezone = perfilEmpresa?.timezone || TIMEZONE_PADRAO
+
+    const hoje = diaLocal(new Date(), timezone)
     const dataSelecionada = params.date || hoje
 
     // 2. Buscar agendamentos da janela: semana da data selecionada + a seguinte
     // (alimenta a régua de dias com contagens e a seção "próximos dias")
     const inicioSemana = inicioDaSemana(dataSelecionada)
     const rawAgendamentos = await listarAgendamentos({
-        periodo: { inicio: inicioSemana, fim: adicionarDias(inicioSemana, 13) },
+        periodo: { inicio: inicioSemana, fim: somarDias(inicioSemana, 13) },
     })
 
     const agendamentos = rawAgendamentos.map((ag: any) => {
@@ -85,9 +76,6 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             } : null
         }
     })
-
-    // 3. Buscar perfil da empresa
-    const perfilEmpresa = await obterPerfilEmpresa()
 
     // 4. Buscar status de conexão do WhatsApp
     const supabase = await createClient()
@@ -123,6 +111,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             dataSelecionada={dataSelecionada}
             inicioSemana={inicioSemana}
             hoje={hoje}
+            timezone={timezone}
             temServicoAtivo={temServicoAtivo}
             temHorariosConfigurados={temHorariosConfigurados}
         />
