@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { processarMensagemTemplate, enviarMensagemWhatsApp } from '@/lib/whatsapp-helper'
+import { processarMensagemTemplate, enviarMensagemWhatsApp, registrarDisparo } from '@/lib/whatsapp-helper'
 import { PLANOS } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 
@@ -56,6 +56,13 @@ export async function POST(req: NextRequest) {
         // Se o agendamento foi cancelado, abortamos o envio sem disparar erro
         if (agendamento.status === 'cancelado') {
             console.log(`Lembrete ignorado. Agendamento ${agendamentoId} está com status cancelado.`)
+            await registrarDisparo(supabase, {
+                tenantId,
+                agendamentoId,
+                tipo: 'lembrete',
+                status: 'ignorado',
+                motivo: 'agendamento_cancelado'
+            })
             return NextResponse.json({ success: true, message: 'Agendamento cancelado. Lembrete ignorado.' })
         }
 
@@ -63,12 +70,18 @@ export async function POST(req: NextRequest) {
         const plano = await obterPlanoVigentePublico(supabase, tenantId)
         if (!PLANOS[plano].recursos.whatsapp) {
             console.log(`Lembrete ignorado. Tenant ${tenantId} não possui WhatsApp no plano vigente.`)
+            await registrarDisparo(supabase, {
+                tenantId,
+                agendamentoId,
+                tipo: 'lembrete',
+                status: 'ignorado',
+                motivo: 'plano_sem_whatsapp'
+            })
             return NextResponse.json({ success: true, message: 'Plano sem WhatsApp. Lembrete ignorado.' })
         }
 
         // Coagir relações retornadas como possivelmente arrays pelo Supabase Client
         const clienteObj = Array.isArray(agendamento.clientes) ? agendamento.clientes[0] : agendamento.clientes
-        const servicoObj = Array.isArray(agendamento.servicos) ? agendamento.servicos[0] : agendamento.servicos
 
         if (!clienteObj || !clienteObj.telefone) {
             console.warn(`Lembrete ignorado. Cliente associado sem dados de contato.`)
@@ -90,6 +103,13 @@ export async function POST(req: NextRequest) {
 
         if (!config || config.status !== 'conectado' || !config.instance_token) {
             console.log(`WhatsApp desconectado ou não configurado para o tenant ${tenantId}.`)
+            await registrarDisparo(supabase, {
+                tenantId,
+                agendamentoId,
+                tipo: 'lembrete',
+                status: 'ignorado',
+                motivo: 'whatsapp_desconectado'
+            })
             return NextResponse.json({ success: true, message: 'Notificações de WhatsApp inativas para o tenant.' })
         }
 
@@ -119,14 +139,30 @@ export async function POST(req: NextRequest) {
             textoLembrete
         )
 
-        if (!enviado) {
+        if (!enviado.ok) {
+            // Mantém o HTTP 500 para que o QStash re-tente. Linhas duplicadas de
+            // log entre tentativas são aceitáveis (log append-only de auditoria).
+            await registrarDisparo(supabase, {
+                tenantId,
+                agendamentoId,
+                tipo: 'lembrete',
+                status: 'falha',
+                motivo: enviado.motivo
+            })
             return NextResponse.json({ error: 'Falha no disparo do WhatsApp.' }, { status: 500 })
         }
 
+        await registrarDisparo(supabase, {
+            tenantId,
+            agendamentoId,
+            tipo: 'lembrete',
+            status: 'executado'
+        })
+
         return NextResponse.json({ success: true, message: 'Lembrete enviado com sucesso.' })
 
-    } catch (err: any) {
+    } catch (err) {
         console.error('Erro ao processar webhook de lembrete:', err)
-        return NextResponse.json({ error: err.message || 'Erro interno.' }, { status: 500 })
+        return NextResponse.json({ error: err instanceof Error && err.message ? err.message : 'Erro interno.' }, { status: 500 })
     }
 }

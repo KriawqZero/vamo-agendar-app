@@ -38,7 +38,19 @@ Ordem de leitura: **P0** (produto agora) → **P1** (melhorias do núcleo em seg
 
 ## 🔴 P0 — Produto agora
 
-### 1. Experiência e confiabilidade funcional do WhatsApp (Evolution/Baileys)
+### 1. ~~Experiência e confiabilidade funcional do WhatsApp (Evolution/Baileys)~~ — ✅ Resolvido
+
+**Resolvido em 2026-07-13** (ver "Itens resolvidos" no fim deste documento). Estados
+reais de conexão sincronizados com o gateway, log append-only `disparos_whatsapp`,
+mensagem de teste, cancelamento de lembrete no QStash e painel de auditoria no
+dashboard. Verificação manual com WhatsApp/QStash reais em piloto continua
+recomendada (o fluxo foi validado com testes unitários + mock do gateway +
+migration aplicada em banco local). A seção original segue abaixo como referência
+histórica do escopo.
+
+<details><summary>Escopo original (histórico)</summary>
+
+### (histórico) 1. Experiência e confiabilidade funcional do WhatsApp (Evolution/Baileys)
 
 O WhatsApp é a função mais crítica do SaaS e o principal motivo percebido para pagar
 o plano Pro. Tratar como prioridade máxima de produto. O resultado esperado é uma
@@ -112,6 +124,8 @@ QStash (`GET /v2/logs`), agendamentos recentes e sanidade de env, e permite disp
 o webhook diretamente ou publicar teste no QStash. **Remover após o diagnóstico**:
 apagar `src/app/debug/qstash/` e `src/app/actions/debug-qstash.ts` e a flag
 `DEBUG_QSTASH` dos ambientes.
+
+</details>
 
 ### 2. ~~Bug crítico — booking público quebrado para visitante anônimo~~ — ✅ Resolvido
 
@@ -611,6 +625,46 @@ primeiro item P0 com testes for implementado.
 
 ## ✅ Itens resolvidos (histórico)
 
+- **2026-07-13 — P0.1: confiabilidade funcional do WhatsApp (Evolution/Baileys)**:
+  - **Estados reais**: CHECK de `whatsapp_configs.status` ampliado para 6 estados
+    (`desconectado|conectando|aguardando_qrcode|conectado|instavel|falha`) + coluna
+    `ultima_verificacao_em`; `sincronizarStatusWhatsApp()` consulta o
+    `connectionState` do gateway no SSR da página (timeout 4 s, nunca derruba a
+    página; `open` sempre promove a `conectado`; gateway inalcançável rebaixa
+    `conectado` → `instavel`; 404 → `falha`). Sessão caída não fica mais
+    "conectado" para sempre.
+  - **Recuperação sem suporte**: `reiniciarConexaoWhatsApp()` (delete + recriação,
+    reaproveitando a recuperação de instância órfã); QR com timeout de pareamento
+    (~2 min) e corte após 3 falhas de polling, com regeneração pela UI.
+  - **Mensagem de teste** pelo dashboard com feedback inline e registro no log.
+  - **Log de disparos**: tabela append-only `disparos_whatsapp` (RLS granular
+    SELECT/INSERT só `authenticated` do tenant, sem `anon`, sem UPDATE/DELETE;
+    sem conteúdo de mensagem/telefone) registrando confirmação enviada/falha,
+    lembrete agendado (com `qstash_message_id`)/executado/falha/ignorado (com
+    motivo)/cancelado e testes; painel "Últimos disparos" no dashboard com motivos
+    em pt-BR. Suporte responde "por que a mensagem não saiu?" olhando o painel.
+  - **Cancelamento de lembrete**: ao cancelar agendamento, o job é removido do
+    QStash (`DELETE /v2/messages/{id}`, 404 = sucesso brando); webhook re-checa o
+    status como 2ª defesa. Invariante preservada: nenhuma falha de mensageria
+    (inclusive do INSERT de log) quebra criação/cancelamento de agendamento.
+  - **Segurança**: `instance_token` deixou de ser serializado para o client
+    (selects com colunas explícitas; action morta `obterWhatsappConfig` removida).
+  - **Testes/tooling**: Vitest instalado (`pnpm test`, 14 testes de
+    `whatsapp-helper` com fetch stubado) + `scripts/mock-evolution.mjs` (gateway
+    falso para exercitar os 6 estados da UI). Runner decidido: **Vitest** (fecha a
+    decisão pendente da seção "Qualidade e testes").
+  - **Migrations**: `20260713162247_whatsapp_estados_e_log_disparos` (gerada via
+    `db diff` e limpa de GRANT/REVOKE espúrios do migra) e
+    `20260709152648_funcao_rls_auto_enable` (manual e idempotente — o event
+    trigger `ensure_rls` não é capturado pelo diff e faltava no baseline, o que
+    quebrava o shadow database; corrigido o replay completo, validado com
+    `supabase db reset` local). **Aplicar em produção junto do deploy.**
+  - **`/debug/qstash` removida** (função substituída pelo painel + log).
+    Passo manual pendente do owner: apagar a env `DEBUG_QSTASH` dos ambientes.
+  - Verificado em 2026-07-13: `pnpm test` (14/14), `pnpm build` verde, lint dos
+    arquivos tocados sem erros novos, INSERT como `anon` em `disparos_whatsapp`
+    rejeitado no banco local, revisão independente sem achados críticos (o único
+    achado importante — vazamento do `instance_token` ao client — foi corrigido).
 - **2026-07-13 — P0.2: booking público quebrado para visitante anônimo**: as
   escritas operacionais de `criarAgendamentoPublico` (lookup/criação de cliente e
   criação do agendamento) passaram a usar `createAdminClient()` **somente no

@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
+import { cancelarLembreteQStash, registrarDisparo } from '@/lib/whatsapp-helper'
 
 interface ListarParams {
     dataFiltro?: string; // YYYY-MM-DD (um único dia)
@@ -90,6 +91,38 @@ export async function atualizarStatusAgendamento(
     if (error) {
         console.error('Erro ao atualizar status do agendamento:', error.message)
         throw new Error('Erro ao atualizar o agendamento.')
+    }
+
+    // Ao cancelar, evita o disparo do lembrete futuro removendo o job no QStash.
+    // Falha aqui não desfaz o cancelamento (a defesa final é o webhook, que
+    // reconfere o status 'cancelado' antes de enviar) — por isso o try/catch:
+    // o status já foi persistido e nenhum erro de mensageria pode virar erro
+    // para o profissional.
+    if (status === 'cancelado') {
+        try {
+            const { data: lembrete } = await supabase
+                .from('disparos_whatsapp')
+                .select('qstash_message_id')
+                .eq('tenant_id', orgId)
+                .eq('agendamento_id', id)
+                .eq('tipo', 'lembrete')
+                .eq('status', 'agendado')
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle()
+
+            if (lembrete?.qstash_message_id) {
+                await cancelarLembreteQStash(lembrete.qstash_message_id)
+                await registrarDisparo(supabase, {
+                    tenantId: orgId,
+                    agendamentoId: id,
+                    tipo: 'lembrete',
+                    status: 'cancelado'
+                })
+            }
+        } catch (err) {
+            console.error('Falha ao cancelar lembrete no QStash (ignorada):', err)
+        }
     }
 
     return data

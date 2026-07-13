@@ -49,7 +49,8 @@ CREATE TABLE whatsapp_configs (
     tenant_id text NOT NULL UNIQUE,
     instance_name text NOT NULL UNIQUE,
     instance_token text, -- O apikey de autenticação retornado pela Evolution API para esta instância
-    status text NOT NULL DEFAULT 'desconectado' CHECK (status IN ('desconectado', 'aguardando_qrcode', 'conectado')),
+    status text NOT NULL DEFAULT 'desconectado' CHECK (status IN ('desconectado', 'conectando', 'aguardando_qrcode', 'conectado', 'instavel', 'falha')),
+    ultima_verificacao_em timestamp with time zone, -- Última sincronização de status com o gateway
     mensagem_confirmacao text NOT NULL DEFAULT 'Olá {{cliente}}, seu agendamento em {{empresa}} para {{data_hora}} está confirmado!',
     mensagem_lembrete text NOT NULL DEFAULT 'Olá {{cliente}}, passando para lembrar do seu agendamento em {{empresa}} no dia {{data}} às {{hora}}.',
     tempo_lembrete_minutos integer NOT NULL DEFAULT 120, -- Padrão de 2 horas antes
@@ -155,3 +156,39 @@ export function processarMensagemTemplate({
 
 > [!TIP]
 > O número do telefone do destinatário na Evolution API deve conter sempre o código do país (`55` para Brasil), o DDD (2 dígitos) e o número do celular. Remova formatações (parênteses, traços, espaços) via Regex no backend antes do envio: `telefone.replace(/\D/g, '')`.
+
+---
+
+## 🚦 Máquina de estados da conexão (P0.1)
+
+O campo `whatsapp_configs.status` reflete o estado **sincronizado com o gateway**, não apenas o último passo do fluxo de pareamento. A action `sincronizarStatusWhatsApp()` (chamada no SSR de `/dashboard/whatsapp`, com timeout de 4 s) consulta `GET /instance/connectionState/{instanceName}` e aplica `mapearEstadoEvolution()`:
+
+| Estado | Significado | Ação disponível na UI |
+| --- | --- | --- |
+| `desconectado` | Sem instância ativa | Conectar WhatsApp |
+| `conectando` | Gateway estabelecendo sessão (`connecting`) | Verificar novamente |
+| `aguardando_qrcode` | QR gerado, aguardando pareamento (preservado enquanto o gateway reporta `connecting`/`close` durante o fluxo de pareamento) | QR + polling 5 s (para após 3 falhas consecutivas ou ~2 min → "QR expirado" com regeneração) |
+| `conectado` | Sessão confirmada pelo gateway (`open` **sempre** promove a este estado) | Desconectar, mensagem de teste |
+| `instavel` | Gateway inalcançável/erro inesperado quando o banco dizia `conectado` | Verificar novamente / Reiniciar conexão |
+| `falha` | Instância inexistente no gateway (HTTP 404) — exige reconexão | Tentar novamente (`reiniciarConexaoWhatsApp()`: DELETE da instância + recriação, recuperando instância órfã via "already in use" → `fetchInstances`) |
+
+Regras: `ultima_verificacao_em` marca a última resposta real do gateway; `updated_at` só muda quando a configuração/status muda. O `instance_token` **nunca** é retornado a Client Components (a prop é serializada até o browser) — as actions selecionam colunas explícitas.
+
+## 🧾 Log de disparos: tabela `disparos_whatsapp`
+
+Log **append-only** de auditoria por tenant (ver `supabase/schemas/09_disparos_whatsapp.sql`): `tipo` (`confirmacao` | `lembrete` | `teste`), `status` (`enviado` | `agendado` | `executado` | `falha` | `ignorado` | `cancelado`), `motivo` (código curto: `whatsapp_desconectado`, `agendamento_cancelado`, `plano_sem_whatsapp`, `erro_rede`, `http_<código>`...), `qstash_message_id` e `agendamento_id` (NULL para teste). **Nunca** armazena conteúdo de mensagem nem telefone. RLS: SELECT/INSERT apenas `authenticated` do próprio tenant; sem UPDATE/DELETE; sem `anon` — as escritas do fluxo público/webhook usam `createAdminClient()` no servidor.
+
+Semântica dos registros:
+- Booking público: `confirmacao/enviado|falha` + `lembrete/agendado` (com `qstash_message_id`) ou `lembrete/falha`. Se o tenant tem o recurso mas a conexão está inativa: `confirmacao/falha` motivo `whatsapp_desconectado`. Sem config ou plano sem WhatsApp: nada é logado.
+- Webhook de lembrete: `lembrete/executado`, `lembrete/falha` (mantendo HTTP 500 para retry do QStash — linhas duplicadas entre tentativas são esperadas) ou `lembrete/ignorado` (motivos acima).
+- Cancelamento de agendamento: a action busca o último `lembrete/agendado`, chama `DELETE {QSTASH_URL}/v2/messages/{messageId}` (404 = sucesso brando) e registra `lembrete/cancelado`. O webhook re-checa o status como segunda defesa.
+- Mensagem de teste: `teste/enviado|falha` (INSERT via cliente autenticado — é para isso que existe a política de INSERT).
+
+Invariante: **nenhuma falha de mensageria (Evolution, QStash ou o próprio INSERT do log) quebra a criação/cancelamento de agendamento** — `registrarDisparo()` engole o próprio erro e os fluxos ficam em try/catch.
+
+O painel "Últimos disparos" em `/dashboard/whatsapp` (`listarDisparosWhatsApp()`) traduz os motivos para frases amigáveis — é a resposta do suporte para "por que a mensagem não saiu?". Ele substituiu a antiga página `/debug/qstash` (removida; lembrar de apagar a env `DEBUG_QSTASH` dos ambientes).
+
+## 🧪 Testes sem credenciais reais
+
+- `pnpm test` (Vitest): `src/lib/__tests__/whatsapp-helper.test.ts` cobre envio, agendamento/cancelamento no QStash (fetch stubado) e o mapeamento de estados.
+- `scripts/mock-evolution.mjs`: gateway falso local (`EVOLUTION_API_URL=http://localhost:8081 pnpm dev`) com estado controlável via `POST /__mock/state?value=open|connecting|close|qrcode|404` — exercita os 6 estados da UI; matar o processo simula queda (estado `instavel`).

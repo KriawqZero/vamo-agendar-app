@@ -3,7 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { obterSlotsDisponiveis } from '@/lib/booking-engine'
-import { processarMensagemTemplate, enviarMensagemWhatsApp, agendarLembreteQStash } from '@/lib/whatsapp-helper'
+import { processarMensagemTemplate, enviarMensagemWhatsApp, agendarLembreteQStash, registrarDisparo } from '@/lib/whatsapp-helper'
 import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 
@@ -178,37 +178,78 @@ export async function criarAgendamentoPublico({
             .maybeSingle()
 
         const plano = await obterPlanoVigentePublico(admin, tenantId)
+        const planoTemWhatsapp = PLANOS[plano].recursos.whatsapp
 
-        if (config && config.status === 'conectado' && config.instance_token && PLANOS[plano].recursos.whatsapp) {
-            const dateObj = new Date(dataHora)
-            const datePart = dateObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-            const timePart = dateObj.toLocaleTimeString('pt-BR', {
-                timeZone: 'America/Sao_Paulo',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false
-            })
-            const dataHoraStr = `${datePart} às ${timePart}`
+        // Sem config ou plano sem WhatsApp: mensageria não faz parte do fluxo
+        // deste tenant — não há disparo a registrar.
+        if (config && planoTemWhatsapp) {
+            if (config.status !== 'conectado' || !config.instance_token) {
+                // O tenant tem o recurso, mas a conexão não está ativa: falha silenciosa
+                // para o cliente (frictionless), registrada para auditoria do profissional.
+                await registrarDisparo(admin, {
+                    tenantId,
+                    agendamentoId: agendamento.id,
+                    tipo: 'confirmacao',
+                    status: 'falha',
+                    motivo: 'whatsapp_desconectado'
+                })
+            } else {
+                const dateObj = new Date(dataHora)
+                const datePart = dateObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+                const timePart = dateObj.toLocaleTimeString('pt-BR', {
+                    timeZone: 'America/Sao_Paulo',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                })
+                const dataHoraStr = `${datePart} às ${timePart}`
 
-            const textoConfirmacao = processarMensagemTemplate({
-                template: config.mensagem_confirmacao,
-                clienteNome,
-                empresaNome,
-                dataHoraStr
-            })
+                const textoConfirmacao = processarMensagemTemplate({
+                    template: config.mensagem_confirmacao,
+                    clienteNome,
+                    empresaNome,
+                    dataHoraStr
+                })
 
-            await enviarMensagemWhatsApp(
-                config.instance_name,
-                config.instance_token,
-                clienteTelefone,
-                textoConfirmacao
-            )
+                const envio = await enviarMensagemWhatsApp(
+                    config.instance_name,
+                    config.instance_token,
+                    clienteTelefone,
+                    textoConfirmacao
+                )
 
-            const targetTime = dateObj.getTime() - (config.tempo_lembrete_minutos * 60 * 1000)
-            const now = Date.now()
+                await registrarDisparo(admin, {
+                    tenantId,
+                    agendamentoId: agendamento.id,
+                    tipo: 'confirmacao',
+                    status: envio.ok ? 'enviado' : 'falha',
+                    motivo: envio.ok ? null : envio.motivo
+                })
 
-            if (targetTime > now) {
-                await agendarLembreteQStash(agendamento.id, tenantId, targetTime)
+                const targetTime = dateObj.getTime() - (config.tempo_lembrete_minutos * 60 * 1000)
+                const now = Date.now()
+
+                if (targetTime > now) {
+                    const agendado = await agendarLembreteQStash(agendamento.id, tenantId, targetTime)
+
+                    if (agendado.ok) {
+                        await registrarDisparo(admin, {
+                            tenantId,
+                            agendamentoId: agendamento.id,
+                            tipo: 'lembrete',
+                            status: 'agendado',
+                            qstashMessageId: agendado.messageId
+                        })
+                    } else {
+                        await registrarDisparo(admin, {
+                            tenantId,
+                            agendamentoId: agendamento.id,
+                            tipo: 'lembrete',
+                            status: 'falha',
+                            motivo: agendado.motivo
+                        })
+                    }
+                }
             }
         }
     } catch (err) {
