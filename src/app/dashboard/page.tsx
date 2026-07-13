@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { listarAgendamentos } from '@/app/actions/agendamentos'
 import { obterPerfilEmpresa } from '@/app/actions/perfis-empresas'
 import { diaLocal, somarDias, diaDaSemana, TIMEZONE_PADRAO } from '@/lib/timezone'
+import { PLANOS } from '@/lib/planos'
+import { obterAssinaturaVigente } from '@/lib/assinaturas'
 import DashboardClient from './DashboardClient'
 
 // Define tipo dos parâmetros de busca compatível com Next.js 16
@@ -55,7 +57,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         periodo: { inicio: inicioSemana, fim: somarDias(inicioSemana, 13) },
     })
 
-    const agendamentos = rawAgendamentos.map((ag: any) => {
+    const agendamentos = rawAgendamentos.map((ag) => {
         const clienteRaw = Array.isArray(ag.clientes) ? ag.clientes[0] : ag.clientes
         const servicoRaw = Array.isArray(ag.servicos) ? ag.servicos[0] : ag.servicos
         return {
@@ -87,14 +89,28 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
     const whatsappStatus = whatsappConfig?.status || 'desconectado'
 
-    // 5. Verificar Checklist de Onboarding
-    const { count: countServicos } = await supabase
+    // 5. Serviços ativos: alimentam o checklist de onboarding e o modal de
+    // agendamento manual.
+    const { data: servicosAtivos } = await supabase
         .from('servicos')
-        .select('id', { count: 'exact', head: true })
+        .select('id, nome, preco, duracao_minutos')
         .eq('tenant_id', orgId)
         .eq('ativo', true)
-    
-    const temServicoAtivo = (countServicos ?? 0) > 0
+        .order('nome', { ascending: true })
+
+    const servicos = (servicosAtivos || []).map((s) => ({
+        id: s.id,
+        nome: s.nome,
+        preco: Number(s.preco),
+        duracao_minutos: Number(s.duracao_minutos),
+    }))
+
+    const temServicoAtivo = servicos.length > 0
+
+    // 6. Plano vigente: o envio opcional de WhatsApp no agendamento manual só
+    // aparece com o recurso no plano E a instância conectada.
+    const { plano } = await obterAssinaturaVigente(supabase, orgId)
+    const podeEnviarWhatsapp = PLANOS[plano].recursos.whatsapp && whatsappStatus === 'conectado'
 
     const { count: countHorarios } = await supabase
         .from('horarios_funcionamento')
@@ -114,6 +130,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             timezone={timezone}
             temServicoAtivo={temServicoAtivo}
             temHorariosConfigurados={temHorariosConfigurados}
+            servicos={servicos}
+            podeEnviarWhatsapp={podeEnviarWhatsapp}
         />
     )
 }

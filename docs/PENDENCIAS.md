@@ -136,7 +136,15 @@ anônimo, reaproveitamento por telefone, serviço de outro tenant, slot ocupado,
 tenant inexistente e `dataHora` inválida. A numeração dos itens seguintes foi
 mantida para preservar as referências cruzadas (P0.3, P0.4...).
 
-### 3. Agendamento manual pelo profissional
+### 3. ~~Agendamento manual pelo profissional~~ — ✅ Resolvido
+
+**Resolvido em 2026-07-13** (ver "Itens resolvidos" no fim deste documento).
+CTA "+ agendar" (desktop) + FAB (mobile) no dashboard abrem um modal em 4 passos
+(cliente com busca/cadastro inline → serviço → data/horário pela mesma engine →
+resumo com WhatsApp opcional); conflito bloqueado sem override; remarcação com
+realinhamento do lembrete no QStash.
+
+### (histórico) 3. Agendamento manual pelo profissional
 
 Não existe hoje **nenhum** caminho para o profissional registrar um horário combinado
 por WhatsApp, Instagram, ligação, presencialmente ou como retorno combinado durante um
@@ -636,6 +644,45 @@ primeiro item P0 com testes for implementado.
 
 ## ✅ Itens resolvidos (histórico)
 
+- **2026-07-13 — P0.3: agendamento manual pelo profissional**:
+  - **CTA + modal mobile-first**: botão "+ agendar" no cabeçalho do dashboard
+    (desktop) e FAB no mobile (só com setup completo) abrem
+    `src/app/dashboard/NovoAgendamentoModal.tsx` — bottom-sheet no mobile, modal
+    centrado no desktop; 4 passos: cliente → serviço → data/horário → resumo.
+    Acessibilidade: `role="dialog"`, `aria-modal`, Escape, foco inicial e focus
+    trap no Tab; fechamento bloqueado durante o save.
+  - **Cliente**: busca com debounce de 300 ms (`listarClientes` em
+    `src/app/actions/clientes.ts` — nome `ilike` ou telefone, termo sanitizado
+    contra injeção na sintaxe `or()` do PostgREST, limit 20) **ou** cadastro
+    inline (nome + WhatsApp com máscara). Telefone repetido no tenant reaproveita
+    o registro existente (mesma semântica do booking público).
+  - **Criação** (`criarAgendamentoManual`): valida serviço ativo do tenant,
+    horário futuro, revalida o slot na **mesma engine** (`obterSlotsDisponiveis`,
+    comparação de string exata) — conflito bloqueado sem override ("Este horário
+    conflita com outro agendamento…" e o modal volta à grade com refetch);
+    INSERT nasce `confirmado`; `revalidatePath('/dashboard')`.
+  - **WhatsApp opcional**: checkbox no resumo APENAS com plano Pro + instância
+    conectada (`podeEnviarWhatsapp` calculado no servidor); o disparo usa o bloco
+    extraído para `src/lib/notificacoes-agendamento.ts`
+    (`dispararNotificacoesAgendamento`, compartilhado byte a byte com o booking
+    público, que nunca lança — mensageria jamais quebra agendamento).
+  - **Remarcação** (`remarcarAgendamento`): botão "remarcar" nas linhas ativas
+    abre o modal direto na grade; revalida com `ignorarAgendamentoId` (não colide
+    consigo mesmo); bloqueia cancelado/concluído; **realinha o lembrete** —
+    cancela o job antigo no QStash (motivo `remarcacao`) e agenda um novo para o
+    horário remarcado (tudo em try/catch: falha de mensageria nunca desfaz a
+    remarcação).
+  - Extras da revisão independente aplicados: validação de `dateStr` em
+    `obterSlotsDashboard`, rejeição de horário no passado (cobre régua stale na
+    virada da meia-noite), refetch da grade após conflito.
+  - Verificado em 2026-07-13: `pnpm test` (32/32), `pnpm build` verde, lint dos
+    arquivos tocados sem erros novos; revisão independente sem achados críticos
+    (o único importante — lembrete órfão na remarcação — foi corrigido).
+  - Resíduos conhecidos (não bloqueiam): "editar" limita-se a remarcar horário
+    (trocar serviço/cliente de um agendamento existente não foi pedido); sem
+    toast de sucesso além do fechamento do modal + agenda atualizada; proteção
+    atômica contra requisições simultâneas segue no item pré-lançamento (a action
+    manual adotará a mesma proteção quando existir).
 - **2026-07-13 — P0.4: fuso horário IANA por tenant**:
   - Coluna `timezone text NOT NULL DEFAULT 'America/Sao_Paulo'` em `perfis_empresas`
     (migration `20260713165137`, validada com `db reset` local; DEFAULT cobre linhas

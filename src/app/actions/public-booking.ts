@@ -3,9 +3,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { obterSlotsDisponiveis } from '@/lib/booking-engine'
-import { diaLocal, formatarDataHora, TIMEZONE_PADRAO } from '@/lib/timezone'
-import { processarMensagemTemplate, enviarMensagemWhatsApp, agendarLembreteQStash, registrarDisparo } from '@/lib/whatsapp-helper'
-import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
+import { diaLocal, TIMEZONE_PADRAO } from '@/lib/timezone'
+import { dispararNotificacoesAgendamento } from '@/lib/notificacoes-agendamento'
+import { obterSlugEfetivo } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 
 interface AgendamentoPublicoParams {
@@ -151,97 +151,18 @@ export async function criarAgendamentoPublico({
         throw new Error('Erro ao confirmar o agendamento.')
     }
 
-    // 7. Disparar notificações assíncronas (WhatsApp + QStash)
-    try {
-        // A fase de disparo também precisa do cliente privilegiado: o RLS
-        // bloqueia — corretamente — whatsapp_configs para anon (instance_token
-        // nunca pode ser público). Qualquer falha aqui é engolida pelo catch —
-        // o agendamento nunca quebra.
-        const { data: perfil } = await admin
-            .from('perfis_empresas')
-            .select('nome_estabelecimento')
-            .eq('tenant_id', tenantId)
-            .maybeSingle()
-
-        const empresaNome = perfil?.nome_estabelecimento || 'Estabelecimento'
-
-        const { data: config } = await admin
-            .from('whatsapp_configs')
-            .select('*')
-            .eq('tenant_id', tenantId)
-            .maybeSingle()
-
-        const plano = await obterPlanoVigentePublico(admin, tenantId)
-        const planoTemWhatsapp = PLANOS[plano].recursos.whatsapp
-
-        // Sem config ou plano sem WhatsApp: mensageria não faz parte do fluxo
-        // deste tenant — não há disparo a registrar.
-        if (config && planoTemWhatsapp) {
-            if (config.status !== 'conectado' || !config.instance_token) {
-                // O tenant tem o recurso, mas a conexão não está ativa: falha silenciosa
-                // para o cliente (frictionless), registrada para auditoria do profissional.
-                await registrarDisparo(admin, {
-                    tenantId,
-                    agendamentoId: agendamento.id,
-                    tipo: 'confirmacao',
-                    status: 'falha',
-                    motivo: 'whatsapp_desconectado'
-                })
-            } else {
-                const dateObj = new Date(dataHora)
-                const dataHoraStr = formatarDataHora(dataHora, timezone)
-
-                const textoConfirmacao = processarMensagemTemplate({
-                    template: config.mensagem_confirmacao,
-                    clienteNome,
-                    empresaNome,
-                    dataHoraStr
-                })
-
-                const envio = await enviarMensagemWhatsApp(
-                    config.instance_name,
-                    config.instance_token,
-                    clienteTelefone,
-                    textoConfirmacao
-                )
-
-                await registrarDisparo(admin, {
-                    tenantId,
-                    agendamentoId: agendamento.id,
-                    tipo: 'confirmacao',
-                    status: envio.ok ? 'enviado' : 'falha',
-                    motivo: envio.ok ? null : envio.motivo
-                })
-
-                const targetTime = dateObj.getTime() - (config.tempo_lembrete_minutos * 60 * 1000)
-                const now = Date.now()
-
-                if (targetTime > now) {
-                    const agendado = await agendarLembreteQStash(agendamento.id, tenantId, targetTime)
-
-                    if (agendado.ok) {
-                        await registrarDisparo(admin, {
-                            tenantId,
-                            agendamentoId: agendamento.id,
-                            tipo: 'lembrete',
-                            status: 'agendado',
-                            qstashMessageId: agendado.messageId
-                        })
-                    } else {
-                        await registrarDisparo(admin, {
-                            tenantId,
-                            agendamentoId: agendamento.id,
-                            tipo: 'lembrete',
-                            status: 'falha',
-                            motivo: agendado.motivo
-                        })
-                    }
-                }
-            }
-        }
-    } catch (err) {
-        console.error('Erro ao processar notificações automáticas do agendamento:', err)
-    }
+    // 7. Disparar notificações assíncronas (WhatsApp + QStash).
+    // A fase de disparo também precisa do cliente privilegiado: o RLS bloqueia
+    // — corretamente — whatsapp_configs para anon (instance_token nunca pode
+    // ser público). A função nunca lança — o agendamento nunca quebra.
+    await dispararNotificacoesAgendamento(admin, {
+        agendamentoId: agendamento.id,
+        tenantId,
+        clienteNome,
+        clienteTelefone,
+        dataHora,
+        timezone
+    })
 
     return agendamento
 }

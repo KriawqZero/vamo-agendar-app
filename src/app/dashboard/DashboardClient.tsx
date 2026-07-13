@@ -4,6 +4,7 @@ import React, { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { atualizarStatusAgendamento } from '@/app/actions/agendamentos'
 import { diaLocal, horaLocal, somarDias } from '@/lib/timezone'
+import NovoAgendamentoModal, { type DadosRemarcacao } from './NovoAgendamentoModal'
 
 interface Cliente {
     id: string;
@@ -38,6 +39,10 @@ interface DashboardClientProps {
     timezone: string; // Fuso IANA do estabelecimento
     temServicoAtivo: boolean;
     temHorariosConfigurados: boolean;
+    /** Serviços ativos para o modal de agendamento manual */
+    servicos: Servico[];
+    /** Plano com WhatsApp + instância conectada (habilita o envio opcional) */
+    podeEnviarWhatsapp: boolean;
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -73,7 +78,9 @@ export default function DashboardClient({
     hoje,
     timezone,
     temServicoAtivo,
-    temHorariosConfigurados
+    temHorariosConfigurados,
+    servicos,
+    podeEnviarWhatsapp
 }: DashboardClientProps) {
     const router = useRouter()
 
@@ -84,6 +91,11 @@ export default function DashboardClient({
     const [copiado, setCopiado] = useState(false)
     const [statusUpdating, setStatusUpdating] = useState<string | null>(null)
     const [proximosVisivel, setProximosVisivel] = useState(true)
+
+    // Modal de agendamento manual: null = fechado; remarcacao preenchida = modo remarcar.
+    const [modalAgendamento, setModalAgendamento] = useState<
+        { remarcacao: DadosRemarcacao | null } | null
+    >(null)
 
     useEffect(() => {
         const salvo = localStorage.getItem(CHAVE_PROXIMOS_VISIVEL)
@@ -176,8 +188,8 @@ export default function DashboardClient({
             startTransition(() => {
                 router.refresh()
             })
-        } catch (err: any) {
-            alert(err.message || 'Erro ao alterar status')
+        } catch (err) {
+            alert(err instanceof Error && err.message ? err.message : 'Erro ao alterar status')
         } finally {
             setStatusUpdating(null)
         }
@@ -187,12 +199,31 @@ export default function DashboardClient({
         router.push(novaData === hoje ? '/dashboard' : `/dashboard?date=${novaData}`)
     }
 
+    const abrirNovoAgendamento = () => setModalAgendamento({ remarcacao: null })
+
+    const abrirRemarcacao = (ag: Agendamento) =>
+        setModalAgendamento({
+            remarcacao: {
+                agendamentoId: ag.id,
+                clienteNome: ag.clientes?.nome || 'Cliente',
+                servicoNome: ag.servicos?.nome || 'Serviço',
+                duracaoMinutos: ag.servicos?.duracao_minutos || 30,
+            },
+        })
+
+    const concluirModal = () => {
+        setModalAgendamento(null)
+        startTransition(() => {
+            router.refresh()
+        })
+    }
+
     const setupCompleto = temServicoAtivo && temHorariosConfigurados
 
     return (
         <div>
             {/* Cabeçalho do dia */}
-            <div>
+            <div className="relative">
                 <p className="font-mono text-xs uppercase tracking-[0.25em] text-marca">
                     {dataFormatada}
                     {dataSelecionada === hoje && ' — hoje'}
@@ -200,6 +231,14 @@ export default function DashboardClient({
                 <h1 className="mt-3 font-display text-3xl font-bold tracking-tight">
                     Olá, {perfilEmpresa?.nome_estabelecimento || 'profissional'}.
                 </h1>
+                {setupCompleto && (
+                    <button
+                        onClick={abrirNovoAgendamento}
+                        className="absolute right-0 top-0 hidden rounded-full bg-marca px-5 py-2.5 font-mono text-xs uppercase tracking-widest text-white transition-colors hover:bg-marca-forte sm:block"
+                    >
+                        + agendar
+                    </button>
+                )}
                 <p className="mt-3 font-mono text-sm text-nevoa">
                     {ativos.length === 0
                         ? 'nenhum atendimento'
@@ -514,6 +553,13 @@ export default function DashboardClient({
                                                     concluir
                                                 </button>
                                                 <button
+                                                    onClick={() => abrirRemarcacao(ag)}
+                                                    disabled={statusUpdating === ag.id}
+                                                    className="font-mono text-xs uppercase tracking-widest text-nevoa transition-colors hover:text-giz disabled:opacity-50"
+                                                >
+                                                    remarcar
+                                                </button>
+                                                <button
                                                     onClick={() => alterarStatus(ag.id, 'cancelado')}
                                                     disabled={statusUpdating === ag.id}
                                                     className="font-mono text-xs uppercase tracking-widest text-red-700/70 transition-colors hover:text-red-700 disabled:opacity-50 dark:text-red-300/70 dark:hover:text-red-300"
@@ -590,6 +636,30 @@ export default function DashboardClient({
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* FAB mobile: novo agendamento */}
+            {setupCompleto && (
+                <button
+                    onClick={abrirNovoAgendamento}
+                    aria-label="Novo agendamento"
+                    className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-marca text-2xl font-light text-white shadow-lg transition-transform hover:scale-105 active:scale-95 sm:hidden"
+                >
+                    +
+                </button>
+            )}
+
+            {/* Modal de agendamento manual / remarcação */}
+            {modalAgendamento && (
+                <NovoAgendamentoModal
+                    servicos={servicos}
+                    podeEnviarWhatsapp={podeEnviarWhatsapp}
+                    hoje={hoje}
+                    timezone={timezone}
+                    remarcacao={modalAgendamento.remarcacao}
+                    aoFechar={() => setModalAgendamento(null)}
+                    aoConcluir={concluirModal}
+                />
             )}
         </div>
     )
