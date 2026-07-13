@@ -37,13 +37,31 @@ export async function criarAgendamentoPublico({
         throw new Error('Número de WhatsApp inválido. Informe o DDD e o número.')
     }
 
+    const dataLocal = new Date(dataHora)
+    if (isNaN(dataLocal.getTime())) {
+        throw new Error('Data e horário inválidos.')
+    }
+
     const supabase = await createClient()
 
-    // 2. Buscar informações do serviço (preço, duração)
+    // 2. Validar que o tenant existe
+    const { data: tenant, error: tError } = await supabase
+        .from('perfis_empresas')
+        .select('tenant_id')
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+
+    if (tError || !tenant) {
+        throw new Error('Estabelecimento inválido ou indisponível.')
+    }
+
+    // 3. Buscar informações do serviço (duração), exigindo que esteja ativo e
+    // pertença ao MESMO tenant — impede agendamento cruzado entre tenants.
     const { data: servico, error: sError } = await supabase
         .from('servicos')
         .select('duracao_minutos, nome')
         .eq('id', servicoId)
+        .eq('tenant_id', tenantId)
         .eq('ativo', true)
         .single()
 
@@ -51,10 +69,9 @@ export async function criarAgendamentoPublico({
         throw new Error('Serviço inválido ou indisponível.')
     }
 
-    // 3. Validar se o slot de horário escolhido ainda está livre
+    // 4. Validar se o slot de horário escolhido ainda está livre
     // Extrai a data YYYY-MM-DD da dataHora (que está no offset local -03:00)
     // Para converter a data_hora ISO (UTC) de volta para o dia local -03:00:
-    const dataLocal = new Date(dataHora)
     const formatter = new Intl.DateTimeFormat('pt-BR', {
         timeZone: 'America/Sao_Paulo',
         year: 'numeric',
@@ -78,21 +95,33 @@ export async function criarAgendamentoPublico({
         throw new Error('Este horário já foi preenchido ou está indisponível. Por favor, selecione outro.')
     }
 
-    // 4. Buscar cliente existente com o mesmo telefone para este tenant, ou criar novo
+    // A partir daqui as ESCRITAS usam o cliente PRIVILEGIADO (somente servidor):
+    // o visitante é anon e o RLS não permite SELECT em `clientes` (o RETURNING
+    // do insert exige visibilidade de SELECT), nem o lookup por telefone —
+    // abrir SELECT público de `clientes` exporia dados pessoais. As validações
+    // acima (tenant, serviço do mesmo tenant, slot livre) são o porteiro.
+    const admin = createAdminClient()
+
+    // 5. Buscar cliente existente com o mesmo telefone para este tenant, ou criar novo
     let clienteId: string
 
-    const { data: clienteExistente, error: cError } = await supabase
+    const { data: clienteExistente, error: cError } = await admin
         .from('clientes')
         .select('id')
         .eq('tenant_id', tenantId)
         .eq('telefone', telefoneLimpo)
         .maybeSingle()
 
+    if (cError) {
+        console.error('Erro ao buscar cliente existente:', cError.message)
+        throw new Error('Erro ao processar dados de contato.')
+    }
+
     if (clienteExistente) {
         clienteId = clienteExistente.id
     } else {
         // Cria novo registro de cliente
-        const { data: novoCliente, error: cnError } = await supabase
+        const { data: novoCliente, error: cnError } = await admin
             .from('clientes')
             .insert({
                 tenant_id: tenantId,
@@ -110,8 +139,8 @@ export async function criarAgendamentoPublico({
         clienteId = novoCliente.id
     }
 
-    // 5. Inserir o agendamento no banco de dados (status padrão: confirmado)
-    const { data: agendamento, error: agError } = await supabase
+    // 6. Inserir o agendamento no banco de dados (status padrão: confirmado)
+    const { data: agendamento, error: agError } = await admin
         .from('agendamentos')
         .insert({
             tenant_id: tenantId,
@@ -128,14 +157,12 @@ export async function criarAgendamentoPublico({
         throw new Error('Erro ao confirmar o agendamento.')
     }
 
-    // 6. Disparar notificações assíncronas (WhatsApp + QStash)
+    // 7. Disparar notificações assíncronas (WhatsApp + QStash)
     try {
-        // Fase de disparo usa o cliente PRIVILEGIADO: este fluxo roda como anon
-        // (ou como um usuário logado de OUTRO tenant) e o RLS bloquearia
-        // whatsapp_configs (instance_token nunca pode ser público). Qualquer
-        // falha aqui é engolida pelo catch — o agendamento nunca quebra.
-        const admin = createAdminClient()
-
+        // A fase de disparo também precisa do cliente privilegiado: o RLS
+        // bloqueia — corretamente — whatsapp_configs para anon (instance_token
+        // nunca pode ser público). Qualquer falha aqui é engolida pelo catch —
+        // o agendamento nunca quebra.
         const { data: perfil } = await admin
             .from('perfis_empresas')
             .select('nome_estabelecimento')

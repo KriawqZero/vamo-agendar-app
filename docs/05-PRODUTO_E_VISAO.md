@@ -62,22 +62,12 @@ Diferente do cliente final, o profissional (empresa/tenant) autentica-se de form
 
 Como o cliente final realiza ações sem estar autenticado, precisamos de um desenho de segurança robusto que impeça abusos sem travar a experiência do usuário.
 
-### 1. Políticas de RLS Públicas (`INSERT`)
-A inserção de registros nas tabelas `agendamentos` e `clientes` deve permitir escrita pública pela role `anon`, mas com restrições severas:
+### 1. Escritas do fluxo público via servidor privilegiado (decisão registrada no P0.2)
+O visitante anônimo **não** escreve diretamente no banco. A Server Action `criarAgendamentoPublico` é o único caminho de escrita do fluxo público: após validar **tudo** no servidor (tenant existente, serviço ativo e pertencente ao mesmo tenant, `dataHora` válida e slot ainda livre pela engine de disponibilidade), ela usa o cliente privilegiado (`createAdminClient()` em `src/lib/supabase/admin.ts` — secret key, exclusivo do servidor) para buscar/criar o cliente (reaproveitado por `tenant_id` + telefone normalizado) e criar o agendamento.
 
-```sql
--- Exemplo conceitual: criação pública de agendamento por anônimos, restrita a
--- tenants que existem em perfis_empresas (o schema real está em supabase/schemas/)
-CREATE POLICY "Permitir inserções públicas (anônimas)"
-ON agendamentos FOR INSERT TO anon
-WITH CHECK (
-    tenant_id IS NOT NULL
-    AND EXISTS (
-        SELECT 1 FROM perfis_empresas
-        WHERE perfis_empresas.tenant_id = agendamentos.tenant_id
-    )
-);
-```
+Motivo: `clientes` não tem — e não deve ter — SELECT público. Como `anon`, o `RETURNING` do INSERT (usado pelo `.select()` do supabase-js) e o lookup por telefone falhariam; abrir SELECT público de `clientes` exporia dados pessoais. As leituras públicas (perfil, serviços, slots) continuam pela role `anon` com RLS.
+
+As políticas de INSERT `anon` em `agendamentos`/`clientes` ainda existem por legado; a remoção delas (fechando a escrita anônima direta pela Data API) está registrada em "Obrigatório antes do lançamento" em `docs/PENDENCIAS.md`.
 
 ### 2. Validação Severa no Backend (Next.js Server Actions)
 Como o endpoint de criação é público, a Server Action que processa o agendamento deve agir como o "porteiro" do banco de dados, aplicando validações rigorosas antes de chamar o Supabase:

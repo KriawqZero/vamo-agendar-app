@@ -113,37 +113,14 @@ o webhook diretamente ou publicar teste no QStash. **Remover após o diagnóstic
 apagar `src/app/debug/qstash/` e `src/app/actions/debug-qstash.ts` e a flag
 `DEBUG_QSTASH` dos ambientes.
 
-### 2. Bug crítico — booking público quebrado para visitante anônimo
+### 2. ~~Bug crítico — booking público quebrado para visitante anônimo~~ — ✅ Resolvido
 
-O fluxo principal do produto (Fricção Zero) **não funciona** para um visitante
-realmente anônimo com cliente novo. É correção de produto, não hardening — o
-redesenho completo do acesso público fica em "Obrigatório antes do lançamento".
-
-**Estado atual verificado (2026-07-11, código + banco):**
-
-- `clientes` não tem política de SELECT para `anon`, mas `criarAgendamentoPublico`
-  faz `insert().select('id')` (RETURNING exige visibilidade de SELECT — armadilha já
-  documentada em `docs/02`). Testado no banco: o INSERT sem RETURNING passa, com
-  RETURNING falha com violação de RLS. **Todo agendamento de visitante anônimo com
-  cliente novo falha** ("Erro ao processar dados de contato"). O fluxo só funcionou
-  nos testes porque o profissional estava logado no mesmo navegador/tenant.
-- Efeito colateral do mesmo buraco: o lookup de cliente por telefone retorna sempre
-  vazio como `anon` → reaproveitamento de cliente nunca acontece e cada booking
-  criaria cliente duplicado.
-
-**Correção recomendada (registrada):** as escritas operacionais do fluxo público
-passam a usar **acesso privilegiado somente no servidor** (`createAdminClient()`, já
-existente para a mensageria) **após validação completa na Server Action** — e não um
-remendo que abra SELECT público de `clientes`. Essa direção já antecipa parte do
-redesenho do acesso público (remoção das políticas de INSERT `anon`, auditoria da
-Data API), que pode ser concluído na etapa pré-lançamento.
-
-**Critérios de conclusão:** agendamento anônimo em janela anônima funciona de ponta a
-ponta; cliente existente é reaproveitado por telefone.
-
-**Arquivos:** `src/app/actions/public-booking.ts`, `src/lib/supabase/admin.ts`,
-`docs/05-PRODUTO_E_VISAO.md` (o exemplo conceitual de INSERT público precisa
-acompanhar a decisão).
+**Resolvido em 2026-07-13** (ver "Itens resolvidos" no fim deste documento). As
+escritas do booking público passaram ao cliente privilegiado no servidor após
+validação completa na Server Action; verificação integrada cobriu cliente novo
+anônimo, reaproveitamento por telefone, serviço de outro tenant, slot ocupado,
+tenant inexistente e `dataHora` inválida. A numeração dos itens seguintes foi
+mantida para preservar as referências cruzadas (P0.3, P0.4...).
 
 ### 3. Agendamento manual pelo profissional
 
@@ -412,9 +389,9 @@ do booking anônimo foi destacado para o P0.2 — o restante do redesenho fica a
 
 **Estado atual verificado (2026-07-11, código + `pg_policies` no banco):**
 
-- `criarAgendamentoPublico` busca o serviço **apenas por `id`, sem `tenant_id`**
-  (`public-booking.ts:43-48`) → é possível criar agendamento no tenant A referenciando
-  serviço do tenant B (preço/duração de outro estabelecimento).
+- ~~`criarAgendamentoPublico` busca o serviço apenas por `id`, sem `tenant_id`~~ —
+  **fechado no P0.2 (2026-07-13)**: a action agora exige serviço ativo **e do mesmo
+  tenant**, e valida tenant existente antes de qualquer escrita.
 - As FKs de `agendamentos` validam `cliente_id` e `servico_id` individualmente, mas
   **não o pertencimento conjunto** ao mesmo `tenant_id`.
 - Políticas de INSERT `anon` em `agendamentos` e `clientes` exigem apenas
@@ -448,11 +425,11 @@ do booking anônimo foi destacado para o P0.2 — o restante do redesenho fica a
 - Acesso `anon` reduzido ao mínimo que a engine e a página pública precisam
   (GRANTs por coluna; políticas estreitas).
 
-**Direção recomendada (documentada, não implementada):** o booking público continua
-passando exclusivamente pela Server Action confiável; as escritas operacionais do
-fluxo público usam **acesso privilegiado somente no servidor** (`createAdminClient()`)
-**após validação completa** na action — direção já iniciada pelo P0.2 — e as políticas
-de INSERT `anon` em `agendamentos`/`clientes` são removidas. As leituras públicas
+**Direção recomendada:** o booking público continua passando exclusivamente pela
+Server Action confiável; as escritas operacionais do fluxo público usam **acesso
+privilegiado somente no servidor** (`createAdminClient()`) **após validação completa**
+na action — parte já implementada pelo P0.2 (2026-07-13) — e as políticas
+de INSERT `anon` em `agendamentos`/`clientes` são removidas (**pendente**). As leituras públicas
 (serviços, slots) continuam via `anon` com RLS estreito.
 
 **Critérios de conclusão:** tentativa com `servicoId` de outro tenant é rejeitada;
@@ -634,6 +611,22 @@ primeiro item P0 com testes for implementado.
 
 ## ✅ Itens resolvidos (histórico)
 
+- **2026-07-13 — P0.2: booking público quebrado para visitante anônimo**: as
+  escritas operacionais de `criarAgendamentoPublico` (lookup/criação de cliente e
+  criação do agendamento) passaram a usar `createAdminClient()` **somente no
+  servidor e somente após validação completa** na Server Action: tenant existente,
+  serviço **ativo e do mesmo tenant** (fecha também o agendamento cruzado por
+  `servicoId` de outro tenant), `dataHora` válida e slot livre recalculado pela
+  engine com a duração real do serviço. Nenhum SELECT `anon` foi aberto em
+  `clientes`; cliente é reaproveitado por `tenant_id` + telefone normalizado;
+  falha de WhatsApp continua não desfazendo o agendamento. Verificação integrada
+  em 2026-07-13 (action real invocada sem sessão contra o banco): cliente novo
+  anônimo agenda; segundo booking com o mesmo telefone reutiliza o mesmo
+  `cliente_id` (sem duplicata); serviço de outro tenant, slot ocupado, tenant
+  inexistente e `dataHora` inválida são rejeitados. As políticas de INSERT `anon`
+  seguem existindo — a remoção (hardening da Data API) permanece no item de
+  integridade pré-lançamento. Arquivos: `src/app/actions/public-booking.ts`,
+  `src/lib/supabase/admin.ts`, `docs/05-PRODUTO_E_VISAO.md`.
 - **2026-07-11 — QR Code preso em "aguardando pareamento"**: a Evolution API atual
   retorna o estado aninhado (`{ instance: { state: 'open' } }`) no
   `GET /instance/connect`; `obterQrCodeWhatsApp` só checava o nível raiz e lançava
