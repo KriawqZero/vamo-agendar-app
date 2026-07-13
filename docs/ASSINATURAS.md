@@ -11,14 +11,14 @@ Mantém os benefícios da assinatura, mas exibe o banner vermelho no sistema.
 ```sql
 UPDATE assinaturas 
 SET status = 'inadimplente'
-WHERE tenant_id = 'org_3GHTaN2JiiNJKVup2XtNMUJscKm';
+WHERE tenant_id = 'org_3GQ4ocNNd4Fm6cmgzoCynvxXOxQ';
 ```
 
 ### Voltar a ficar em dia (Ativa)
 ```sql
 UPDATE assinaturas 
 SET status = 'ativa'
-WHERE tenant_id = 'org_3GHTaN2JiiNJKVup2XtNMUJscKm';
+WHERE tenant_id = 'org_3GQ4ocNNd4Fm6cmgzoCynvxXOxQ';
 ```
 
 ---
@@ -29,7 +29,7 @@ WHERE tenant_id = 'org_3GHTaN2JiiNJKVup2XtNMUJscKm';
 ```sql
 UPDATE assinaturas 
 SET plano = 'plus', valor = 9.90
-WHERE tenant_id = 'org_3GHTaN2JiiNJKVup2XtNMUJscKm';
+WHERE tenant_id = 'org_3GQ4ocNNd4Fm6cmgzoCynvxXOxQ';
 ```
 
 ### Downgrade para Plano Gratuito
@@ -40,13 +40,13 @@ WHERE tenant_id = 'org_3GHTaN2JiiNJKVup2XtNMUJscKm';
 ```sql
 UPDATE assinaturas 
 SET status = 'cancelada'
-WHERE tenant_id = 'org_3GHTaN2JiiNJKVup2XtNMUJscKm';
+WHERE tenant_id = 'org_3GQ4ocNNd4Fm6cmgzoCynvxXOxQ';
 ```
 
 **Opção 2: Apagar o registro (Mais limpo para testes)**
 ```sql
 DELETE FROM assinaturas
-WHERE tenant_id = 'org_3GHTaN2JiiNJKVup2XtNMUJscKm';
+WHERE tenant_id = 'org_3GQ4ocNNd4Fm6cmgzoCynvxXOxQ';
 ```
 
 ---
