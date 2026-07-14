@@ -309,7 +309,16 @@ existe documentação curta da taxonomia (neste repo).
 **Dependências/decisões:** escolher a ferramenta gerenciada; definir pseudonimização
 do `tenant_id`.
 
-### 6. Landings específicas por nicho
+### 6. ~~Landings específicas por nicho~~ — ✅ Resolvido
+
+**Resolvido em 2026-07-13** (ver "Itens resolvidos" no fim deste documento).
+Três landings verticais SSG (`/para/designer-de-sobrancelhas`, `/para/lash-designer`,
+`/para/manicure`) com template compartilhado, copy honesta por nicho, demo
+parametrizada, planos de `src/lib/planos.ts` e `landing_viewed` com o slug do nicho.
+Prova social ficou de fora deliberadamente (não há pilotos reais — adicionar quando
+existirem).
+
+### (histórico) 6. Landings específicas por nicho
 
 Direção de produto aprovada pelo owner (já existia conceitualmente na versão 1
 descontinuada). A landing principal pode continuar genérica, mas devem existir
@@ -653,6 +662,38 @@ primeiro item P0 com testes for implementado.
 
 ## ✅ Itens resolvidos (histórico)
 
+- **2026-07-13 — P0.6: landings específicas por nicho**:
+  - **3 verticais SSG** em `src/app/para/[nicho]/page.tsx` (template
+    compartilhado; `dynamicParams = false` + `generateStaticParams` — as três
+    rotas saem estáticas no build, sem Clerk/Supabase no caminho):
+    `/para/designer-de-sobrancelhas`, `/para/lash-designer`, `/para/manicure`.
+    Copy centralizada em `src/lib/nichos.ts` (dor com conversa de WhatsApp,
+    3 benefícios, serviços da demo, 4 respostas de "como funciona", SEO por
+    nicho).
+  - **Identidade visual oficial preservada**: mesmos tokens/gradiente/Poppins,
+    reuso de LuzAmbiente/LogoMarca/DiaNoite/SeletorTema/Reveal;
+    `DemoAgendamento` parametrizado por props opcionais com defaults idênticos
+    ao comportamento anterior (landing principal inalterada — verificado no
+    diff).
+  - **Honestidade da copy** (verificada na revisão): zero promessas de
+    multi-profissional, pagamento pelo app, app instalável ou WhatsApp API
+    oficial (a seção "o que não tenta ser" nega explicitamente); WhatsApp
+    automático sempre citado como plano Pro; planos exclusivamente de
+    `src/lib/planos.ts`; sem prova social inventada (adicionar quando houver
+    pilotos). Achado importante da revisão corrigido: a vertical lash prometia
+    "remarcação sozinha" (fluxo que o cliente final não tem) — reescrita
+    honesta ("escolhe o novo horário pelo link e você libera o antigo no
+    painel").
+  - **SEO/OG**: `generateMetadata` por nicho com canonical; corrigido o merge
+    raso do Next que descartava a og:image do layout raiz (previews no
+    WhatsApp sairiam sem imagem) — openGraph completo + twitter card por
+    vertical.
+  - `/para(.*)` no `isPublicRoute` do proxy; `landing_viewed` com
+    `nicho: <slug>` (P0.5) nas verticais.
+  - Verificado em 2026-07-13: `pnpm build` com as 3 rotas ● SSG, `pnpm test`
+    32/32, lint sem erros novos. Resíduo aceito: `PRECO_ORIGINAL` (preço cheio
+    riscado) duplicado entre a landing principal e o template vertical — ao
+    encerrar o desconto de lançamento, editar os dois arquivos.
 - **2026-07-13 — P0.5: eventos de funil do produto (PostHog Cloud)**:
   - **Arquitetura** (opção 3 registrada): `posthog-js` no client (init lazy,
     `capture_pageview/autocapture: false`, `person_profiles: 'identified_only'`,

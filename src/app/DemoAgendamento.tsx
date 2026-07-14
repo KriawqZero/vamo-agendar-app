@@ -6,9 +6,11 @@ import { useEffect, useState } from 'react'
  * Demonstração interativa do fluxo de agendamento na landing page.
  * Estabelecimento e disponibilidade são fictícios — nada aqui toca o banco.
  * A estética espelha o BookingWizard real para que a demo seja uma prévia honesta.
+ * As landings verticais (/para/[nicho]) parametrizam serviços e estabelecimento
+ * via props; os defaults preservam a landing principal como sempre foi.
  */
 
-interface ServicoDemo {
+export interface ServicoDemo {
     nome: string
     duracaoMinutos: number
     preco: string
@@ -30,7 +32,17 @@ interface DiaDemo {
 
 type Etapa = 'servico' | 'horario' | 'confirmar' | 'sucesso'
 
-export default function DemoAgendamento() {
+export default function DemoAgendamento({
+    servicos = SERVICOS_DEMO,
+    estudio = 'Estúdio Ana Lima',
+    iniciais = 'AL',
+    ramo = 'Design de sobrancelhas · São Paulo',
+}: {
+    servicos?: ServicoDemo[]
+    estudio?: string
+    iniciais?: string
+    ramo?: string
+}) {
     const [etapa, setEtapa] = useState<Etapa>('servico')
     const [servico, setServico] = useState<ServicoDemo | null>(null)
     const [dias, setDias] = useState<DiaDemo[]>([])
@@ -72,11 +84,11 @@ export default function DemoAgendamento() {
             {/* Cabeçalho do estabelecimento fictício */}
             <div className="flex items-center gap-3 border-b border-zinc-100 px-5 py-4">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-sm font-medium text-white">
-                    AL
+                    {iniciais}
                 </div>
                 <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-zinc-900">Estúdio Ana Lima</p>
-                    <p className="truncate text-xs text-zinc-500">Design de sobrancelhas · São Paulo</p>
+                    <p className="truncate text-sm font-semibold text-zinc-900">{estudio}</p>
+                    <p className="truncate text-xs text-zinc-500">{ramo}</p>
                 </div>
                 <span className="rounded-full border border-[#3961D5]/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-[#3961D5]">
                     demo
@@ -88,7 +100,7 @@ export default function DemoAgendamento() {
                     <div className="demo-in">
                         <p className="font-mono text-xs text-zinc-500">1 de 3 — escolha o serviço</p>
                         <ul className="mt-3">
-                            {SERVICOS_DEMO.map((s) => (
+                            {servicos.map((s) => (
                                 <li key={s.nome} className="border-b border-zinc-100 last:border-0">
                                     <button
                                         type="button"
@@ -246,7 +258,7 @@ export default function DemoAgendamento() {
 
                         <div className="mt-3 max-w-[19rem] rounded-2xl rounded-tl-sm border border-emerald-100 bg-emerald-50 p-4">
                             <p className="text-sm leading-relaxed text-zinc-800">
-                                Olá, {nomeExibicao}! Seu horário no <strong>Estúdio Ana Lima</strong> está
+                                Olá, {nomeExibicao}! Seu horário no <strong>{estudio}</strong> está
                                 confirmado: {servico.nome.toLowerCase()}, {diaSelecionado.diaSemana}{' '}
                                 {diaSelecionado.label} às {horario}. Até lá!
                             </p>

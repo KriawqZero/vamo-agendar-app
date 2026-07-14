@@ -57,7 +57,7 @@ um disparo específico, e nunca "conserte" divergências alterando o log.
 
 | Evento | Onde dispara | Propriedades |
 | --- | --- | --- |
-| `landing_viewed` | `src/app/page.tsx` (mount, via `CapturaEvento`) | `nicho: 'geral'` |
+| `landing_viewed` | `src/app/page.tsx` e `src/app/para/[nicho]/page.tsx` (mount, via `CapturaEvento`) | `nicho: 'geral'` na principal; slug do nicho nas verticais (ex.: `manicure`) |
 | `signup_started` | `src/app/sign-up/[[...sign-up]]/page.tsx` (mount) | — |
 | `signup_completed` | `IdentificacaoAnalytics` no layout do dashboard: conta Clerk com `createdAt` < 24h + flag `localStorage['va:signup-capturado']` ausente. Arestas aceitas do heurístico: usuário que demora >24h para criar a organização perde o evento; a flag é por browser (segunda conta no mesmo browser não emite) | — |
 | `first_service_created` | `src/app/actions/servicos.ts` (`salvarServico`), só quando o INSERT é o primeiro serviço do tenant | — |

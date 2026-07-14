@@ -2,6 +2,8 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 const isPublicRoute = createRouteMatcher([
   "/",
+  // Landings verticais por nicho (SSG, sem sessão)
+  "/para(.*)",
   "/sign-in(.*)",
   "/sign-up(.*)",
   // Fluxo B2C de Fricção Zero: cliente final agenda sem login
