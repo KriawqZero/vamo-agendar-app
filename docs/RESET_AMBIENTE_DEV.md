@@ -60,7 +60,7 @@ O `.env.local` aponta para o projeto **hospedado** (`cimeiteyueeolwmlouxi.supaba
 ```sql
 TRUNCATE public.perfis_empresas, public.servicos, public.horarios_funcionamento,
          public.excecoes_agenda, public.whatsapp_configs, public.clientes,
-         public.agendamentos, public.assinaturas CASCADE;
+         public.agendamentos, public.assinaturas, public.disparos_whatsapp CASCADE;
 ```
 
 Execute via MCP do Supabase ou SQL Editor do dashboard. Mantenha esta lista em dia se novas tabelas forem criadas.

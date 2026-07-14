@@ -841,7 +841,14 @@ primeiro item P0 com testes for implementado.
     `20260709152648_funcao_rls_auto_enable` (manual e idempotente — o event
     trigger `ensure_rls` não é capturado pelo diff e faltava no baseline, o que
     quebrava o shadow database; corrigido o replay completo, validado com
-    `supabase db reset` local). **Aplicar em produção junto do deploy.**
+    `supabase db reset` local). **Aplicadas no projeto hospedado (dev) em
+    2026-07-14 via MCP**, com o histórico de migrations reparado para espelhar o
+    repo (a baseline antiga `20260703190800_initial_schema_rebuild` foi
+    substituída no registro pela `20260708233747_baseline_schema_inicial`) —
+    `supabase db push` futuro não encontrará divergência. Validado no hospedado:
+    CHECK de 6 estados, `disparos_whatsapp` com RLS (INSERT como anon
+    rejeitado), coluna `timezone` com DEFAULT preenchida, advisor de segurança
+    zerado.
   - **`/debug/qstash` removida** (função substituída pelo painel + log).
     Passo manual pendente do owner: apagar a env `DEBUG_QSTASH` dos ambientes.
   - Verificado em 2026-07-13: `pnpm test` (14/14), `pnpm build` verde, lint dos
