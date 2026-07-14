@@ -98,7 +98,7 @@ export default async function DashboardLayout({
 
             {/* Conteúdo */}
             <main className="flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-5xl p-4 pb-16 md:p-10">
+                <div className="mx-auto max-w-5xl p-4 pb-24 md:p-10">
                     {assinatura.inadimplente && (
                         <div className="mb-8 flex flex-col gap-3 rounded-xl border border-red-500/25 bg-red-500/[0.06] p-4 sm:flex-row sm:items-center dark:border-red-400/20 dark:bg-red-500/[0.07]">
                             <div className="flex-1">

@@ -388,6 +388,11 @@ posterior, salvo evidência de necessidade nos pilotos.
 
 ### 9. Onboarding, ativação e melhorias baratas já apontadas em revisões
 
+- `WhatsappClient.tsx` inteiro fora do sistema de tokens visuais (usa
+  `zinc-*`/`emerald` herdados do arquivo antigo em vez de
+  `palco/bastidor/fio/giz/marca`) — a página destoa do restante da área logada.
+  Migrar para os tokens quando houver folga; sem impacto funcional. *(apontado
+  na revisão final de UX, 2026-07-14)*
 - Dashboard (checklist de onboarding): as duas queries de contagem em
   `src/app/dashboard/page.tsx` não checam `error` (falha silenciosa vira "não
   configurado") e rodam sequencialmente (paralelizar com `Promise.all`). *(pendente,
@@ -585,6 +590,11 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
     banner, sem prazo).
 - Cobrança self-service; experiência definitiva de upgrade/downgrade.
 - Revisão de segurança geral (secrets, headers, webhooks, superfícies públicas).
+  - Webhook de lembrete (achado da revisão final de 2026-07-14, pré-existente):
+    o secret trafega em query string e o fallback `'secret-key'` vale nos dois
+    lados quando `QSTASH_CURRENT_SIGNING_KEY` não está setada — em produção a
+    env é OBRIGATÓRIA; o ideal é migrar para verificação da assinatura real do
+    QStash (header `Upstash-Signature`).
 - Política de privacidade e termos finais; revisão final de LGPD; fluxo de
   exclusão/exportação de dados.
 - Testes críticos de segurança e concorrência (ver seção "Qualidade e testes").

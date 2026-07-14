@@ -154,11 +154,25 @@ export async function criarInstanciaWhatsApp() {
 /**
  * Busca o QR Code de conexão (base64) diretamente do Evolution API.
  * Se a API indicar que já está conectado, atualiza o status no banco de dados.
+ * O nome da instância vem SEMPRE do banco (pelo orgId da sessão) — aceitar o
+ * nome do client permitiria buscar o QR Code de instância de outro tenant.
  */
-export async function obterQrCodeWhatsApp(instanceName: string) {
+export async function obterQrCodeWhatsApp() {
     const { orgId } = await auth()
     if (!orgId) {
         throw new Error('Não autorizado.')
+    }
+
+    const supabaseNome = await createClient()
+    const { data: configNome } = await supabaseNome
+        .from('whatsapp_configs')
+        .select('instance_name')
+        .eq('tenant_id', orgId)
+        .maybeSingle()
+
+    const instanceName = configNome?.instance_name
+    if (!instanceName) {
+        throw new Error('Instância de WhatsApp não configurada.')
     }
 
     try {
@@ -231,14 +245,27 @@ export async function obterQrCodeWhatsApp(instanceName: string) {
 
 /**
  * Desconecta e exclui a instância de WhatsApp da Evolution API e do banco.
+ * O nome da instância vem SEMPRE do banco (pelo orgId da sessão) — aceitar o
+ * nome do client permitiria deletar a instância de outro tenant no gateway.
  */
-export async function desconectarWhatsApp(instanceName: string) {
+export async function desconectarWhatsApp() {
     const { orgId } = await auth()
     if (!orgId) {
         throw new Error('Não autorizado.')
     }
 
     const supabase = await createClient()
+
+    const { data: configNome } = await supabase
+        .from('whatsapp_configs')
+        .select('instance_name')
+        .eq('tenant_id', orgId)
+        .maybeSingle()
+
+    const instanceName = configNome?.instance_name
+    if (!instanceName) {
+        throw new Error('Instância de WhatsApp não configurada.')
+    }
 
     try {
         // 1. Chamar Evolution API para deletar instância

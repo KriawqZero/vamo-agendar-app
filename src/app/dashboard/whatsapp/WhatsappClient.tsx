@@ -185,7 +185,7 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
             }
 
             try {
-                const res = await obterQrCodeWhatsApp(instanceName)
+                const res = await obterQrCodeWhatsApp()
                 falhasConsecutivas = 0
 
                 if (!isMounted) return
@@ -236,7 +236,7 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
         if (!config) return
         startTransition(async () => {
             try {
-                await desconectarWhatsApp(config.instance_name)
+                await desconectarWhatsApp()
                 router.refresh()
             } catch (err) {
                 setMsgTemplates({ tipo: 'erro', texto: err instanceof Error ? err.message : 'Erro ao desconectar' })
@@ -269,7 +269,7 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
         setCarregandoQrCode(true)
         startTransition(async () => {
             try {
-                const res = await obterQrCodeWhatsApp(config.instance_name)
+                const res = await obterQrCodeWhatsApp()
                 if (res.status === 'conectado') {
                     capturarEvento('whatsapp_connected')
                     router.refresh()
@@ -392,7 +392,7 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                         <div className="space-y-4 flex flex-col items-center text-center">
                             <div className="flex items-center gap-2 self-start">
                                 <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-                                <span className="text-sm font-semibold">Aguardando Pareamento</span>
+                                <span className="text-sm font-semibold">Aguardando pareamento</span>
                             </div>
 
                             {erroPareamento ? (
@@ -439,7 +439,7 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                                 disabled={isPending}
                                 className="w-full py-2 bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/20 dark:hover:bg-red-900/30 dark:text-red-400 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer disabled:opacity-60"
                             >
-                                Cancelar Conexão
+                                Cancelar conexão
                             </button>
                         </div>
                     )}
@@ -464,7 +464,7 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                                 disabled={isPending}
                                 className="w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/20 dark:hover:bg-red-900/30 dark:text-red-400 font-bold rounded-lg text-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
                             >
-                                {isPending ? 'Desconectando...' : 'Desconectar Dispositivo'}
+                                {isPending ? 'Desconectando...' : 'Desconectar dispositivo'}
                             </button>
                         </div>
                     )}
@@ -565,7 +565,7 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                         {/* Mensagem Confirmação */}
                         <div className="space-y-1.5">
                             <div className="flex items-center justify-between">
-                                <label className="text-xs font-bold uppercase text-zinc-400 block">Mensagem de Confirmação Imediata</label>
+                                <label className="text-xs font-bold uppercase text-zinc-400 block">Mensagem de confirmação imediata</label>
                                 <span className="text-[10px] text-zinc-400 font-medium">Tags: `{"{{cliente}}"}` `{"{{empresa}}"}` `{"{{data_hora}}"}`</span>
                             </div>
                             <textarea
@@ -580,7 +580,7 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                         {/* Mensagem Lembrete */}
                         <div className="space-y-1.5">
                             <div className="flex items-center justify-between">
-                                <label className="text-xs font-bold uppercase text-zinc-400 block">Mensagem de Lembrete</label>
+                                <label className="text-xs font-bold uppercase text-zinc-400 block">Mensagem de lembrete</label>
                                 <span className="text-[10px] text-zinc-400 font-medium">Tags: `{"{{cliente}}"}` `{"{{empresa}}"}` `{"{{data}}"}` `{"{{hora}}"}`</span>
                             </div>
                             <textarea
@@ -618,7 +618,7 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                                 disabled={isPending}
                                 className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 font-semibold rounded-lg text-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
                             >
-                                {isPending ? 'Salvando...' : 'Salvar Templates'}
+                                {isPending ? 'Salvando...' : 'Salvar templates'}
                             </button>
                         </div>
                     </form>

@@ -283,19 +283,21 @@ export default function NovoAgendamentoModal({
             aria-modal="true"
             aria-label={ehRemarcacao ? 'Remarcar agendamento' : 'Novo agendamento'}
         >
-            {/* Backdrop */}
+            {/* Backdrop (tabIndex -1: fora do focus trap do painel) */}
             <button
                 aria-label="Fechar"
+                tabIndex={-1}
                 onClick={fechar}
                 className="absolute inset-0 cursor-default bg-black/50 backdrop-blur-[2px]"
             />
 
-            {/* Painel: bottom-sheet no mobile, modal centrado no desktop */}
+            {/* Painel: bottom-sheet no mobile, modal centrado no desktop.
+                dvh (não vh): com o teclado virtual aberto o painel encolhe junto. */}
             <div
                 ref={painelRef}
                 tabIndex={-1}
                 onKeyDown={prenderFoco}
-                className="relative flex max-h-[88vh] w-full flex-col overflow-hidden rounded-t-3xl border border-fio bg-palco shadow-2xl outline-none sm:max-w-lg sm:rounded-2xl"
+                className="relative flex max-h-[88dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-fio bg-palco shadow-2xl outline-none sm:max-w-lg sm:rounded-2xl"
             >
                 {/* Cabeçalho */}
                 <div className="flex items-center gap-3 border-b border-fio px-5 py-4">
@@ -306,7 +308,7 @@ export default function NovoAgendamentoModal({
                                 setPasso(voltarDe[passo]!)
                             }}
                             aria-label="Voltar"
-                            className="-ml-1 rounded-full px-2 py-1 text-nevoa transition-colors hover:bg-veu hover:text-giz"
+                            className="-ml-2 rounded-full px-3.5 py-2 text-nevoa transition-colors hover:bg-veu hover:text-giz"
                         >
                             ‹
                         </button>
@@ -322,14 +324,14 @@ export default function NovoAgendamentoModal({
                     <button
                         onClick={fechar}
                         aria-label="Fechar"
-                        className="rounded-full px-2.5 py-1 text-nevoa transition-colors hover:bg-veu hover:text-giz"
+                        className="-mr-1 rounded-full px-3.5 py-2 text-nevoa transition-colors hover:bg-veu hover:text-giz"
                     >
                         ✕
                     </button>
                 </div>
 
                 {/* Conteúdo */}
-                <div className="flex-1 overflow-y-auto p-5">
+                <div className="flex-1 overflow-y-auto overscroll-contain p-5">
                     {erro && passo !== 'resumo' && (
                         <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/[0.08] p-3 text-sm text-red-700 dark:text-red-300">
                             {erro}
@@ -341,12 +343,14 @@ export default function NovoAgendamentoModal({
                         <div className="space-y-4">
                             {!criandoNovo ? (
                                 <>
+                                    {/* Sem autoFocus: o foco inicial fica no painel (o efeito de
+                                        mount o roubaria de qualquer forma) e no mobile o teclado
+                                        não deve abrir sobre o bottom-sheet recém-aberto. */}
                                     <input
                                         type="text"
                                         value={busca}
                                         onChange={(e) => setBusca(e.target.value)}
                                         placeholder="Buscar por nome ou telefone…"
-                                        autoFocus
                                         className="w-full rounded-xl border border-fio bg-bastidor px-4 py-3 text-sm text-giz outline-none placeholder:text-penumbra focus:border-marca/50"
                                     />
 
@@ -434,7 +438,7 @@ export default function NovoAgendamentoModal({
                                         </button>
                                         <button
                                             onClick={avancarCliente}
-                                            className="flex-1 rounded-xl bg-marca px-4 py-3 font-mono text-xs uppercase tracking-widest text-white transition-colors hover:bg-marca-forte"
+                                            className="flex-1 rounded-xl bg-marca px-4 py-3 font-mono text-xs uppercase tracking-widest text-white transition-colors hover:bg-marca-forte dark:text-zinc-950"
                                         >
                                             continuar →
                                         </button>
@@ -509,6 +513,7 @@ export default function NovoAgendamentoModal({
                                                 setDataSelecionada(dia)
                                                 setSlotSelecionado(null)
                                             }}
+                                            aria-pressed={selecionado}
                                             className={`flex min-w-[3.25rem] flex-col items-center rounded-xl border px-2 py-2 transition-colors ${
                                                 selecionado
                                                     ? 'border-marca/50 bg-veu'
@@ -551,7 +556,7 @@ export default function NovoAgendamentoModal({
                                         <button
                                             key={slot.datetime}
                                             onClick={() => selecionarSlot(slot.datetime)}
-                                            className="rounded-xl border border-fio bg-bastidor py-2.5 text-center font-mono text-sm font-semibold text-giz transition-colors hover:border-marca/40 hover:bg-veu"
+                                            className="rounded-xl border border-fio bg-bastidor py-3 text-center font-mono text-sm font-semibold text-giz transition-colors hover:border-marca/40 hover:bg-veu"
                                         >
                                             {slot.time}
                                         </button>
@@ -623,7 +628,7 @@ export default function NovoAgendamentoModal({
                             <button
                                 onClick={confirmar}
                                 disabled={isPending}
-                                className="w-full rounded-xl bg-marca px-4 py-3.5 font-mono text-xs uppercase tracking-widest text-white transition-colors hover:bg-marca-forte disabled:opacity-60"
+                                className="w-full rounded-xl bg-marca px-4 py-3.5 font-mono text-xs uppercase tracking-widest text-white transition-colors hover:bg-marca-forte disabled:opacity-60 dark:text-zinc-950"
                             >
                                 {isPending
                                     ? 'salvando…'

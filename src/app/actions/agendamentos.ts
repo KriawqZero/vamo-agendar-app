@@ -436,6 +436,9 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
             .limit(1)
             .maybeSingle()
 
+        // O novo lembrete só nasce se havia um lembrete ATIVO para realinhar:
+        // agendamento criado com opt-out de WhatsApp (manual, checkbox
+        // desmarcado) não pode ganhar lembrete "do nada" numa remarcação.
         if (lembrete?.qstash_message_id) {
             await cancelarLembreteQStash(lembrete.qstash_message_id)
             await registrarDisparo(supabase, {
@@ -445,40 +448,40 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
                 status: 'cancelado',
                 motivo: 'remarcacao'
             })
-        }
 
-        const { data: config } = await supabase
-            .from('whatsapp_configs')
-            .select('status, instance_token, tempo_lembrete_minutos')
-            .eq('tenant_id', orgId)
-            .maybeSingle()
+            const { data: config } = await supabase
+                .from('whatsapp_configs')
+                .select('status, instance_token, tempo_lembrete_minutos')
+                .eq('tenant_id', orgId)
+                .maybeSingle()
 
-        const plano = await obterPlanoVigentePublico(supabase, orgId)
-        const whatsappAtivo = config
-            && PLANOS[plano].recursos.whatsapp
-            && config.status === 'conectado'
-            && config.instance_token
+            const plano = await obterPlanoVigentePublico(supabase, orgId)
+            const whatsappAtivo = config
+                && PLANOS[plano].recursos.whatsapp
+                && config.status === 'conectado'
+                && config.instance_token
 
-        if (whatsappAtivo) {
-            const targetTime = dataObj.getTime() - (config.tempo_lembrete_minutos * 60 * 1000)
-            if (targetTime > Date.now()) {
-                const agendado = await agendarLembreteQStash(id, orgId, targetTime)
-                if (agendado.ok) {
-                    await registrarDisparo(supabase, {
-                        tenantId: orgId,
-                        agendamentoId: id,
-                        tipo: 'lembrete',
-                        status: 'agendado',
-                        qstashMessageId: agendado.messageId
-                    })
-                } else {
-                    await registrarDisparo(supabase, {
-                        tenantId: orgId,
-                        agendamentoId: id,
-                        tipo: 'lembrete',
-                        status: 'falha',
-                        motivo: agendado.motivo
-                    })
+            if (whatsappAtivo) {
+                const targetTime = dataObj.getTime() - (config.tempo_lembrete_minutos * 60 * 1000)
+                if (targetTime > Date.now()) {
+                    const agendado = await agendarLembreteQStash(id, orgId, targetTime)
+                    if (agendado.ok) {
+                        await registrarDisparo(supabase, {
+                            tenantId: orgId,
+                            agendamentoId: id,
+                            tipo: 'lembrete',
+                            status: 'agendado',
+                            qstashMessageId: agendado.messageId
+                        })
+                    } else {
+                        await registrarDisparo(supabase, {
+                            tenantId: orgId,
+                            agendamentoId: id,
+                            tipo: 'lembrete',
+                            status: 'falha',
+                            motivo: agendado.motivo
+                        })
+                    }
                 }
             }
         }

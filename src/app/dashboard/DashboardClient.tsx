@@ -65,6 +65,20 @@ const rotuloDiaLongo = (dateStr: string) =>
 
 const CHAVE_PROXIMOS_VISIVEL = 'va:proximos-dias-visivel'
 
+/**
+ * Resumo dos 6 estados da instância de WhatsApp para o indicador do cabeçalho.
+ * 'instavel' NÃO é desconexão (o gateway só não confirmou agora) — mostrá-lo
+ * como "desconectado" contradiria a página de detalhe.
+ */
+const RESUMO_WHATSAPP: Record<string, { cor: string; rotulo: string }> = {
+    conectado: { cor: 'bg-marca', rotulo: 'conectado' },
+    aguardando_qrcode: { cor: 'bg-amber-500 dark:bg-amber-400', rotulo: 'aguardando' },
+    conectando: { cor: 'bg-amber-500 dark:bg-amber-400', rotulo: 'conectando' },
+    instavel: { cor: 'bg-amber-500 dark:bg-amber-400', rotulo: 'instável' },
+    falha: { cor: 'bg-red-500/70 dark:bg-red-400/70', rotulo: 'com falha' },
+    desconectado: { cor: 'bg-penumbra', rotulo: 'desconectado' },
+}
+
 /** Linha da timeline: um atendimento ou uma janela livre entre dois. */
 type ItemLinha =
     | { tipo: 'atendimento'; ag: Agendamento }
@@ -225,7 +239,7 @@ export default function DashboardClient({
     return (
         <div>
             {/* Cabeçalho do dia */}
-            <div className="relative">
+            <div className="relative sm:pr-32">
                 <p className="font-mono text-xs uppercase tracking-[0.25em] text-marca">
                     {dataFormatada}
                     {dataSelecionada === hoje && ' — hoje'}
@@ -236,7 +250,7 @@ export default function DashboardClient({
                 {setupCompleto && (
                     <button
                         onClick={abrirNovoAgendamento}
-                        className="absolute right-0 top-0 hidden rounded-full bg-marca px-5 py-2.5 font-mono text-xs uppercase tracking-widest text-white transition-colors hover:bg-marca-forte sm:block"
+                        className="absolute right-0 top-0 hidden rounded-full bg-marca px-5 py-2.5 font-mono text-xs uppercase tracking-widest text-white transition-colors hover:bg-marca-forte sm:block dark:text-zinc-950"
                     >
                         + agendar
                     </button>
@@ -254,19 +268,10 @@ export default function DashboardClient({
                     >
                         <span
                             className={`inline-block h-1.5 w-1.5 rounded-full ${
-                                whatsappStatus === 'conectado'
-                                    ? 'bg-marca'
-                                    : whatsappStatus === 'aguardando_qrcode'
-                                        ? 'bg-amber-500 dark:bg-amber-400'
-                                        : 'bg-penumbra'
+                                RESUMO_WHATSAPP[whatsappStatus]?.cor ?? 'bg-penumbra'
                             }`}
                         />
-                        whatsapp{' '}
-                        {whatsappStatus === 'conectado'
-                            ? 'conectado'
-                            : whatsappStatus === 'aguardando_qrcode'
-                                ? 'aguardando'
-                                : 'desconectado'}
+                        whatsapp {RESUMO_WHATSAPP[whatsappStatus]?.rotulo ?? 'desconectado'}
                     </button>
                 </p>
             </div>
@@ -290,6 +295,7 @@ export default function DashboardClient({
                             <button
                                 key={dia}
                                 onClick={() => mudarData(dia)}
+                                aria-pressed={selecionado}
                                 className={`flex min-w-[3.25rem] flex-1 flex-col items-center rounded-xl border py-2 transition-colors duration-200 ${
                                     selecionado
                                         ? 'border-marca/50 bg-veu'
@@ -550,21 +556,26 @@ export default function DashboardClient({
                                                 <button
                                                     onClick={() => alterarStatus(ag.id, 'concluido')}
                                                     disabled={statusUpdating === ag.id}
-                                                    className="font-mono text-xs uppercase tracking-widest text-marca transition-colors hover:text-marca-suave disabled:opacity-50"
+                                                    className="-my-2 py-2 font-mono text-xs uppercase tracking-widest text-marca transition-colors hover:text-marca-suave disabled:opacity-50"
                                                 >
                                                     concluir
                                                 </button>
                                                 <button
                                                     onClick={() => abrirRemarcacao(ag)}
                                                     disabled={statusUpdating === ag.id}
-                                                    className="font-mono text-xs uppercase tracking-widest text-nevoa transition-colors hover:text-giz disabled:opacity-50"
+                                                    className="-my-2 py-2 font-mono text-xs uppercase tracking-widest text-nevoa transition-colors hover:text-giz disabled:opacity-50"
                                                 >
                                                     remarcar
                                                 </button>
                                                 <button
-                                                    onClick={() => alterarStatus(ag.id, 'cancelado')}
+                                                    onClick={() => {
+                                                        // Destrutivo sem desfazer na UI — confirmação obrigatória.
+                                                        if (window.confirm(`Cancelar o atendimento de ${ag.clientes?.nome || 'cliente'} às ${hora}?`)) {
+                                                            alterarStatus(ag.id, 'cancelado')
+                                                        }
+                                                    }}
                                                     disabled={statusUpdating === ag.id}
-                                                    className="font-mono text-xs uppercase tracking-widest text-red-700/70 transition-colors hover:text-red-700 disabled:opacity-50 dark:text-red-300/70 dark:hover:text-red-300"
+                                                    className="-my-2 py-2 font-mono text-xs uppercase tracking-widest text-red-700/70 transition-colors hover:text-red-700 disabled:opacity-50 dark:text-red-300/70 dark:hover:text-red-300"
                                                 >
                                                     cancelar
                                                 </button>
@@ -645,7 +656,7 @@ export default function DashboardClient({
                 <button
                     onClick={abrirNovoAgendamento}
                     aria-label="Novo agendamento"
-                    className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-marca text-2xl font-light text-white shadow-lg transition-transform hover:scale-105 active:scale-95 sm:hidden"
+                    className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-marca text-2xl font-light text-white shadow-lg transition-transform hover:scale-105 active:scale-95 sm:hidden dark:text-zinc-950"
                 >
                     +
                 </button>
