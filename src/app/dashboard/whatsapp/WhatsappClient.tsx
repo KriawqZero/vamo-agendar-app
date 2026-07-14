@@ -10,6 +10,7 @@ import {
     enviarMensagemTesteWhatsApp,
     salvarTemplatesMensagem
 } from '@/app/actions/whatsapp'
+import { capturarEvento } from '@/lib/analytics/client'
 
 // Nunca incluir instance_token aqui: esta interface descreve a prop serializada
 // até o browser — o token é segredo e fica restrito ao servidor.
@@ -190,6 +191,9 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                 if (!isMounted) return
                 if (res.status === 'conectado') {
                     pollingEncerrado = true
+                    // Funil: transição para conectado observada na UI (só captura;
+                    // não altera a lógica de polling).
+                    capturarEvento('whatsapp_connected')
                     router.refresh()
                 } else if (res.qrcode) {
                     setQrcode(res.qrcode)
@@ -217,6 +221,7 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
     }, [statusConfig, instanceName, router])
 
     const handleConectar = () => {
+        capturarEvento('whatsapp_connect_started')
         startTransition(async () => {
             try {
                 await criarInstanciaWhatsApp()
@@ -258,6 +263,7 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
 
     const handleRegenerarQr = () => {
         if (!config) return
+        capturarEvento('whatsapp_connect_started')
         setErroPareamento(null)
         setQrcode(null)
         setCarregandoQrCode(true)
@@ -265,6 +271,7 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
             try {
                 const res = await obterQrCodeWhatsApp(config.instance_name)
                 if (res.status === 'conectado') {
+                    capturarEvento('whatsapp_connected')
                     router.refresh()
                 } else if (res.qrcode) {
                     setQrcode(res.qrcode)

@@ -8,6 +8,7 @@ import {
 } from './whatsapp-helper'
 import { PLANOS } from './planos'
 import { obterPlanoVigentePublico } from './assinaturas'
+import { capturarEventoTenant } from './analytics/server'
 
 interface NotificacoesAgendamentoParams {
     agendamentoId: string;
@@ -67,6 +68,8 @@ export async function dispararNotificacoesAgendamento(
                     status: 'falha',
                     motivo: 'whatsapp_desconectado'
                 })
+                // Analytics: espelho agregado do disparo (fonte da verdade é o Postgres).
+                capturarEventoTenant('whatsapp_confirmation_failed', tenantId, { motivo: 'whatsapp_desconectado' })
             } else {
                 const dateObj = new Date(dataHora)
                 const dataHoraStr = formatarDataHora(dataHora, timezone)
@@ -92,6 +95,12 @@ export async function dispararNotificacoesAgendamento(
                     status: envio.ok ? 'enviado' : 'falha',
                     motivo: envio.ok ? null : envio.motivo
                 })
+                // Analytics: espelho agregado do disparo (fonte da verdade é o Postgres).
+                if (envio.ok) {
+                    capturarEventoTenant('whatsapp_confirmation_sent', tenantId)
+                } else {
+                    capturarEventoTenant('whatsapp_confirmation_failed', tenantId, { motivo: envio.motivo ?? null })
+                }
 
                 const targetTime = dateObj.getTime() - (config.tempo_lembrete_minutos * 60 * 1000)
                 const now = Date.now()
@@ -107,6 +116,8 @@ export async function dispararNotificacoesAgendamento(
                             status: 'agendado',
                             qstashMessageId: agendado.messageId
                         })
+                        // Analytics: espelho agregado do disparo (fonte da verdade é o Postgres).
+                        capturarEventoTenant('whatsapp_reminder_scheduled', tenantId)
                     } else {
                         await registrarDisparo(client, {
                             tenantId,
@@ -115,6 +126,9 @@ export async function dispararNotificacoesAgendamento(
                             status: 'falha',
                             motivo: agendado.motivo
                         })
+                        // Falha no agendamento do lembrete: mesmo evento de falha do
+                        // lembrete, distinguível pelo motivo (ex.: qstash_sem_token).
+                        capturarEventoTenant('whatsapp_reminder_failed', tenantId, { motivo: agendado.motivo ?? null })
                     }
                 }
             }

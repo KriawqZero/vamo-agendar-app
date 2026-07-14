@@ -1,5 +1,6 @@
 import React from 'react'
 import { obterDadosBookingPublico } from '@/app/actions/public-booking'
+import { hashTenantId } from '@/lib/analytics/tenant'
 import BookingWizard from './BookingWizard'
 
 interface PageProps {
@@ -41,8 +42,13 @@ export default async function BookingPage({ params }: PageProps) {
 
             <div className="max-w-2xl mx-auto w-full space-y-6 relative z-10">
                 
-                {/* O Wizard principal de agendamento */}
-                <BookingWizard perfil={dados.perfil} servicos={dados.servicos} />
+                {/* O Wizard principal de agendamento (tenantHash: pseudônimo do
+                    tenant para analytics — o org_id cru nunca vai como propriedade) */}
+                <BookingWizard
+                    perfil={dados.perfil}
+                    servicos={dados.servicos}
+                    tenantHash={hashTenantId(dados.perfil.tenant_id)}
+                />
 
                 {/* Footer discreto e profissional */}
                 <div className="text-center text-[10px] text-zinc-400 dark:text-zinc-500 flex items-center justify-center gap-1.5 pt-4">

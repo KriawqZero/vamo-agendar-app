@@ -4,6 +4,7 @@ import { processarMensagemTemplate, enviarMensagemWhatsApp, registrarDisparo } f
 import { formatarDataHora, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { PLANOS } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
+import { capturarEventoTenant } from '@/lib/analytics/server'
 
 export async function POST(req: NextRequest) {
     try {
@@ -142,6 +143,8 @@ export async function POST(req: NextRequest) {
                 status: 'falha',
                 motivo: enviado.motivo
             })
+            // Analytics: espelho agregado do disparo (fonte da verdade é o Postgres).
+            capturarEventoTenant('whatsapp_reminder_failed', tenantId, { motivo: enviado.motivo ?? null })
             return NextResponse.json({ error: 'Falha no disparo do WhatsApp.' }, { status: 500 })
         }
 
@@ -151,6 +154,8 @@ export async function POST(req: NextRequest) {
             tipo: 'lembrete',
             status: 'executado'
         })
+        // Analytics: espelho agregado do disparo (fonte da verdade é o Postgres).
+        capturarEventoTenant('whatsapp_reminder_sent', tenantId)
 
         return NextResponse.json({ success: true, message: 'Lembrete enviado com sucesso.' })
 

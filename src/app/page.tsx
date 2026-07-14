@@ -9,6 +9,7 @@ import LuzAmbiente from './LuzAmbiente'
 import LogoMarca from './LogoMarca'
 import SeletorTema from './SeletorTema'
 import DiaNoite from './DiaNoite'
+import CapturaEvento from '@/components/analytics/CapturaEvento'
 
 /**
  * Landing page pública. Um único palco contínuo — sem faixas, sem bordas
@@ -87,6 +88,8 @@ export default async function Home() {
 
     return (
         <div className="relative flex-1 overflow-x-clip bg-palco text-giz">
+            {/* Funil: visita à landing (UTMs iniciais são anexadas pelo posthog-js) */}
+            <CapturaEvento evento="landing_viewed" propriedades={{ nicho: 'geral' }} />
             {/* Atmosfera: grão de filme + luz que segue o cursor */}
             <div
                 aria-hidden

@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useState, useEffect, useTransition } from 'react'
+import React, { useState, useEffect, useRef, useTransition } from 'react'
 import { obterSlotsPublicos, criarAgendamentoPublico } from '@/app/actions/public-booking'
 import { diaLocal, somarDias, formatarDataHoraLonga, TIMEZONE_PADRAO } from '@/lib/timezone'
+import { capturarEvento } from '@/lib/analytics/client'
 
 interface PerfilEmpresa {
     tenant_id: string;
@@ -24,6 +25,8 @@ interface Servico {
 interface BookingWizardProps {
     perfil: PerfilEmpresa;
     servicos: Servico[];
+    /** Hash pseudonimizado do tenant para analytics (calculado no servidor). */
+    tenantHash: string;
 }
 
 const formatarTelefone = (valor: string) => {
@@ -41,8 +44,10 @@ const formatarTelefone = (valor: string) => {
     return `(${limitado.slice(0, 2)}) ${limitado.slice(2, 7)}-${limitado.slice(7)}`
 }
 
-export default function BookingWizard({ perfil, servicos }: BookingWizardProps) {
+export default function BookingWizard({ perfil, servicos, tenantHash }: BookingWizardProps) {
     const [isPending, startTransition] = useTransition()
+    // Funil: booking_started dispara uma única vez, na primeira interação real.
+    const bookingIniciado = useRef(false)
     const [etapa, setEtapa] = useState<'servico' | 'data_hora' | 'contato' | 'sucesso'>('servico')
 
     // Escolhas do usuário
@@ -123,6 +128,10 @@ export default function BookingWizard({ perfil, servicos }: BookingWizardProps) 
     }, [servicoSelecionado, dataSelecionada, perfil.tenant_id])
 
     const selecionarServico = (servico: Servico) => {
+        if (!bookingIniciado.current) {
+            bookingIniciado.current = true
+            capturarEvento('booking_started', { tenant: tenantHash })
+        }
         setServicoSelecionado(servico)
         setHorarioSelecionado(null)
         setEtapa('data_hora')

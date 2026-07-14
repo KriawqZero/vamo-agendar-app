@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
+import { capturarEventoTenant } from '@/lib/analytics/server'
 
 interface HorarioFuncionamentoInput {
     dia_semana: number;
@@ -55,6 +56,22 @@ export async function salvarHorariosFuncionamento(horarios: HorarioFuncionamento
 
     const supabase = await createClient()
 
+    // Funil: detecta ANTES do upsert se é a primeira configuração de horários
+    // do tenant (count barato head-only, e só com analytics ativo — sem key
+    // não gastamos uma ida ao banco). Falha aqui nunca afeta o fluxo.
+    let ehPrimeiraConfiguracao = false
+    if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+        try {
+            const { count, error: cError } = await supabase
+                .from('horarios_funcionamento')
+                .select('id', { count: 'exact', head: true })
+                .eq('tenant_id', orgId)
+            ehPrimeiraConfiguracao = !cError && (count ?? 0) === 0
+        } catch (analyticsErr) {
+            console.error('[analytics] contagem de horários falhou (ignorada):', analyticsErr)
+        }
+    }
+
     // Mapeia para incluir o tenant_id
     const payload = horarios.map(h => ({
         tenant_id: orgId,
@@ -74,6 +91,14 @@ export async function salvarHorariosFuncionamento(horarios: HorarioFuncionamento
     if (error) {
         console.error('Erro ao salvar horários de funcionamento:', error.message)
         throw new Error('Erro ao salvar as configurações de horário.')
+    }
+
+    if (ehPrimeiraConfiguracao) {
+        try {
+            capturarEventoTenant('schedule_configured', orgId)
+        } catch (analyticsErr) {
+            console.error('[analytics] schedule_configured não capturado (ignorado):', analyticsErr)
+        }
     }
 
     return data

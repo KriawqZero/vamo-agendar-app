@@ -239,7 +239,16 @@ para o helper único.
 
 </details>
 
-### 5. Eventos de funil do produto
+### 5. ~~Eventos de funil do produto~~ — ✅ Resolvido
+
+**Resolvido em 2026-07-13** (ver "Itens resolvidos" no fim deste documento).
+PostHog Cloud (opção 3: analytics gerenciado para funil + Postgres como fonte da
+verdade operacional), tudo no-op sem `NEXT_PUBLIC_POSTHOG_KEY`, tenant
+pseudonimizado por hash, zero PII. Taxonomia documentada em
+`docs/08-ANALYTICS_E_FUNIL.md`. **Passo do owner:** criar projeto no PostHog e
+configurar `NEXT_PUBLIC_POSTHOG_KEY` + `ANALYTICS_TENANT_SALT` no deploy.
+
+### (histórico) 5. Eventos de funil do produto
 
 **O que são:** eventos de funil são registros das etapas importantes percorridas pelos
 usuários. Eles mostram quantas pessoas avançam ou abandonam cada ponto do produto
@@ -644,6 +653,44 @@ primeiro item P0 com testes for implementado.
 
 ## ✅ Itens resolvidos (histórico)
 
+- **2026-07-13 — P0.5: eventos de funil do produto (PostHog Cloud)**:
+  - **Arquitetura** (opção 3 registrada): `posthog-js` no client (init lazy,
+    `capture_pageview/autocapture: false`, `person_profiles: 'identified_only'`,
+    **session replay e surveys travados como desativados no código**) e, no
+    servidor, `fetch` direto ao endpoint de ingestão dentro de `after()` com
+    fallback fire-and-forget (sem posthog-node) — `src/lib/analytics/{client,
+    server,tenant}.ts` + ilhas em `src/components/analytics/`. **Sem
+    `NEXT_PUBLIC_POSTHOG_KEY` tudo é no-op** (build/dev/produção funcionam sem
+    credenciais; até os counts de "primeiro serviço/horários" são pulados).
+  - **Privacidade**: nenhum evento leva nome/telefone/e-mail/conteúdo de
+    mensagem (varredura completa na revisão); `tenant_id` só como
+    `sha256(ANALYTICS_TENANT_SALT + orgId)` truncado a 16 chars — o `org_...`
+    cru nunca chega ao PostHog.
+  - **Eventos**: `landing_viewed` (com `nicho`), `signup_started`,
+    `signup_completed` (conta <24h + flag localStorage), `first_service_created`,
+    `schedule_configured`, `booking_link_copied`, `booking_started`,
+    `booking_completed`, `booking_failed` (motivos `slot_indisponivel`/
+    `erro_interno`), `plans_viewed`, `upgrade_clicked`, `whatsapp_connect_started`,
+    `whatsapp_connected` e espelhos agregados `whatsapp_confirmation_sent/failed`,
+    `whatsapp_reminder_scheduled/sent/failed` — **`disparos_whatsapp` no Postgres
+    segue sendo a fonte da verdade operacional**. UTM inicial preservada até o
+    cadastro pelo próprio posthog-js (verificado no código da lib).
+  - **Taxonomia documentada** em `docs/08-ANALYTICS_E_FUNIL.md`, incluindo
+    eventos deliberadamente fora de escopo e a **limitação conhecida** do funil
+    B2C (started sai do browser anônimo, completed do servidor com tenant hash —
+    conversão B2C medida em agregado via Trends, não em insight de Funnel).
+  - Verificado em 2026-07-13: `pnpm test` 32/32, `pnpm build` verde **sem** as
+    envs de PostHog, lint sem erros novos nos 21+ arquivos tocados, invariantes
+    preservadas (mensageria nunca lança; HTTP 500 de retry do webhook intacto;
+    polling do WhatsApp intocado). Revisão independente sem críticos; o
+    importante (distinct_id do funil B2C) foi documentado e os menores baratos
+    corrigidos (gate dos counts, `booking_failed` no erro de INSERT, replay
+    desativado no código).
+  - **Passos do owner no deploy**: criar projeto PostHog Cloud e configurar
+    `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` (se não-US) e
+    `ANALYTICS_TENANT_SALT` (fixo — trocá-lo depois desconecta o histórico).
+    Atenção: a ingestão do PostHog responde 200 mesmo com key inválida — validar
+    vendo eventos chegarem no projeto.
 - **2026-07-13 — P0.3: agendamento manual pelo profissional**:
   - **CTA + modal mobile-first**: botão "+ agendar" no cabeçalho do dashboard
     (desktop) e FAB no mobile (só com setup completo) abrem

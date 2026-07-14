@@ -5,6 +5,7 @@ import "./globals.css";
 import { ptBR } from "@clerk/localizations";
 import { ThemeProvider } from "next-themes";
 import { dark, neobrutalism, shadcn } from "@clerk/ui/themes";
+import AnalyticsProvider from "@/components/analytics/AnalyticsProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -77,6 +78,7 @@ export default function RootLayout({
           {/* O tema 'simple' segue o color-scheme do html (setado pelo
               next-themes): claro no palco de dia, escuro à noite. */}
           <ClerkProvider localization={ptBR}>
+            <AnalyticsProvider />
             {children}
           </ClerkProvider>
         </ThemeProvider>

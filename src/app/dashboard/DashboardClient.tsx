@@ -4,6 +4,7 @@ import React, { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { atualizarStatusAgendamento } from '@/app/actions/agendamentos'
 import { diaLocal, horaLocal, somarDias } from '@/lib/timezone'
+import { capturarEvento } from '@/lib/analytics/client'
 import NovoAgendamentoModal, { type DadosRemarcacao } from './NovoAgendamentoModal'
 
 interface Cliente {
@@ -177,6 +178,7 @@ export default function DashboardClient({
     const copiarLink = () => {
         if (!linkPublico) return
         navigator.clipboard.writeText(linkPublico)
+        capturarEvento('booking_link_copied')
         setCopiado(true)
         setTimeout(() => setCopiado(false), 2000)
     }

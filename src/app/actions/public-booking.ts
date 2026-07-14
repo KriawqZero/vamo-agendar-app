@@ -7,6 +7,7 @@ import { diaLocal, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { dispararNotificacoesAgendamento } from '@/lib/notificacoes-agendamento'
 import { obterSlugEfetivo } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
+import { capturarEventoTenant } from '@/lib/analytics/server'
 
 interface AgendamentoPublicoParams {
     tenantId: string;
@@ -86,6 +87,12 @@ export async function criarAgendamentoPublico({
 
     const horarioEscolhidoValido = slotsLivres.some(sl => sl.datetime === dataHora)
     if (!horarioEscolhidoValido) {
+        // Funil: abandono por double-booking. Nunca pode afetar o throw abaixo.
+        try {
+            capturarEventoTenant('booking_failed', tenantId, { motivo: 'slot_indisponivel' })
+        } catch (analyticsErr) {
+            console.error('[analytics] booking_failed não capturado (ignorado):', analyticsErr)
+        }
         throw new Error('Este horário já foi preenchido ou está indisponível. Por favor, selecione outro.')
     }
 
@@ -148,7 +155,23 @@ export async function criarAgendamentoPublico({
 
     if (agError || !agendamento) {
         console.error('Erro ao criar agendamento:', agError?.message)
+        // Funil: sem isto o visitante que passou da validação de slot mas caiu
+        // no INSERT sumiria do funil sem motivo. Nunca afeta o throw abaixo.
+        try {
+            capturarEventoTenant('booking_failed', tenantId, { motivo: 'erro_interno' })
+        } catch (analyticsErr) {
+            console.error('[analytics] booking_failed não capturado (ignorado):', analyticsErr)
+        }
         throw new Error('Erro ao confirmar o agendamento.')
+    }
+
+    // Funil: agendamento público concluído (sem nome/telefone — nunca PII).
+    try {
+        capturarEventoTenant('booking_completed', tenantId, {
+            servico_duracao_minutos: servico.duracao_minutos
+        })
+    } catch (analyticsErr) {
+        console.error('[analytics] booking_completed não capturado (ignorado):', analyticsErr)
     }
 
     // 7. Disparar notificações assíncronas (WhatsApp + QStash).
