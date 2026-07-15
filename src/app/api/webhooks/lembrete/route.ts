@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { processarMensagemTemplate, enviarMensagemWhatsApp } from '@/lib/whatsapp-helper'
+import { processarMensagemTemplate, enviarMensagemWhatsApp, registrarDisparo } from '@/lib/whatsapp-helper'
+import { formatarDataHora, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { PLANOS } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
+import { capturarEventoTenant } from '@/lib/analytics/server'
 
 export async function POST(req: NextRequest) {
     try {
@@ -56,6 +58,13 @@ export async function POST(req: NextRequest) {
         // Se o agendamento foi cancelado, abortamos o envio sem disparar erro
         if (agendamento.status === 'cancelado') {
             console.log(`Lembrete ignorado. Agendamento ${agendamentoId} está com status cancelado.`)
+            await registrarDisparo(supabase, {
+                tenantId,
+                agendamentoId,
+                tipo: 'lembrete',
+                status: 'ignorado',
+                motivo: 'agendamento_cancelado'
+            })
             return NextResponse.json({ success: true, message: 'Agendamento cancelado. Lembrete ignorado.' })
         }
 
@@ -63,12 +72,18 @@ export async function POST(req: NextRequest) {
         const plano = await obterPlanoVigentePublico(supabase, tenantId)
         if (!PLANOS[plano].recursos.whatsapp) {
             console.log(`Lembrete ignorado. Tenant ${tenantId} não possui WhatsApp no plano vigente.`)
+            await registrarDisparo(supabase, {
+                tenantId,
+                agendamentoId,
+                tipo: 'lembrete',
+                status: 'ignorado',
+                motivo: 'plano_sem_whatsapp'
+            })
             return NextResponse.json({ success: true, message: 'Plano sem WhatsApp. Lembrete ignorado.' })
         }
 
         // Coagir relações retornadas como possivelmente arrays pelo Supabase Client
         const clienteObj = Array.isArray(agendamento.clientes) ? agendamento.clientes[0] : agendamento.clientes
-        const servicoObj = Array.isArray(agendamento.servicos) ? agendamento.servicos[0] : agendamento.servicos
 
         if (!clienteObj || !clienteObj.telefone) {
             console.warn(`Lembrete ignorado. Cliente associado sem dados de contato.`)
@@ -78,7 +93,7 @@ export async function POST(req: NextRequest) {
         // 5. Buscar perfil do estabelecimento e configurações do WhatsApp
         const { data: perfil } = await supabase
             .from('perfis_empresas')
-            .select('nome_estabelecimento')
+            .select('nome_estabelecimento, timezone')
             .eq('tenant_id', tenantId)
             .maybeSingle()
 
@@ -90,19 +105,18 @@ export async function POST(req: NextRequest) {
 
         if (!config || config.status !== 'conectado' || !config.instance_token) {
             console.log(`WhatsApp desconectado ou não configurado para o tenant ${tenantId}.`)
+            await registrarDisparo(supabase, {
+                tenantId,
+                agendamentoId,
+                tipo: 'lembrete',
+                status: 'ignorado',
+                motivo: 'whatsapp_desconectado'
+            })
             return NextResponse.json({ success: true, message: 'Notificações de WhatsApp inativas para o tenant.' })
         }
 
-        // 6. Formatar data e hora local
-        const dateObj = new Date(agendamento.data_hora)
-        const datePart = dateObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-        const timePart = dateObj.toLocaleTimeString('pt-BR', {
-            timeZone: 'America/Sao_Paulo',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-        })
-        const dataHoraStr = `${datePart} às ${timePart}`
+        // 6. Formatar data e hora no fuso do estabelecimento
+        const dataHoraStr = formatarDataHora(agendamento.data_hora, perfil?.timezone || TIMEZONE_PADRAO)
 
         // 7. Substituir variáveis e disparar lembrete via WhatsApp
         const textoLembrete = processarMensagemTemplate({
@@ -119,14 +133,34 @@ export async function POST(req: NextRequest) {
             textoLembrete
         )
 
-        if (!enviado) {
+        if (!enviado.ok) {
+            // Mantém o HTTP 500 para que o QStash re-tente. Linhas duplicadas de
+            // log entre tentativas são aceitáveis (log append-only de auditoria).
+            await registrarDisparo(supabase, {
+                tenantId,
+                agendamentoId,
+                tipo: 'lembrete',
+                status: 'falha',
+                motivo: enviado.motivo
+            })
+            // Analytics: espelho agregado do disparo (fonte da verdade é o Postgres).
+            capturarEventoTenant('whatsapp_reminder_failed', tenantId, { motivo: enviado.motivo ?? null })
             return NextResponse.json({ error: 'Falha no disparo do WhatsApp.' }, { status: 500 })
         }
 
+        await registrarDisparo(supabase, {
+            tenantId,
+            agendamentoId,
+            tipo: 'lembrete',
+            status: 'executado'
+        })
+        // Analytics: espelho agregado do disparo (fonte da verdade é o Postgres).
+        capturarEventoTenant('whatsapp_reminder_sent', tenantId)
+
         return NextResponse.json({ success: true, message: 'Lembrete enviado com sucesso.' })
 
-    } catch (err: any) {
+    } catch (err) {
         console.error('Erro ao processar webhook de lembrete:', err)
-        return NextResponse.json({ error: err.message || 'Erro interno.' }, { status: 500 })
+        return NextResponse.json({ error: err instanceof Error && err.message ? err.message : 'Erro interno.' }, { status: 500 })
     }
 }

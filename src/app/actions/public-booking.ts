@@ -3,9 +3,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { obterSlotsDisponiveis } from '@/lib/booking-engine'
-import { processarMensagemTemplate, enviarMensagemWhatsApp, agendarLembreteQStash } from '@/lib/whatsapp-helper'
-import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
+import { diaLocal, TIMEZONE_PADRAO } from '@/lib/timezone'
+import { dispararNotificacoesAgendamento } from '@/lib/notificacoes-agendamento'
+import { obterSlugEfetivo } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
+import { capturarEventoTenant } from '@/lib/analytics/server'
 
 interface AgendamentoPublicoParams {
     tenantId: string;
@@ -44,16 +46,18 @@ export async function criarAgendamentoPublico({
 
     const supabase = await createClient()
 
-    // 2. Validar que o tenant existe
+    // 2. Validar que o tenant existe (e obter o fuso do estabelecimento)
     const { data: tenant, error: tError } = await supabase
         .from('perfis_empresas')
-        .select('tenant_id')
+        .select('tenant_id, timezone')
         .eq('tenant_id', tenantId)
         .maybeSingle()
 
     if (tError || !tenant) {
         throw new Error('Estabelecimento inválido ou indisponível.')
     }
+
+    const timezone = tenant.timezone || TIMEZONE_PADRAO
 
     // 3. Buscar informações do serviço (duração), exigindo que esteja ativo e
     // pertença ao MESMO tenant — impede agendamento cruzado entre tenants.
@@ -70,28 +74,25 @@ export async function criarAgendamentoPublico({
     }
 
     // 4. Validar se o slot de horário escolhido ainda está livre
-    // Extrai a data YYYY-MM-DD da dataHora (que está no offset local -03:00)
-    // Para converter a data_hora ISO (UTC) de volta para o dia local -03:00:
-    const formatter = new Intl.DateTimeFormat('pt-BR', {
-        timeZone: 'America/Sao_Paulo',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-    })
-    
-    const partes = formatter.formatToParts(dataLocal)
-    const map = Object.fromEntries(partes.map(p => [p.type, p.value]))
-    const dateStr = `${map.year}-${map.month}-${map.day}`
+    // Extrai a data YYYY-MM-DD do instante escolhido, no fuso do estabelecimento.
+    const dateStr = diaLocal(dataLocal, timezone)
 
     const slotsLivres = await obterSlotsDisponiveis({
         tenantId,
         dateStr,
         duracaoServicoMinutos: servico.duracao_minutos,
-        supabase
+        supabase,
+        timezone
     })
 
     const horarioEscolhidoValido = slotsLivres.some(sl => sl.datetime === dataHora)
     if (!horarioEscolhidoValido) {
+        // Funil: abandono por double-booking. Nunca pode afetar o throw abaixo.
+        try {
+            capturarEventoTenant('booking_failed', tenantId, { motivo: 'slot_indisponivel' })
+        } catch (analyticsErr) {
+            console.error('[analytics] booking_failed não capturado (ignorado):', analyticsErr)
+        }
         throw new Error('Este horário já foi preenchido ou está indisponível. Por favor, selecione outro.')
     }
 
@@ -154,66 +155,37 @@ export async function criarAgendamentoPublico({
 
     if (agError || !agendamento) {
         console.error('Erro ao criar agendamento:', agError?.message)
+        // Funil: sem isto o visitante que passou da validação de slot mas caiu
+        // no INSERT sumiria do funil sem motivo. Nunca afeta o throw abaixo.
+        try {
+            capturarEventoTenant('booking_failed', tenantId, { motivo: 'erro_interno' })
+        } catch (analyticsErr) {
+            console.error('[analytics] booking_failed não capturado (ignorado):', analyticsErr)
+        }
         throw new Error('Erro ao confirmar o agendamento.')
     }
 
-    // 7. Disparar notificações assíncronas (WhatsApp + QStash)
+    // Funil: agendamento público concluído (sem nome/telefone — nunca PII).
     try {
-        // A fase de disparo também precisa do cliente privilegiado: o RLS
-        // bloqueia — corretamente — whatsapp_configs para anon (instance_token
-        // nunca pode ser público). Qualquer falha aqui é engolida pelo catch —
-        // o agendamento nunca quebra.
-        const { data: perfil } = await admin
-            .from('perfis_empresas')
-            .select('nome_estabelecimento')
-            .eq('tenant_id', tenantId)
-            .maybeSingle()
-
-        const empresaNome = perfil?.nome_estabelecimento || 'Estabelecimento'
-
-        const { data: config } = await admin
-            .from('whatsapp_configs')
-            .select('*')
-            .eq('tenant_id', tenantId)
-            .maybeSingle()
-
-        const plano = await obterPlanoVigentePublico(admin, tenantId)
-
-        if (config && config.status === 'conectado' && config.instance_token && PLANOS[plano].recursos.whatsapp) {
-            const dateObj = new Date(dataHora)
-            const datePart = dateObj.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
-            const timePart = dateObj.toLocaleTimeString('pt-BR', {
-                timeZone: 'America/Sao_Paulo',
-                hour: '2-digit',
-                minute: '2-digit',
-                hour12: false
-            })
-            const dataHoraStr = `${datePart} às ${timePart}`
-
-            const textoConfirmacao = processarMensagemTemplate({
-                template: config.mensagem_confirmacao,
-                clienteNome,
-                empresaNome,
-                dataHoraStr
-            })
-
-            await enviarMensagemWhatsApp(
-                config.instance_name,
-                config.instance_token,
-                clienteTelefone,
-                textoConfirmacao
-            )
-
-            const targetTime = dateObj.getTime() - (config.tempo_lembrete_minutos * 60 * 1000)
-            const now = Date.now()
-
-            if (targetTime > now) {
-                await agendarLembreteQStash(agendamento.id, tenantId, targetTime)
-            }
-        }
-    } catch (err) {
-        console.error('Erro ao processar notificações automáticas do agendamento:', err)
+        capturarEventoTenant('booking_completed', tenantId, {
+            servico_duracao_minutos: servico.duracao_minutos
+        })
+    } catch (analyticsErr) {
+        console.error('[analytics] booking_completed não capturado (ignorado):', analyticsErr)
     }
+
+    // 7. Disparar notificações assíncronas (WhatsApp + QStash).
+    // A fase de disparo também precisa do cliente privilegiado: o RLS bloqueia
+    // — corretamente — whatsapp_configs para anon (instance_token nunca pode
+    // ser público). A função nunca lança — o agendamento nunca quebra.
+    await dispararNotificacoesAgendamento(admin, {
+        agendamentoId: agendamento.id,
+        tenantId,
+        clienteNome,
+        clienteTelefone,
+        dataHora,
+        timezone
+    })
 
     return agendamento
 }
@@ -278,10 +250,19 @@ export async function obterDadosBookingPublico(slug: string) {
  */
 export async function obterSlotsPublicos(tenantId: string, dateStr: string, duracaoMinutos: number) {
     const supabase = await createClient()
+
+    // Fuso do estabelecimento (SELECT anon permitido em perfis_empresas).
+    const { data: perfil } = await supabase
+        .from('perfis_empresas')
+        .select('timezone')
+        .eq('tenant_id', tenantId)
+        .maybeSingle()
+
     return obterSlotsDisponiveis({
         tenantId,
         dateStr,
         duracaoServicoMinutos: duracaoMinutos,
-        supabase
+        supabase,
+        timezone: perfil?.timezone || TIMEZONE_PADRAO
     })
 }

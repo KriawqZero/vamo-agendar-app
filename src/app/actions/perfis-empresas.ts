@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { auth, clerkClient } from '@clerk/nextjs/server'
 import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
 import { obterAssinaturaVigente } from '@/lib/assinaturas'
+import { ehTimezoneValida, TIMEZONE_PADRAO } from '@/lib/timezone'
 
 interface PerfilEmpresaInput {
     slug: string;
@@ -12,6 +13,7 @@ interface PerfilEmpresaInput {
     telefoneContato?: string;
     corMarca?: string | null;
     exibirLogo?: boolean;
+    timezone?: string;
 }
 
 /**
@@ -120,7 +122,7 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
     // Busca o perfil atual para decidir slug e detectar alterações bloqueadas
     const { data: perfilAtual, error: perfilError } = await supabase
         .from('perfis_empresas')
-        .select('slug, slug_gratuito, cor_marca, logo_url, exibir_logo')
+        .select('slug, slug_gratuito, cor_marca, logo_url, exibir_logo, timezone')
         .eq('tenant_id', orgId)
         .maybeSingle()
 
@@ -167,6 +169,16 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
         throw new Error('Exibir o logo é um recurso do plano Pro. Faça upgrade em Plano no menu.')
     }
 
+    // Fuso horário do estabelecimento (sem gating de plano). Validado contra a
+    // lista IANA suportada pelo runtime; ausente, preserva o valor atual/padrão.
+    let timezoneFinal = perfilAtual?.timezone ?? TIMEZONE_PADRAO
+    if (input.timezone !== undefined) {
+        if (!ehTimezoneValida(input.timezone)) {
+            throw new Error('Fuso horário inválido.')
+        }
+        timezoneFinal = input.timezone
+    }
+
     // Logo não é input do usuário: para tenants Pro com exibição ligada,
     // sincronizamos o logo da organização configurado no Clerk (evita URLs
     // arbitrárias e bucket próprio). Caso contrário, o logo fica nulo.
@@ -187,6 +199,7 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
         cor_marca: corMarcaNova,
         logo_url: logoUrlNovo,
         exibir_logo: exibirLogoNovo,
+        timezone: timezoneFinal,
         updated_at: new Date().toISOString()
     }
 

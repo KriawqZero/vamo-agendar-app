@@ -4,7 +4,7 @@ import { auth } from '@clerk/nextjs/server'
 import { createClient } from '@/lib/supabase/server'
 import { PLANOS } from '@/lib/planos'
 import { obterAssinaturaVigente } from '@/lib/assinaturas'
-import { obterWhatsappConfig } from '@/app/actions/whatsapp'
+import { sincronizarStatusWhatsApp, listarDisparosWhatsApp } from '@/app/actions/whatsapp'
 import WhatsappClient from './WhatsappClient'
 
 export default async function WhatsappPage() {
@@ -51,8 +51,10 @@ export default async function WhatsappPage() {
         )
     }
 
-    // 2. Buscar a configuração de WhatsApp da organização ativa no banco
-    const config = await obterWhatsappConfig()
+    // 2. Sincronizar o status real com o gateway (não confia só no banco) e
+    // carregar os últimos disparos para o painel de auditoria.
+    const config = await sincronizarStatusWhatsApp()
+    const disparos = await listarDisparosWhatsApp()
 
-    return <WhatsappClient config={config} />
+    return <WhatsappClient config={config} disparos={disparos} />
 }

@@ -3,9 +3,9 @@
 Lista viva de tarefas identificadas. Revisar antes de cada nova etapa de
 desenvolvimento — e obrigatoriamente antes de implementar o checkout Asaas.
 
-Última atualização: 2026-07-12 (correção de priorização: produto agora, preparação
-de lançamento depois; estado de cada item verificado no código e no banco em
-2026-07-11 e re-verificado por amostragem em 2026-07-12).
+Última atualização: 2026-07-15 (adicionado o passo "Go-live do banco" em "Demais
+preparações de lançamento": ativação do hook de imutabilidade de migrations e troca
+da seção DEV do CLAUDE.md; priorização anterior de 2026-07-12 mantida).
 
 ---
 
@@ -38,7 +38,19 @@ Ordem de leitura: **P0** (produto agora) → **P1** (melhorias do núcleo em seg
 
 ## 🔴 P0 — Produto agora
 
-### 1. Experiência e confiabilidade funcional do WhatsApp (Evolution/Baileys)
+### 1. ~~Experiência e confiabilidade funcional do WhatsApp (Evolution/Baileys)~~ — ✅ Resolvido
+
+**Resolvido em 2026-07-13** (ver "Itens resolvidos" no fim deste documento). Estados
+reais de conexão sincronizados com o gateway, log append-only `disparos_whatsapp`,
+mensagem de teste, cancelamento de lembrete no QStash e painel de auditoria no
+dashboard. Verificação manual com WhatsApp/QStash reais em piloto continua
+recomendada (o fluxo foi validado com testes unitários + mock do gateway +
+migration aplicada em banco local). A seção original segue abaixo como referência
+histórica do escopo.
+
+<details><summary>Escopo original (histórico)</summary>
+
+### (histórico) 1. Experiência e confiabilidade funcional do WhatsApp (Evolution/Baileys)
 
 O WhatsApp é a função mais crítica do SaaS e o principal motivo percebido para pagar
 o plano Pro. Tratar como prioridade máxima de produto. O resultado esperado é uma
@@ -113,6 +125,8 @@ o webhook diretamente ou publicar teste no QStash. **Remover após o diagnóstic
 apagar `src/app/debug/qstash/` e `src/app/actions/debug-qstash.ts` e a flag
 `DEBUG_QSTASH` dos ambientes.
 
+</details>
+
 ### 2. ~~Bug crítico — booking público quebrado para visitante anônimo~~ — ✅ Resolvido
 
 **Resolvido em 2026-07-13** (ver "Itens resolvidos" no fim deste documento). As
@@ -122,7 +136,15 @@ anônimo, reaproveitamento por telefone, serviço de outro tenant, slot ocupado,
 tenant inexistente e `dataHora` inválida. A numeração dos itens seguintes foi
 mantida para preservar as referências cruzadas (P0.3, P0.4...).
 
-### 3. Agendamento manual pelo profissional
+### 3. ~~Agendamento manual pelo profissional~~ — ✅ Resolvido
+
+**Resolvido em 2026-07-13** (ver "Itens resolvidos" no fim deste documento).
+CTA "+ agendar" (desktop) + FAB (mobile) no dashboard abrem um modal em 4 passos
+(cliente com busca/cadastro inline → serviço → data/horário pela mesma engine →
+resumo com WhatsApp opcional); conflito bloqueado sem override; remarcação com
+realinhamento do lembrete no QStash.
+
+### (histórico) 3. Agendamento manual pelo profissional
 
 Não existe hoje **nenhum** caminho para o profissional registrar um horário combinado
 por WhatsApp, Instagram, ligação, presencialmente ou como retorno combinado durante um
@@ -163,7 +185,16 @@ normal = produto). A proteção **atômica** contra requisições simultâneas f
 "Obrigatório antes do lançamento" — quando ela existir, a action manual adota a mesma
 proteção.
 
-### 4. Fuso horário por tenant
+### 4. ~~Fuso horário por tenant~~ — ✅ Resolvido
+
+**Resolvido em 2026-07-13** (ver "Itens resolvidos" no fim deste documento).
+Coluna `timezone` IANA em `perfis_empresas`, helper central `src/lib/timezone.ts`
+e eliminação de todos os offsets fixos. A seção original segue abaixo como
+referência histórica do escopo.
+
+<details><summary>Escopo original (histórico)</summary>
+
+### (histórico) 4. Fuso horário por tenant
 
 Remover a suposição global de `America/Sao_Paulo` e o offset fixo `-03:00`. O produto
 atende o Brasil inteiro e precisa funcionar em `America/Campo_Grande`, `America/Manaus`
@@ -206,7 +237,18 @@ fuso por profissional/serviço.
 reutilizados pela proteção atômica de double-booking (pré-lançamento) — mais um motivo
 para o helper único.
 
-### 5. Eventos de funil do produto
+</details>
+
+### 5. ~~Eventos de funil do produto~~ — ✅ Resolvido
+
+**Resolvido em 2026-07-13** (ver "Itens resolvidos" no fim deste documento).
+PostHog Cloud (opção 3: analytics gerenciado para funil + Postgres como fonte da
+verdade operacional), tudo no-op sem `NEXT_PUBLIC_POSTHOG_KEY`, tenant
+pseudonimizado por hash, zero PII. Taxonomia documentada em
+`docs/08-ANALYTICS_E_FUNIL.md`. **Passo do owner:** criar projeto no PostHog e
+configurar `NEXT_PUBLIC_POSTHOG_KEY` + `ANALYTICS_TENANT_SALT` no deploy.
+
+### (histórico) 5. Eventos de funil do produto
 
 **O que são:** eventos de funil são registros das etapas importantes percorridas pelos
 usuários. Eles mostram quantas pessoas avançam ou abandonam cada ponto do produto
@@ -267,7 +309,16 @@ existe documentação curta da taxonomia (neste repo).
 **Dependências/decisões:** escolher a ferramenta gerenciada; definir pseudonimização
 do `tenant_id`.
 
-### 6. Landings específicas por nicho
+### 6. ~~Landings específicas por nicho~~ — ✅ Resolvido
+
+**Resolvido em 2026-07-13** (ver "Itens resolvidos" no fim deste documento).
+Três landings verticais SSG (`/para/designer-de-sobrancelhas`, `/para/lash-designer`,
+`/para/manicure`) com template compartilhado, copy honesta por nicho, demo
+parametrizada, planos de `src/lib/planos.ts` e `landing_viewed` com o slug do nicho.
+Prova social ficou de fora deliberadamente (não há pilotos reais — adicionar quando
+existirem).
+
+### (histórico) 6. Landings específicas por nicho
 
 Direção de produto aprovada pelo owner (já existia conceitualmente na versão 1
 descontinuada). A landing principal pode continuar genérica, mas devem existir
@@ -337,6 +388,11 @@ posterior, salvo evidência de necessidade nos pilotos.
 
 ### 9. Onboarding, ativação e melhorias baratas já apontadas em revisões
 
+- `WhatsappClient.tsx` inteiro fora do sistema de tokens visuais (usa
+  `zinc-*`/`emerald` herdados do arquivo antigo em vez de
+  `palco/bastidor/fio/giz/marca`) — a página destoa do restante da área logada.
+  Migrar para os tokens quando houver folga; sem impacto funcional. *(apontado
+  na revisão final de UX, 2026-07-14)*
 - Dashboard (checklist de onboarding): as duas queries de contagem em
   `src/app/dashboard/page.tsx` não checam `error` (falha silenciosa vira "não
   configurado") e rodam sequencialmente (paralelizar com `Promise.all`). *(pendente,
@@ -534,11 +590,25 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
     banner, sem prazo).
 - Cobrança self-service; experiência definitiva de upgrade/downgrade.
 - Revisão de segurança geral (secrets, headers, webhooks, superfícies públicas).
+  - Webhook de lembrete (achado da revisão final de 2026-07-14, pré-existente):
+    o secret trafega em query string e o fallback `'secret-key'` vale nos dois
+    lados quando `QSTASH_CURRENT_SIGNING_KEY` não está setada — em produção a
+    env é OBRIGATÓRIA; o ideal é migrar para verificação da assinatura real do
+    QStash (header `Upstash-Signature`).
 - Política de privacidade e termos finais; revisão final de LGPD; fluxo de
   exclusão/exportação de dados.
 - Testes críticos de segurança e concorrência (ver seção "Qualidade e testes").
 - Observabilidade de produção (error tracking, alertas). *Parte mínima para pilotos:
   o log de disparos do P0.1 já cobre o essencial de mensageria.*
+- **Go-live do banco — fim da fase "DEV livre" de migrations** (três passos, na ordem):
+  1. Ativar o hook PreToolUse de imutabilidade de migrations, pronto e testado em
+     `.claude/hooks/migrations-prod.md` (copiar o bloco JSON para `hooks.PreToolUse`
+     do `.claude/settings.json` seguindo as instruções do próprio arquivo).
+  2. Remover do `CLAUDE.md` o bullet "Editar migrations existentes é permitido NESTA
+     FASE" (seção "Banco de dados (fase atual: DEV)").
+  3. Substituir a seção "Banco de dados (fase atual: DEV)" do `CLAUDE.md` pela versão
+     prod: migrations aplicadas são imutáveis, correção = nova migration via
+     `supabase db diff`, hard reset proibido.
 - Backups e recuperação; testes de carga.
 - Domínio definitivo, e-mails de produção e configurações finais (lembrete herdado:
   configurar `SUPABASE_SECRET_KEY` e demais envs no Railway/produção).
@@ -611,6 +681,189 @@ primeiro item P0 com testes for implementado.
 
 ## ✅ Itens resolvidos (histórico)
 
+- **2026-07-13 — P0.6: landings específicas por nicho**:
+  - **3 verticais SSG** em `src/app/para/[nicho]/page.tsx` (template
+    compartilhado; `dynamicParams = false` + `generateStaticParams` — as três
+    rotas saem estáticas no build, sem Clerk/Supabase no caminho):
+    `/para/designer-de-sobrancelhas`, `/para/lash-designer`, `/para/manicure`.
+    Copy centralizada em `src/lib/nichos.ts` (dor com conversa de WhatsApp,
+    3 benefícios, serviços da demo, 4 respostas de "como funciona", SEO por
+    nicho).
+  - **Identidade visual oficial preservada**: mesmos tokens/gradiente/Poppins,
+    reuso de LuzAmbiente/LogoMarca/DiaNoite/SeletorTema/Reveal;
+    `DemoAgendamento` parametrizado por props opcionais com defaults idênticos
+    ao comportamento anterior (landing principal inalterada — verificado no
+    diff).
+  - **Honestidade da copy** (verificada na revisão): zero promessas de
+    multi-profissional, pagamento pelo app, app instalável ou WhatsApp API
+    oficial (a seção "o que não tenta ser" nega explicitamente); WhatsApp
+    automático sempre citado como plano Pro; planos exclusivamente de
+    `src/lib/planos.ts`; sem prova social inventada (adicionar quando houver
+    pilotos). Achado importante da revisão corrigido: a vertical lash prometia
+    "remarcação sozinha" (fluxo que o cliente final não tem) — reescrita
+    honesta ("escolhe o novo horário pelo link e você libera o antigo no
+    painel").
+  - **SEO/OG**: `generateMetadata` por nicho com canonical; corrigido o merge
+    raso do Next que descartava a og:image do layout raiz (previews no
+    WhatsApp sairiam sem imagem) — openGraph completo + twitter card por
+    vertical.
+  - `/para(.*)` no `isPublicRoute` do proxy; `landing_viewed` com
+    `nicho: <slug>` (P0.5) nas verticais.
+  - Verificado em 2026-07-13: `pnpm build` com as 3 rotas ● SSG, `pnpm test`
+    32/32, lint sem erros novos. Resíduo aceito: `PRECO_ORIGINAL` (preço cheio
+    riscado) duplicado entre a landing principal e o template vertical — ao
+    encerrar o desconto de lançamento, editar os dois arquivos.
+- **2026-07-13 — P0.5: eventos de funil do produto (PostHog Cloud)**:
+  - **Arquitetura** (opção 3 registrada): `posthog-js` no client (init lazy,
+    `capture_pageview/autocapture: false`, `person_profiles: 'identified_only'`,
+    **session replay e surveys travados como desativados no código**) e, no
+    servidor, `fetch` direto ao endpoint de ingestão dentro de `after()` com
+    fallback fire-and-forget (sem posthog-node) — `src/lib/analytics/{client,
+    server,tenant}.ts` + ilhas em `src/components/analytics/`. **Sem
+    `NEXT_PUBLIC_POSTHOG_KEY` tudo é no-op** (build/dev/produção funcionam sem
+    credenciais; até os counts de "primeiro serviço/horários" são pulados).
+  - **Privacidade**: nenhum evento leva nome/telefone/e-mail/conteúdo de
+    mensagem (varredura completa na revisão); `tenant_id` só como
+    `sha256(ANALYTICS_TENANT_SALT + orgId)` truncado a 16 chars — o `org_...`
+    cru nunca chega ao PostHog.
+  - **Eventos**: `landing_viewed` (com `nicho`), `signup_started`,
+    `signup_completed` (conta <24h + flag localStorage), `first_service_created`,
+    `schedule_configured`, `booking_link_copied`, `booking_started`,
+    `booking_completed`, `booking_failed` (motivos `slot_indisponivel`/
+    `erro_interno`), `plans_viewed`, `upgrade_clicked`, `whatsapp_connect_started`,
+    `whatsapp_connected` e espelhos agregados `whatsapp_confirmation_sent/failed`,
+    `whatsapp_reminder_scheduled/sent/failed` — **`disparos_whatsapp` no Postgres
+    segue sendo a fonte da verdade operacional**. UTM inicial preservada até o
+    cadastro pelo próprio posthog-js (verificado no código da lib).
+  - **Taxonomia documentada** em `docs/08-ANALYTICS_E_FUNIL.md`, incluindo
+    eventos deliberadamente fora de escopo e a **limitação conhecida** do funil
+    B2C (started sai do browser anônimo, completed do servidor com tenant hash —
+    conversão B2C medida em agregado via Trends, não em insight de Funnel).
+  - Verificado em 2026-07-13: `pnpm test` 32/32, `pnpm build` verde **sem** as
+    envs de PostHog, lint sem erros novos nos 21+ arquivos tocados, invariantes
+    preservadas (mensageria nunca lança; HTTP 500 de retry do webhook intacto;
+    polling do WhatsApp intocado). Revisão independente sem críticos; o
+    importante (distinct_id do funil B2C) foi documentado e os menores baratos
+    corrigidos (gate dos counts, `booking_failed` no erro de INSERT, replay
+    desativado no código).
+  - **Passos do owner no deploy**: criar projeto PostHog Cloud e configurar
+    `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST` (se não-US) e
+    `ANALYTICS_TENANT_SALT` (fixo — trocá-lo depois desconecta o histórico).
+    Atenção: a ingestão do PostHog responde 200 mesmo com key inválida — validar
+    vendo eventos chegarem no projeto.
+- **2026-07-13 — P0.3: agendamento manual pelo profissional**:
+  - **CTA + modal mobile-first**: botão "+ agendar" no cabeçalho do dashboard
+    (desktop) e FAB no mobile (só com setup completo) abrem
+    `src/app/dashboard/NovoAgendamentoModal.tsx` — bottom-sheet no mobile, modal
+    centrado no desktop; 4 passos: cliente → serviço → data/horário → resumo.
+    Acessibilidade: `role="dialog"`, `aria-modal`, Escape, foco inicial e focus
+    trap no Tab; fechamento bloqueado durante o save.
+  - **Cliente**: busca com debounce de 300 ms (`listarClientes` em
+    `src/app/actions/clientes.ts` — nome `ilike` ou telefone, termo sanitizado
+    contra injeção na sintaxe `or()` do PostgREST, limit 20) **ou** cadastro
+    inline (nome + WhatsApp com máscara). Telefone repetido no tenant reaproveita
+    o registro existente (mesma semântica do booking público).
+  - **Criação** (`criarAgendamentoManual`): valida serviço ativo do tenant,
+    horário futuro, revalida o slot na **mesma engine** (`obterSlotsDisponiveis`,
+    comparação de string exata) — conflito bloqueado sem override ("Este horário
+    conflita com outro agendamento…" e o modal volta à grade com refetch);
+    INSERT nasce `confirmado`; `revalidatePath('/dashboard')`.
+  - **WhatsApp opcional**: checkbox no resumo APENAS com plano Pro + instância
+    conectada (`podeEnviarWhatsapp` calculado no servidor); o disparo usa o bloco
+    extraído para `src/lib/notificacoes-agendamento.ts`
+    (`dispararNotificacoesAgendamento`, compartilhado byte a byte com o booking
+    público, que nunca lança — mensageria jamais quebra agendamento).
+  - **Remarcação** (`remarcarAgendamento`): botão "remarcar" nas linhas ativas
+    abre o modal direto na grade; revalida com `ignorarAgendamentoId` (não colide
+    consigo mesmo); bloqueia cancelado/concluído; **realinha o lembrete** —
+    cancela o job antigo no QStash (motivo `remarcacao`) e agenda um novo para o
+    horário remarcado (tudo em try/catch: falha de mensageria nunca desfaz a
+    remarcação).
+  - Extras da revisão independente aplicados: validação de `dateStr` em
+    `obterSlotsDashboard`, rejeição de horário no passado (cobre régua stale na
+    virada da meia-noite), refetch da grade após conflito.
+  - Verificado em 2026-07-13: `pnpm test` (32/32), `pnpm build` verde, lint dos
+    arquivos tocados sem erros novos; revisão independente sem achados críticos
+    (o único importante — lembrete órfão na remarcação — foi corrigido).
+  - Resíduos conhecidos (não bloqueiam): "editar" limita-se a remarcar horário
+    (trocar serviço/cliente de um agendamento existente não foi pedido); sem
+    toast de sucesso além do fechamento do modal + agenda atualizada; proteção
+    atômica contra requisições simultâneas segue no item pré-lançamento (a action
+    manual adotará a mesma proteção quando existir).
+- **2026-07-13 — P0.4: fuso horário IANA por tenant**:
+  - Coluna `timezone text NOT NULL DEFAULT 'America/Sao_Paulo'` em `perfis_empresas`
+    (migration `20260713165137`, validada com `db reset` local; DEFAULT cobre linhas
+    e o auto-provisionamento existentes). Configurável na aba Perfil do dashboard
+    (select com 10 fusos brasileiros), validado no servidor com
+    `Intl.supportedValuesOf('timeZone')` — sem gating de plano.
+  - Novo helper único `src/lib/timezone.ts` (isomórfico, sem lib nova — Intl):
+    `diaLocal`, `horaLocal`, `diaDaSemana` (independente do fuso do servidor),
+    `somarDias`, `instanteDe` (parede local→UTC por ponto fixo), `limitesDoDia`
+    (fim **exclusivo** — corrige a janela perdida de 23:59:59–00:00),
+    `formatarDataHora(Longa)`, `TIMEZONES_BRASIL`.
+  - Offsets fixos `-03:00`/suposições de São Paulo eliminados de: booking-engine
+    (limites, ISO do slot, dia da semana), public-booking (dia local + formatação
+    WhatsApp), listarAgendamentos (filtros gte/lt), dashboard (page + client),
+    BookingWizard (14 dias + formatação final), webhook de lembrete. O fuso vem
+    SEMPRE do banco no servidor; rótulos de calendário renderizados em UTC-noon
+    (independem do navegador). Carimbo do log de disparos fica no fuso do leitor
+    (decisão documentada no código).
+  - Engine ganhou `ignorarAgendamentoId` (`.neq`) — preparo da remarcação do P0.3.
+  - Testes: 18 novos (32 no total) cobrindo São Paulo E Campo Grande (limites de
+    dia, round-trip, slots distintos por fuso, ocupação correta) + **teste de
+    regressão byte a byte**: para America/Sao_Paulo os slots são idênticos ao
+    formato antigo (a validação do booking público compara string exata).
+  - Revisão independente sem achados críticos/importantes. Observação registrada:
+    se o Brasil readotar horário de verão com transição à meia-noite, `instanteDe`
+    pode desviar ~1h no dia da virada (horário-parede inexistente) — considerar no
+    item de double-booking atômico (pré-lançamento), que reutilizará os limites.
+- **2026-07-13 — P0.1: confiabilidade funcional do WhatsApp (Evolution/Baileys)**:
+  - **Estados reais**: CHECK de `whatsapp_configs.status` ampliado para 6 estados
+    (`desconectado|conectando|aguardando_qrcode|conectado|instavel|falha`) + coluna
+    `ultima_verificacao_em`; `sincronizarStatusWhatsApp()` consulta o
+    `connectionState` do gateway no SSR da página (timeout 4 s, nunca derruba a
+    página; `open` sempre promove a `conectado`; gateway inalcançável rebaixa
+    `conectado` → `instavel`; 404 → `falha`). Sessão caída não fica mais
+    "conectado" para sempre.
+  - **Recuperação sem suporte**: `reiniciarConexaoWhatsApp()` (delete + recriação,
+    reaproveitando a recuperação de instância órfã); QR com timeout de pareamento
+    (~2 min) e corte após 3 falhas de polling, com regeneração pela UI.
+  - **Mensagem de teste** pelo dashboard com feedback inline e registro no log.
+  - **Log de disparos**: tabela append-only `disparos_whatsapp` (RLS granular
+    SELECT/INSERT só `authenticated` do tenant, sem `anon`, sem UPDATE/DELETE;
+    sem conteúdo de mensagem/telefone) registrando confirmação enviada/falha,
+    lembrete agendado (com `qstash_message_id`)/executado/falha/ignorado (com
+    motivo)/cancelado e testes; painel "Últimos disparos" no dashboard com motivos
+    em pt-BR. Suporte responde "por que a mensagem não saiu?" olhando o painel.
+  - **Cancelamento de lembrete**: ao cancelar agendamento, o job é removido do
+    QStash (`DELETE /v2/messages/{id}`, 404 = sucesso brando); webhook re-checa o
+    status como 2ª defesa. Invariante preservada: nenhuma falha de mensageria
+    (inclusive do INSERT de log) quebra criação/cancelamento de agendamento.
+  - **Segurança**: `instance_token` deixou de ser serializado para o client
+    (selects com colunas explícitas; action morta `obterWhatsappConfig` removida).
+  - **Testes/tooling**: Vitest instalado (`pnpm test`, 14 testes de
+    `whatsapp-helper` com fetch stubado) + `scripts/mock-evolution.mjs` (gateway
+    falso para exercitar os 6 estados da UI). Runner decidido: **Vitest** (fecha a
+    decisão pendente da seção "Qualidade e testes").
+  - **Migrations**: `20260713162247_whatsapp_estados_e_log_disparos` (gerada via
+    `db diff` e limpa de GRANT/REVOKE espúrios do migra) e
+    `20260709152648_funcao_rls_auto_enable` (manual e idempotente — o event
+    trigger `ensure_rls` não é capturado pelo diff e faltava no baseline, o que
+    quebrava o shadow database; corrigido o replay completo, validado com
+    `supabase db reset` local). **Aplicadas no projeto hospedado (dev) em
+    2026-07-14 via MCP**, com o histórico de migrations reparado para espelhar o
+    repo (a baseline antiga `20260703190800_initial_schema_rebuild` foi
+    substituída no registro pela `20260708233747_baseline_schema_inicial`) —
+    `supabase db push` futuro não encontrará divergência. Validado no hospedado:
+    CHECK de 6 estados, `disparos_whatsapp` com RLS (INSERT como anon
+    rejeitado), coluna `timezone` com DEFAULT preenchida, advisor de segurança
+    zerado.
+  - **`/debug/qstash` removida** (função substituída pelo painel + log).
+    Passo manual pendente do owner: apagar a env `DEBUG_QSTASH` dos ambientes.
+  - Verificado em 2026-07-13: `pnpm test` (14/14), `pnpm build` verde, lint dos
+    arquivos tocados sem erros novos, INSERT como `anon` em `disparos_whatsapp`
+    rejeitado no banco local, revisão independente sem achados críticos (o único
+    achado importante — vazamento do `instance_token` ao client — foi corrigido).
 - **2026-07-13 — P0.2: booking público quebrado para visitante anônimo**: as
   escritas operacionais de `criarAgendamentoPublico` (lookup/criação de cliente e
   criação do agendamento) passaram a usar `createAdminClient()` **somente no

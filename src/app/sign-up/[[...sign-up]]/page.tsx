@@ -1,6 +1,7 @@
 import { SignUp } from '@clerk/nextjs'
 import PalcoAuth from '@/app/PalcoAuth'
 import DiaNoite from '@/app/DiaNoite'
+import CapturaEvento from '@/components/analytics/CapturaEvento'
 
 export default function SignUpPage() {
     return (
@@ -28,6 +29,8 @@ export default function SignUpPage() {
                 },
             ]}
         >
+            {/* Funil: início do cadastro (mount da página cobre todos os CTAs da landing) */}
+            <CapturaEvento evento="signup_started" />
             <SignUp />
         </PalcoAuth>
     )

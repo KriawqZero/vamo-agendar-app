@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
 import { PLANOS } from '@/lib/planos'
 import { obterAssinaturaVigente } from '@/lib/assinaturas'
+import { capturarEventoTenant } from '@/lib/analytics/server'
 
 interface ServicoInput {
     id?: string;
@@ -115,6 +116,22 @@ export async function salvarServico(input: ServicoInput) {
 
         return data
     } else {
+        // Funil: detecta ANTES do INSERT se este será o primeiro serviço do
+        // tenant (count barato head-only, e só com analytics ativo — sem key
+        // não gastamos uma ida ao banco). Falha aqui nunca afeta o fluxo.
+        let ehPrimeiroServico = false
+        if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+            try {
+                const { count, error: cError } = await supabase
+                    .from('servicos')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('tenant_id', orgId)
+                ehPrimeiroServico = !cError && (count ?? 0) === 0
+            } catch (analyticsErr) {
+                console.error('[analytics] contagem de serviços falhou (ignorada):', analyticsErr)
+            }
+        }
+
         // INSERT
         const { data, error } = await supabase
             .from('servicos')
@@ -125,6 +142,14 @@ export async function salvarServico(input: ServicoInput) {
         if (error) {
             console.error('Erro ao criar serviço:', error.message)
             throw new Error('Erro ao salvar o novo serviço.')
+        }
+
+        if (ehPrimeiroServico) {
+            try {
+                capturarEventoTenant('first_service_created', orgId)
+            } catch (analyticsErr) {
+                console.error('[analytics] first_service_created não capturado (ignorado):', analyticsErr)
+            }
         }
 
         return data

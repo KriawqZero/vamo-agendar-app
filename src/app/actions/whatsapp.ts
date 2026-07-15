@@ -4,6 +4,12 @@ import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
 import { PLANOS } from '@/lib/planos'
 import { obterAssinaturaVigente } from '@/lib/assinaturas'
+import {
+    mapearEstadoEvolution,
+    enviarMensagemWhatsApp,
+    registrarDisparo,
+    type ResultadoEnvio
+} from '@/lib/whatsapp-helper'
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080'
 const EVOLUTION_GLOBAL_API_KEY = process.env.EVOLUTION_GLOBAL_API_KEY || 'global_key_here'
@@ -13,31 +19,6 @@ async function exigirPlanoComWhatsapp(supabase: Awaited<ReturnType<typeof create
     if (!PLANOS[plano].recursos.whatsapp) {
         throw new Error('A integração com WhatsApp é um recurso do plano Pro. Faça upgrade em Plano no menu.')
     }
-}
-
-/**
- * Busca as configurações de WhatsApp da organização logada.
- */
-export async function obterWhatsappConfig() {
-    const { orgId } = await auth()
-    if (!orgId) {
-        throw new Error('Não autorizado. Nenhuma organização ativa.')
-    }
-
-    const supabase = await createClient()
-
-    const { data, error } = await supabase
-        .from('whatsapp_configs')
-        .select('*')
-        .eq('tenant_id', orgId)
-        .maybeSingle()
-
-    if (error) {
-        console.error('Erro ao buscar whatsapp_configs:', error.message)
-        throw new Error('Erro ao carregar configurações do WhatsApp.')
-    }
-
-    return data
 }
 
 /**
@@ -164,20 +145,34 @@ export async function criarInstanciaWhatsApp() {
         }
 
         return data
-    } catch (err: any) {
+    } catch (err) {
         console.error('Erro ao criar conexão com WhatsApp:', err)
-        throw new Error(err.message || 'Erro de comunicação com o gateway do WhatsApp.')
+        throw new Error(err instanceof Error && err.message ? err.message : 'Erro de comunicação com o gateway do WhatsApp.')
     }
 }
 
 /**
  * Busca o QR Code de conexão (base64) diretamente do Evolution API.
  * Se a API indicar que já está conectado, atualiza o status no banco de dados.
+ * O nome da instância vem SEMPRE do banco (pelo orgId da sessão) — aceitar o
+ * nome do client permitiria buscar o QR Code de instância de outro tenant.
  */
-export async function obterQrCodeWhatsApp(instanceName: string) {
+export async function obterQrCodeWhatsApp() {
     const { orgId } = await auth()
     if (!orgId) {
         throw new Error('Não autorizado.')
+    }
+
+    const supabaseNome = await createClient()
+    const { data: configNome } = await supabaseNome
+        .from('whatsapp_configs')
+        .select('instance_name')
+        .eq('tenant_id', orgId)
+        .maybeSingle()
+
+    const instanceName = configNome?.instance_name
+    if (!instanceName) {
+        throw new Error('Instância de WhatsApp não configurada.')
     }
 
     try {
@@ -242,22 +237,35 @@ export async function obterQrCodeWhatsApp(instanceName: string) {
         }
 
         return { status: 'aguardando_qrcode', qrcode }
-    } catch (err: any) {
+    } catch (err) {
         console.error('Erro ao obter QR Code:', err)
-        throw new Error(err.message || 'Erro de comunicação ao buscar QR Code.')
+        throw new Error(err instanceof Error && err.message ? err.message : 'Erro de comunicação ao buscar QR Code.')
     }
 }
 
 /**
  * Desconecta e exclui a instância de WhatsApp da Evolution API e do banco.
+ * O nome da instância vem SEMPRE do banco (pelo orgId da sessão) — aceitar o
+ * nome do client permitiria deletar a instância de outro tenant no gateway.
  */
-export async function desconectarWhatsApp(instanceName: string) {
+export async function desconectarWhatsApp() {
     const { orgId } = await auth()
     if (!orgId) {
         throw new Error('Não autorizado.')
     }
 
     const supabase = await createClient()
+
+    const { data: configNome } = await supabase
+        .from('whatsapp_configs')
+        .select('instance_name')
+        .eq('tenant_id', orgId)
+        .maybeSingle()
+
+    const instanceName = configNome?.instance_name
+    if (!instanceName) {
+        throw new Error('Instância de WhatsApp não configurada.')
+    }
 
     try {
         // 1. Chamar Evolution API para deletar instância
@@ -288,8 +296,239 @@ export async function desconectarWhatsApp(instanceName: string) {
         }
 
         return true
-    } catch (err: any) {
+    } catch (err) {
         console.error('Erro ao desconectar WhatsApp:', err)
-        throw new Error(err.message || 'Erro ao processar desconexão.')
+        throw new Error(err instanceof Error && err.message ? err.message : 'Erro ao processar desconexão.')
     }
+}
+
+/**
+ * Sincroniza o status persistido no banco com o estado real da instância no
+ * gateway (Evolution API). Somente leitura de plano (a página já barra antes),
+ * então NÃO faz gate de plano. Nunca lança exceção que derrube a página SSR:
+ * qualquer falha degrada para 'instavel' quando cabível.
+ *
+ * Regras da máquina de estados:
+ * - gateway 'open' SEMPRE promove a 'conectado' (sobrescreve instavel/falha);
+ * - banco 'aguardando_qrcode' + gateway connecting/close → mantém 'aguardando_qrcode';
+ * - gateway inalcançável (timeout/rede) → 'instavel' se o banco dizia 'conectado';
+ * - HTTP 404 (instância inexistente no gateway) com linha no banco → 'falha'.
+ */
+export async function sincronizarStatusWhatsApp() {
+    const { orgId } = await auth()
+    if (!orgId) {
+        return null
+    }
+
+    const supabase = await createClient()
+
+    // Nunca selecionar instance_token aqui: o retorno desta função é passado
+    // como prop a um Client Component e seria serializado até o browser.
+    const { data: config } = await supabase
+        .from('whatsapp_configs')
+        .select('id, instance_name, status, ultima_verificacao_em, mensagem_confirmacao, mensagem_lembrete, tempo_lembrete_minutos')
+        .eq('tenant_id', orgId)
+        .maybeSingle()
+
+    // Sem config ou sem instância provisionada: nada a sincronizar.
+    if (!config || !config.instance_name) {
+        return config
+    }
+
+    let novoStatus = config.status
+    let gatewayRespondeu = false
+
+    try {
+        const res = await fetch(
+            `${EVOLUTION_API_URL}/instance/connectionState/${config.instance_name}`,
+            {
+                method: 'GET',
+                headers: { 'apikey': EVOLUTION_GLOBAL_API_KEY },
+                signal: AbortSignal.timeout(4000)
+            }
+        )
+
+        if (res.status === 404) {
+            // Instância não existe mais no gateway: exige reconexão.
+            gatewayRespondeu = true
+            novoStatus = 'falha'
+        } else if (res.ok) {
+            gatewayRespondeu = true
+            const dataRes = await res.json().catch(() => null)
+            const state = dataRes?.instance?.state ?? dataRes?.state
+            const mapeado = mapearEstadoEvolution(state)
+
+            if (mapeado === 'conectado') {
+                novoStatus = 'conectado'
+            } else if (
+                config.status === 'aguardando_qrcode' &&
+                (mapeado === 'conectando' || mapeado === 'desconectado')
+            ) {
+                // Ainda no fluxo de pareamento: preserva a tela de QR Code.
+                novoStatus = 'aguardando_qrcode'
+            } else {
+                novoStatus = mapeado
+            }
+        } else {
+            // Gateway alcançável, mas respondeu com erro inesperado: não confirmamos.
+            if (config.status === 'conectado') {
+                novoStatus = 'instavel'
+            }
+        }
+    } catch (err) {
+        // Timeout ou falha de rede: gateway inalcançável agora.
+        console.error('Falha ao sincronizar status do WhatsApp (ignorada):', err)
+        if (config.status === 'conectado') {
+            novoStatus = 'instavel'
+        }
+    }
+
+    const houveMudanca = novoStatus !== config.status
+
+    if (houveMudanca || gatewayRespondeu) {
+        const agora = new Date().toISOString()
+        const patch: Record<string, unknown> = {}
+        // updated_at continua significando "configuração alterada": só muda
+        // junto com o status. A mera verificação usa ultima_verificacao_em.
+        if (houveMudanca) {
+            patch.status = novoStatus
+            patch.updated_at = agora
+            config.status = novoStatus
+        }
+        // Só marca "verificado" quando o gateway realmente respondeu.
+        if (gatewayRespondeu) {
+            patch.ultima_verificacao_em = agora
+            config.ultima_verificacao_em = agora
+        }
+
+        const { error } = await supabase
+            .from('whatsapp_configs')
+            .update(patch)
+            .eq('tenant_id', orgId)
+
+        if (error) {
+            console.error('Erro ao persistir status sincronizado do WhatsApp:', error.message)
+        }
+    }
+
+    return config
+}
+
+/**
+ * Reinicia a conexão: apaga a instância atual no gateway (ignorando erro) e
+ * recria do zero. `criarInstanciaWhatsApp` já recupera instância órfã via
+ * "already in use" → fetchInstances. Recurso do plano Pro.
+ */
+export async function reiniciarConexaoWhatsApp() {
+    const { orgId } = await auth()
+    if (!orgId) {
+        throw new Error('Não autorizado. Nenhuma organização ativa.')
+    }
+
+    const supabase = await createClient()
+    await exigirPlanoComWhatsapp(supabase, orgId)
+
+    const { data: config } = await supabase
+        .from('whatsapp_configs')
+        .select('instance_name')
+        .eq('tenant_id', orgId)
+        .maybeSingle()
+
+    if (config?.instance_name) {
+        try {
+            await fetch(`${EVOLUTION_API_URL}/instance/delete/${config.instance_name}`, {
+                method: 'DELETE',
+                headers: { 'apikey': EVOLUTION_GLOBAL_API_KEY }
+            })
+        } catch (err) {
+            console.error('Erro ao deletar instância na reinicialização (ignorado):', err)
+        }
+    }
+
+    return criarInstanciaWhatsApp()
+}
+
+/**
+ * Envia uma mensagem de teste para validar a integração. Recurso do plano Pro.
+ * Retorna resultado rico para feedback inline na UI.
+ */
+export async function enviarMensagemTesteWhatsApp(telefone: string): Promise<ResultadoEnvio> {
+    const { orgId } = await auth()
+    if (!orgId) {
+        return { ok: false, motivo: 'nao_autorizado' }
+    }
+
+    const supabase = await createClient()
+    await exigirPlanoComWhatsapp(supabase, orgId)
+
+    const telefoneLimpo = telefone.replace(/\D/g, '')
+    if (telefoneLimpo.length < 10 || telefoneLimpo.length > 11) {
+        return { ok: false, motivo: 'telefone_invalido' }
+    }
+
+    const { data: config } = await supabase
+        .from('whatsapp_configs')
+        .select('*')
+        .eq('tenant_id', orgId)
+        .maybeSingle()
+
+    if (!config || config.status !== 'conectado' || !config.instance_token) {
+        return { ok: false, motivo: 'whatsapp_desconectado' }
+    }
+
+    const texto = 'Mensagem de teste do VamoAgendar: sua integração de WhatsApp está funcionando! 🎉'
+
+    const envio = await enviarMensagemWhatsApp(
+        config.instance_name,
+        config.instance_token,
+        telefoneLimpo,
+        texto
+    )
+
+    await registrarDisparo(supabase, {
+        tenantId: orgId,
+        tipo: 'teste',
+        status: envio.ok ? 'enviado' : 'falha',
+        motivo: envio.ok ? null : envio.motivo
+    })
+
+    return envio
+}
+
+/**
+ * Lista os últimos disparos de WhatsApp do tenant autenticado para auditoria.
+ * O RLS já restringe ao tenant; o join traz o nome do cliente do agendamento.
+ */
+export async function listarDisparosWhatsApp(limite = 20) {
+    const { orgId } = await auth()
+    if (!orgId) {
+        throw new Error('Não autorizado. Nenhuma organização ativa.')
+    }
+
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+        .from('disparos_whatsapp')
+        .select(`
+            id,
+            tipo,
+            status,
+            motivo,
+            created_at,
+            agendamentos (
+                clientes (
+                    nome
+                )
+            )
+        `)
+        .eq('tenant_id', orgId)
+        .order('created_at', { ascending: false })
+        .limit(limite)
+
+    if (error) {
+        console.error('Erro ao listar disparos de WhatsApp:', error.message)
+        return []
+    }
+
+    return data || []
 }

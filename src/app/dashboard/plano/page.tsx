@@ -3,6 +3,8 @@ import { auth } from '@clerk/nextjs/server'
 import { createClient } from '@/lib/supabase/server'
 import { PLANOS, type DefinicaoPlano, type PlanoId } from '@/lib/planos'
 import { obterAssinaturaVigente } from '@/lib/assinaturas'
+import CapturaEvento from '@/components/analytics/CapturaEvento'
+import CtaUpgrade from './CtaUpgrade'
 
 const formatarPreco = (valor: number) =>
     valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -54,15 +56,7 @@ function CardPlano({ plano, atual }: { plano: DefinicaoPlano; atual: boolean }) 
                 <LinhaRecurso liberado={r.logoPersonalizado}>Logo personalizado</LinhaRecurso>
                 <LinhaRecurso liberado={r.whatsapp}>Confirmações e lembretes por WhatsApp</LinhaRecurso>
             </ul>
-            {plano.id !== 'gratuito' && !atual && (
-                <button
-                    disabled
-                    className="mt-6 w-full rounded-lg bg-zinc-200 dark:bg-zinc-800 px-4 py-2 text-sm font-bold text-zinc-400 dark:text-zinc-500 cursor-not-allowed"
-                    title="O checkout ainda não está disponível"
-                >
-                    Em breve
-                </button>
-            )}
+            {plano.id !== 'gratuito' && !atual && <CtaUpgrade planoId={plano.id} />}
         </div>
     )
 }
@@ -79,6 +73,8 @@ export default async function PlanoPage() {
 
     return (
         <div className="space-y-6 max-w-5xl mx-auto">
+            {/* Funil: visualização da página de planos */}
+            <CapturaEvento evento="plans_viewed" propriedades={{ plano_atual: planoAtual }} />
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">Plano</h1>
                 <p className="text-zinc-500 dark:text-zinc-400 text-sm">

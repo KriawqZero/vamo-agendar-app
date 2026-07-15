@@ -3,6 +3,9 @@
 import React, { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { atualizarStatusAgendamento } from '@/app/actions/agendamentos'
+import { diaLocal, horaLocal, somarDias } from '@/lib/timezone'
+import { capturarEvento } from '@/lib/analytics/client'
+import NovoAgendamentoModal, { type DadosRemarcacao } from './NovoAgendamentoModal'
 
 interface Cliente {
     id: string;
@@ -33,43 +36,48 @@ interface DashboardClientProps {
     whatsappStatus: string;
     dataSelecionada: string; // YYYY-MM-DD
     inicioSemana: string; // segunda-feira da semana exibida na régua
-    hoje: string; // YYYY-MM-DD em Brasília
+    hoje: string; // YYYY-MM-DD no fuso do estabelecimento
+    timezone: string; // Fuso IANA do estabelecimento
     temServicoAtivo: boolean;
     temHorariosConfigurados: boolean;
+    /** Serviços ativos para o modal de agendamento manual */
+    servicos: Servico[];
+    /** Plano com WhatsApp + instância conectada (habilita o envio opcional) */
+    podeEnviarWhatsapp: boolean;
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
-const horaLocal = (iso: string) =>
-    new Date(iso).toLocaleTimeString('pt-BR', {
-        timeZone: 'America/Sao_Paulo',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-    })
-
-/** Dia (YYYY-MM-DD) de um instante ISO, no fuso de São Paulo. */
-const diaDe = (iso: string) =>
-    new Intl.DateTimeFormat('en-CA', {
-        timeZone: 'America/Sao_Paulo',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-    }).format(new Date(iso))
-
-/** Soma dias a uma data YYYY-MM-DD (aritmética local em meio-dia). */
-const somarDias = (dateStr: string, dias: number) => {
-    const d = new Date(`${dateStr}T12:00:00`)
-    d.setDate(d.getDate() + dias)
-    return d.toLocaleDateString('en-CA')
-}
-
+/** Rótulo curto do dia da semana a partir de "YYYY-MM-DD" (independe do fuso do navegador). */
 const rotuloDiaSemana = (dateStr: string) =>
-    new Date(`${dateStr}T12:00:00`)
-        .toLocaleDateString('pt-BR', { weekday: 'short' })
+    new Date(`${dateStr}T12:00:00Z`)
+        .toLocaleDateString('pt-BR', { weekday: 'short', timeZone: 'UTC' })
         .replace('.', '')
 
+/** Rótulo longo do dia a partir de "YYYY-MM-DD" (independe do fuso do navegador). */
+const rotuloDiaLongo = (dateStr: string) =>
+    new Date(`${dateStr}T12:00:00Z`).toLocaleDateString('pt-BR', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        timeZone: 'UTC',
+    })
+
 const CHAVE_PROXIMOS_VISIVEL = 'va:proximos-dias-visivel'
+
+/**
+ * Resumo dos 6 estados da instância de WhatsApp para o indicador do cabeçalho.
+ * 'instavel' NÃO é desconexão (o gateway só não confirmou agora) — mostrá-lo
+ * como "desconectado" contradiria a página de detalhe.
+ */
+const RESUMO_WHATSAPP: Record<string, { cor: string; rotulo: string }> = {
+    conectado: { cor: 'bg-marca', rotulo: 'conectado' },
+    aguardando_qrcode: { cor: 'bg-amber-500 dark:bg-amber-400', rotulo: 'aguardando' },
+    conectando: { cor: 'bg-amber-500 dark:bg-amber-400', rotulo: 'conectando' },
+    instavel: { cor: 'bg-amber-500 dark:bg-amber-400', rotulo: 'instável' },
+    falha: { cor: 'bg-red-500/70 dark:bg-red-400/70', rotulo: 'com falha' },
+    desconectado: { cor: 'bg-penumbra', rotulo: 'desconectado' },
+}
 
 /** Linha da timeline: um atendimento ou uma janela livre entre dois. */
 type ItemLinha =
@@ -83,14 +91,26 @@ export default function DashboardClient({
     dataSelecionada,
     inicioSemana,
     hoje,
+    timezone,
     temServicoAtivo,
-    temHorariosConfigurados
+    temHorariosConfigurados,
+    servicos,
+    podeEnviarWhatsapp
 }: DashboardClientProps) {
     const router = useRouter()
+
+    // Interpretação de instantes no fuso do estabelecimento (vindo do servidor).
+    const diaDe = (iso: string) => diaLocal(iso, timezone)
+    const horaDe = (iso: string) => horaLocal(iso, timezone)
     const [, startTransition] = useTransition()
     const [copiado, setCopiado] = useState(false)
     const [statusUpdating, setStatusUpdating] = useState<string | null>(null)
     const [proximosVisivel, setProximosVisivel] = useState(true)
+
+    // Modal de agendamento manual: null = fechado; remarcacao preenchida = modo remarcar.
+    const [modalAgendamento, setModalAgendamento] = useState<
+        { remarcacao: DadosRemarcacao | null } | null
+    >(null)
 
     useEffect(() => {
         const salvo = localStorage.getItem(CHAVE_PROXIMOS_VISIVEL)
@@ -104,11 +124,7 @@ export default function DashboardClient({
         })
     }
 
-    const dataFormatada = new Date(`${dataSelecionada}T12:00:00`).toLocaleDateString('pt-BR', {
-        weekday: 'long',
-        day: 'numeric',
-        month: 'long',
-    })
+    const dataFormatada = rotuloDiaLongo(dataSelecionada)
 
     // ── Derivações da janela ────────────────────────────────────────
     const agendamentos = agendamentosPeriodo.filter((ag) => diaDe(ag.data_hora) === dataSelecionada)
@@ -152,8 +168,8 @@ export default function DashboardClient({
             if (fimAnterior !== null && inicio - fimAnterior >= 30 * 60 * 1000) {
                 linha.push({
                     tipo: 'livre',
-                    de: horaLocal(new Date(fimAnterior).toISOString()),
-                    ate: horaLocal(ag.data_hora),
+                    de: horaDe(new Date(fimAnterior).toISOString()),
+                    ate: horaDe(ag.data_hora),
                     chave: `livre-${fimAnterior}`,
                 })
             }
@@ -176,6 +192,7 @@ export default function DashboardClient({
     const copiarLink = () => {
         if (!linkPublico) return
         navigator.clipboard.writeText(linkPublico)
+        capturarEvento('booking_link_copied')
         setCopiado(true)
         setTimeout(() => setCopiado(false), 2000)
     }
@@ -187,8 +204,8 @@ export default function DashboardClient({
             startTransition(() => {
                 router.refresh()
             })
-        } catch (err: any) {
-            alert(err.message || 'Erro ao alterar status')
+        } catch (err) {
+            alert(err instanceof Error && err.message ? err.message : 'Erro ao alterar status')
         } finally {
             setStatusUpdating(null)
         }
@@ -198,12 +215,31 @@ export default function DashboardClient({
         router.push(novaData === hoje ? '/dashboard' : `/dashboard?date=${novaData}`)
     }
 
+    const abrirNovoAgendamento = () => setModalAgendamento({ remarcacao: null })
+
+    const abrirRemarcacao = (ag: Agendamento) =>
+        setModalAgendamento({
+            remarcacao: {
+                agendamentoId: ag.id,
+                clienteNome: ag.clientes?.nome || 'Cliente',
+                servicoNome: ag.servicos?.nome || 'Serviço',
+                duracaoMinutos: ag.servicos?.duracao_minutos || 30,
+            },
+        })
+
+    const concluirModal = () => {
+        setModalAgendamento(null)
+        startTransition(() => {
+            router.refresh()
+        })
+    }
+
     const setupCompleto = temServicoAtivo && temHorariosConfigurados
 
     return (
         <div>
             {/* Cabeçalho do dia */}
-            <div>
+            <div className="relative sm:pr-32">
                 <p className="font-mono text-xs uppercase tracking-[0.25em] text-marca">
                     {dataFormatada}
                     {dataSelecionada === hoje && ' — hoje'}
@@ -211,6 +247,14 @@ export default function DashboardClient({
                 <h1 className="mt-3 font-display text-3xl font-bold tracking-tight">
                     Olá, {perfilEmpresa?.nome_estabelecimento || 'profissional'}.
                 </h1>
+                {setupCompleto && (
+                    <button
+                        onClick={abrirNovoAgendamento}
+                        className="absolute right-0 top-0 hidden rounded-full bg-marca px-5 py-2.5 font-mono text-xs uppercase tracking-widest text-white transition-colors hover:bg-marca-forte sm:block dark:text-zinc-950"
+                    >
+                        + agendar
+                    </button>
+                )}
                 <p className="mt-3 font-mono text-sm text-nevoa">
                     {ativos.length === 0
                         ? 'nenhum atendimento'
@@ -224,19 +268,10 @@ export default function DashboardClient({
                     >
                         <span
                             className={`inline-block h-1.5 w-1.5 rounded-full ${
-                                whatsappStatus === 'conectado'
-                                    ? 'bg-marca'
-                                    : whatsappStatus === 'aguardando_qrcode'
-                                        ? 'bg-amber-500 dark:bg-amber-400'
-                                        : 'bg-penumbra'
+                                RESUMO_WHATSAPP[whatsappStatus]?.cor ?? 'bg-penumbra'
                             }`}
                         />
-                        whatsapp{' '}
-                        {whatsappStatus === 'conectado'
-                            ? 'conectado'
-                            : whatsappStatus === 'aguardando_qrcode'
-                                ? 'aguardando'
-                                : 'desconectado'}
+                        whatsapp {RESUMO_WHATSAPP[whatsappStatus]?.rotulo ?? 'desconectado'}
                     </button>
                 </p>
             </div>
@@ -260,6 +295,7 @@ export default function DashboardClient({
                             <button
                                 key={dia}
                                 onClick={() => mudarData(dia)}
+                                aria-pressed={selecionado}
                                 className={`flex min-w-[3.25rem] flex-1 flex-col items-center rounded-xl border py-2 transition-colors duration-200 ${
                                     selecionado
                                         ? 'border-marca/50 bg-veu'
@@ -454,7 +490,7 @@ export default function DashboardClient({
                             }
 
                             const { ag } = item
-                            const hora = horaLocal(ag.data_hora)
+                            const hora = horaDe(ag.data_hora)
                             const telLimpo = ag.clientes?.telefone || ''
                             const waLink = telLimpo ? `https://wa.me/55${telLimpo}` : null
                             const cancelado = ag.status === 'cancelado'
@@ -520,14 +556,26 @@ export default function DashboardClient({
                                                 <button
                                                     onClick={() => alterarStatus(ag.id, 'concluido')}
                                                     disabled={statusUpdating === ag.id}
-                                                    className="font-mono text-xs uppercase tracking-widest text-marca transition-colors hover:text-marca-suave disabled:opacity-50"
+                                                    className="-my-2 py-2 font-mono text-xs uppercase tracking-widest text-marca transition-colors hover:text-marca-suave disabled:opacity-50"
                                                 >
                                                     concluir
                                                 </button>
                                                 <button
-                                                    onClick={() => alterarStatus(ag.id, 'cancelado')}
+                                                    onClick={() => abrirRemarcacao(ag)}
                                                     disabled={statusUpdating === ag.id}
-                                                    className="font-mono text-xs uppercase tracking-widest text-red-700/70 transition-colors hover:text-red-700 disabled:opacity-50 dark:text-red-300/70 dark:hover:text-red-300"
+                                                    className="-my-2 py-2 font-mono text-xs uppercase tracking-widest text-nevoa transition-colors hover:text-giz disabled:opacity-50"
+                                                >
+                                                    remarcar
+                                                </button>
+                                                <button
+                                                    onClick={() => {
+                                                        // Destrutivo sem desfazer na UI — confirmação obrigatória.
+                                                        if (window.confirm(`Cancelar o atendimento de ${ag.clientes?.nome || 'cliente'} às ${hora}?`)) {
+                                                            alterarStatus(ag.id, 'cancelado')
+                                                        }
+                                                    }}
+                                                    disabled={statusUpdating === ag.id}
+                                                    className="-my-2 py-2 font-mono text-xs uppercase tracking-widest text-red-700/70 transition-colors hover:text-red-700 disabled:opacity-50 dark:text-red-300/70 dark:hover:text-red-300"
                                                 >
                                                     cancelar
                                                 </button>
@@ -562,11 +610,7 @@ export default function DashboardClient({
                         <div className="mt-6 space-y-8">
                             {diasProximos.map((dia) => {
                                 const doDia = proximosPorDia.get(dia)!
-                                const rotulo = new Date(`${dia}T12:00:00`).toLocaleDateString('pt-BR', {
-                                    weekday: 'long',
-                                    day: 'numeric',
-                                    month: 'long',
-                                })
+                                const rotulo = rotuloDiaLongo(dia)
                                 return (
                                     <div key={dia}>
                                         <button
@@ -587,7 +631,7 @@ export default function DashboardClient({
                                                         className="flex flex-wrap items-baseline gap-x-4 gap-y-0.5 border-l border-fio pl-7 text-sm"
                                                     >
                                                         <span className="font-mono text-nevoa">
-                                                            {horaLocal(ag.data_hora)}
+                                                            {horaDe(ag.data_hora)}
                                                         </span>
                                                         <span className="text-giz">
                                                             {ag.clientes?.nome || 'Cliente'}
@@ -605,6 +649,30 @@ export default function DashboardClient({
                         </div>
                     )}
                 </div>
+            )}
+
+            {/* FAB mobile: novo agendamento */}
+            {setupCompleto && (
+                <button
+                    onClick={abrirNovoAgendamento}
+                    aria-label="Novo agendamento"
+                    className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-marca text-2xl font-light text-white shadow-lg transition-transform hover:scale-105 active:scale-95 sm:hidden dark:text-zinc-950"
+                >
+                    +
+                </button>
+            )}
+
+            {/* Modal de agendamento manual / remarcação */}
+            {modalAgendamento && (
+                <NovoAgendamentoModal
+                    servicos={servicos}
+                    podeEnviarWhatsapp={podeEnviarWhatsapp}
+                    hoje={hoje}
+                    timezone={timezone}
+                    remarcacao={modalAgendamento.remarcacao}
+                    aoFechar={() => setModalAgendamento(null)}
+                    aoConcluir={concluirModal}
+                />
             )}
         </div>
     )

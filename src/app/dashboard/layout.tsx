@@ -3,10 +3,12 @@ import Link from 'next/link'
 import { UserButton, OrganizationSwitcher } from '@clerk/nextjs'
 import LogoMarca from '@/app/LogoMarca'
 import SeletorTema from '@/app/SeletorTema'
-import { auth } from '@clerk/nextjs/server'
+import { auth, currentUser } from '@clerk/nextjs/server'
 import { createClient } from '@/lib/supabase/server'
 import { PLANOS } from '@/lib/planos'
 import { obterAssinaturaVigente, type AssinaturaVigente } from '@/lib/assinaturas'
+import { hashTenantId } from '@/lib/analytics/tenant'
+import IdentificacaoAnalytics from '@/components/analytics/IdentificacaoAnalytics'
 import NavPrincipal from './NavPrincipal'
 
 /**
@@ -26,8 +28,26 @@ export default async function DashboardLayout({
         assinatura = await obterAssinaturaVigente(supabase, orgId)
     }
 
+    // Analytics: identifica a sessão pelo hash pseudonimizado do tenant (o
+    // org_id cru nunca vai ao client para analytics) e permite capturar
+    // signup_completed em contas recém-criadas. Sem key de PostHog, nada é
+    // renderizado nem consultado.
+    let identificacaoAnalytics: React.ReactNode = null
+    if (orgId && process.env.NEXT_PUBLIC_POSTHOG_KEY) {
+        const user = await currentUser()
+        if (user) {
+            identificacaoAnalytics = (
+                <IdentificacaoAnalytics
+                    tenantHash={hashTenantId(orgId)}
+                    criadoEm={new Date(user.createdAt).toISOString()}
+                />
+            )
+        }
+    }
+
     return (
         <div className="flex h-screen w-full flex-col bg-palco font-sans text-giz md:flex-row">
+            {identificacaoAnalytics}
             {/* Sidebar (desktop) / cabeçalho (mobile) */}
             <aside className="flex w-full shrink-0 flex-col border-b border-fio md:h-full md:w-60 md:border-b-0 md:border-r">
                 <div className="flex items-center justify-between px-5 py-4">
@@ -78,7 +98,7 @@ export default async function DashboardLayout({
 
             {/* Conteúdo */}
             <main className="flex-1 overflow-y-auto">
-                <div className="mx-auto max-w-5xl p-4 pb-16 md:p-10">
+                <div className="mx-auto max-w-5xl p-4 pb-24 md:p-10">
                     {assinatura.inadimplente && (
                         <div className="mb-8 flex flex-col gap-3 rounded-xl border border-red-500/25 bg-red-500/[0.06] p-4 sm:flex-row sm:items-center dark:border-red-400/20 dark:bg-red-500/[0.07]">
                             <div className="flex-1">
