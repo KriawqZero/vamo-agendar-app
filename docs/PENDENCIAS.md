@@ -3,9 +3,9 @@
 Lista viva de tarefas identificadas. Revisar antes de cada nova etapa de
 desenvolvimento — e obrigatoriamente antes de implementar o checkout Asaas.
 
-Última atualização: 2026-07-15 (adicionado o passo "Go-live do banco" em "Demais
-preparações de lançamento": ativação do hook de imutabilidade de migrations e troca
-da seção DEV do CLAUDE.md; priorização anterior de 2026-07-12 mantida).
+Última atualização: 2026-07-15 (4ª landing vertical `/para/barbeiro` adicionada ao
+P0.6 resolvido; `.prettierrc` criado espelhando o estilo do código para o hook de
+formatação; priorização anterior de 2026-07-12 mantida).
 
 ---
 
@@ -681,7 +681,15 @@ primeiro item P0 com testes for implementado.
 
 ## ✅ Itens resolvidos (histórico)
 
-- **2026-07-13 — P0.6: landings específicas por nicho**:
+- **2026-07-15 — P0.6 (adendo): 4ª vertical `/para/barbeiro`**: mesma estrutura
+  SSG das três originais (entrada nova em `src/lib/nichos.ts`; nenhuma mudança de
+  template além do campo `expressaoClientes`, que tirou do `page.tsx` a única frase
+  com gênero fixo — "onde suas clientes estiverem"). Copy no masculino, mirando o
+  barbeiro que atende sozinho; estúdio com várias cadeiras/barbeiros fica
+  explicitamente fora em "o que não tenta ser" (multi-profissional segue em
+  "Depois de evidência"). De quebra: `.prettierrc` criado (4 espaços, aspas
+  simples, sem ponto e vírgula) — o hook PostToolUse rodava Prettier sem config e
+  reformatava arquivos inteiros para o estilo default, poluindo diffs.
   - **3 verticais SSG** em `src/app/para/[nicho]/page.tsx` (template
     compartilhado; `dynamicParams = false` + `generateStaticParams` — as três
     rotas saem estáticas no build, sem Clerk/Supabase no caminho):

@@ -35,6 +35,8 @@ export interface NichoLanding {
     nome: string
     /** Rótulo curto do eyebrow do hero */
     rotulo: string
+    /** "suas clientes" / "seus clientes" — concordância nas frases do template */
+    expressaoClientes: string
     heroTitulo: string
     /** Fecho do título, renderizado na cor da marca */
     heroDestaque: string
@@ -66,6 +68,7 @@ export const NICHOS: Record<string, NichoLanding> = {
         slug: 'designer-de-sobrancelhas',
         nome: 'designers de sobrancelhas',
         rotulo: 'para designers de sobrancelhas',
+        expressaoClientes: 'suas clientes',
         heroTitulo: 'Você está no meio de um design.',
         heroDestaque: 'O direct não sabe disso.',
         heroSubtitulo:
@@ -73,10 +76,19 @@ export const NICHOS: Record<string, NichoLanding> = {
         dor: {
             rotulo: 'a conversa que se repete o dia inteiro',
             conversa: [
-                { autor: 'cliente', texto: '— Oi! Tem horário pra design com henna essa semana?' },
+                {
+                    autor: 'cliente',
+                    texto: '— Oi! Tem horário pra design com henna essa semana?',
+                },
                 { autor: 'voce', texto: '— Tenho quinta 10h ou sexta 16h!' },
-                { autor: 'cliente', texto: '— Quinta não consigo… sexta tem mais cedo?' },
-                { autor: 'voce', texto: '— Te respondo assim que acabar o atendimento' },
+                {
+                    autor: 'cliente',
+                    texto: '— Quinta não consigo… sexta tem mais cedo?',
+                },
+                {
+                    autor: 'voce',
+                    texto: '— Te respondo assim que acabar o atendimento',
+                },
             ],
             fecho: 'Você respondeu essa conversa hoje entre duas clientes. E ontem. E vai responder amanhã — a menos que o link responda por você.',
         },
@@ -136,6 +148,7 @@ export const NICHOS: Record<string, NichoLanding> = {
         slug: 'lash-designer',
         nome: 'lash designers',
         rotulo: 'para lash designers',
+        expressaoClientes: 'suas clientes',
         heroTitulo: 'Duas horas de aplicação.',
         heroDestaque: 'Zero paciência para o celular vibrando.',
         heroSubtitulo:
@@ -143,7 +156,10 @@ export const NICHOS: Record<string, NichoLanding> = {
         dor: {
             rotulo: 'a remarcação que interrompe a aplicação',
             conversa: [
-                { autor: 'cliente', texto: '— Amiga, preciso remarcar a manutenção de amanhã!' },
+                {
+                    autor: 'cliente',
+                    texto: '— Amiga, preciso remarcar a manutenção de amanhã!',
+                },
                 { autor: 'voce', texto: '— Tranquilo! Tenho quinta às 14h' },
                 { autor: 'cliente', texto: '— Quinta só consigo depois das 17h… tem?' },
                 { autor: 'voce', texto: '— Deixa eu conferir a agenda e te falo' },
@@ -207,6 +223,7 @@ export const NICHOS: Record<string, NichoLanding> = {
         slug: 'manicure',
         nome: 'manicures',
         rotulo: 'para manicures',
+        expressaoClientes: 'suas clientes',
         heroTitulo: 'Agenda cheia é ótimo.',
         heroDestaque: 'Furo na agenda, não.',
         heroSubtitulo:
@@ -217,7 +234,10 @@ export const NICHOS: Record<string, NichoLanding> = {
                 { autor: 'cliente', texto: '— Oi! Consegue me encaixar no sábado?' },
                 { autor: 'voce', texto: '— Sábado tenho 8h ou 16h40!' },
                 { autor: 'cliente', texto: '— Vou ver com meu marido e te aviso!' },
-                { autor: 'voce', texto: '— Fechou? Preciso confirmar pra segurar a vaga…' },
+                {
+                    autor: 'voce',
+                    texto: '— Fechou? Preciso confirmar pra segurar a vaga…',
+                },
             ],
             fecho: 'Enquanto ela “vê e avisa”, duas vagas ficam presas. No link, quem quer o horário confirma na hora — e ele some para as outras.',
         },
@@ -272,6 +292,78 @@ export const NICHOS: Record<string, NichoLanding> = {
             title: 'Agendamento online para manicure | VamoAgendar',
             description:
                 'Link de agendamento para manicures: a cliente marca manicure, pedicure ou alongamento sozinha, sem cadastro — e o lembrete automático do plano Pro reduz as faltas.',
+        },
+    },
+    barbeiro: {
+        slug: 'barbeiro',
+        nome: 'barbeiros',
+        rotulo: 'para barbeiros',
+        expressaoClientes: 'seus clientes',
+        heroTitulo: 'Cliente na cadeira, máquina ligada.',
+        heroDestaque: 'Quem responde o WhatsApp é o link.',
+        heroSubtitulo:
+            'Corte, barba, acabamento: o dia rende quando a cadeira não para. Mas cada “tem horário aí?” no meio do corte é a máquina desligada e o cliente esperando. Seu link mostra só os horários realmente livres, o cliente escolhe um e confirma sozinho — sem cadastro, sem senha.',
+        dor: {
+            rotulo: 'o encaixe negociado no meio do corte',
+            conversa: [
+                { autor: 'cliente', texto: '— E aí! Consegue me encaixar hoje ainda?' },
+                { autor: 'voce', texto: '— Hoje só 18h30, fechou?' },
+                { autor: 'cliente', texto: '— 18h30 não dá… e amanhã cedo?' },
+                { autor: 'voce', texto: '— Te falo quando terminar esse corte' },
+            ],
+            fecho: 'Cada resposta dessas é a máquina desligada e o cliente da cadeira esperando. No link, quem quer horário acha sozinho o que serve — e confirma na hora.',
+        },
+        beneficios: [
+            {
+                titulo: 'O corte não para pra responder mensagem',
+                texto: 'Quem quer horário abre o link, vê o que está livre de verdade e resolve sozinho. Você fica na máquina, no acabamento e na conversa com o cliente da cadeira — não no celular.',
+            },
+            {
+                titulo: 'Corte e corte + barba, cada um no seu tempo',
+                texto: 'O combo não ocupa o espaço de um corte simples: a grade calcula os horários pela duração de cada serviço e nunca oferece um encaixe que não cabe. Sem atrasar a fila do dia.',
+            },
+            {
+                titulo: 'Menos cadeira vazia no fim de tarde',
+                texto: 'No plano Pro, o cliente recebe a confirmação na hora e um lembrete antes do horário, direto no WhatsApp dele. Esquecer fica difícil — e o horário nobre não vira furo.',
+            },
+        ],
+        demo: {
+            estudio: 'Barbearia do Vini',
+            iniciais: 'BV',
+            ramo: 'Cortes e barba · Goiânia',
+        },
+        servicosDemo: [
+            { nome: 'Corte', duracaoMinutos: 30, preco: 'R$ 40' },
+            { nome: 'Barba', duracaoMinutos: 30, preco: 'R$ 35' },
+            { nome: 'Corte + barba', duracaoMinutos: 60, preco: 'R$ 65' },
+            { nome: 'Acabamento (pezinho)', duracaoMinutos: 15, preco: 'R$ 20' },
+        ],
+        comoFunciona: [
+            {
+                pergunta: 'Como o cliente agenda?',
+                resposta:
+                    'Ele abre o seu link — na bio, no status ou fixado no WhatsApp —, escolhe corte, barba ou o combo, vê só os horários livres de verdade e confirma com nome e WhatsApp. Sem cadastro, sem senha, sem baixar aplicativo.',
+            },
+            {
+                pergunta: 'Como você configura?',
+                resposta:
+                    'Cadastre seus serviços com duração e preço, defina os dias e horários em que atende e marque folgas e feriados. Em poucos minutos o link está no ar, calculando a agenda sozinho.',
+            },
+            {
+                pergunta: 'Como o WhatsApp ajuda?',
+                resposta:
+                    'No plano Pro, o VamoAgendar se conecta ao seu número e envia confirmação na hora e lembrete antes do horário, com a sua mensagem. O cliente lembra do corte — e você não solta a máquina pra cobrar confirmação.',
+            },
+            {
+                pergunta: 'O que o VamoAgendar não tenta ser?',
+                resposta:
+                    'Não é sistema de barbearia com várias cadeiras e vários barbeiros — é feito para quem atende sozinho. Não cobra o cliente pelo app: o pagamento do corte continua do seu jeito. E não é aplicativo para instalar: é um link seu, que abre em qualquer celular.',
+            },
+        ],
+        seo: {
+            title: 'Agendamento online para barbeiro | VamoAgendar',
+            description:
+                'Link de agendamento para barbeiros: o cliente marca corte, barba ou combo sozinho, sem cadastro — e o lembrete automático do plano Pro reduz as faltas.',
         },
     },
 }

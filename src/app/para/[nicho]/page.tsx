@@ -90,23 +90,29 @@ function Check() {
     )
 }
 
-const LINHAS_COMPARACAO: { rotulo: string; valor: (p: (typeof PLANOS)[PlanoId]) => string | boolean }[] = [
+const LINHAS_COMPARACAO: {
+    rotulo: string
+    valor: (p: (typeof PLANOS)[PlanoId]) => string | boolean
+}[] = [
     {
         rotulo: 'Serviços ativos',
-        valor: (p) => (p.limiteServicosAtivos === null ? 'Ilimitados' : `Até ${p.limiteServicosAtivos}`),
+        valor: (p) =>
+            p.limiteServicosAtivos === null ? 'Ilimitados' : `Até ${p.limiteServicosAtivos}`,
     },
     { rotulo: 'Página de agendamento com link', valor: () => true },
-    { rotulo: 'Link personalizado (/sua-marca)', valor: (p) => p.recursos.linkPersonalizado },
+    {
+        rotulo: 'Link personalizado (/sua-marca)',
+        valor: (p) => p.recursos.linkPersonalizado,
+    },
     { rotulo: 'Cor da sua marca', valor: (p) => p.recursos.corPersonalizada },
     { rotulo: 'Sua logo na página', valor: (p) => p.recursos.logoPersonalizado },
-    { rotulo: 'Confirmação e lembrete por WhatsApp', valor: (p) => p.recursos.whatsapp },
+    {
+        rotulo: 'Confirmação e lembrete por WhatsApp',
+        valor: (p) => p.recursos.whatsapp,
+    },
 ]
 
-export default async function LandingNicho({
-    params,
-}: {
-    params: Promise<{ nicho: string }>
-}) {
+export default async function LandingNicho({ params }: { params: Promise<{ nicho: string }> }) {
     const { nicho } = await params
     const dados = NICHOS[nicho]
     const planos = [PLANOS.gratuito, PLANOS.plus, PLANOS.pro]
@@ -299,8 +305,9 @@ export default async function LandingNicho({
                                 vamoagendar.com.br/<span className="text-marca">sua-marca</span>
                             </p>
                             <p className="mt-4 max-w-md text-sm text-penumbra">
-                                Na bio do Instagram, no WhatsApp Business, onde suas clientes
-                                estiverem — mostrando só os horários realmente livres.
+                                Na bio do Instagram, no WhatsApp Business, onde{' '}
+                                {dados.expressaoClientes} estiverem — mostrando só os horários
+                                realmente livres.
                             </p>
                         </Reveal>
                     </div>
@@ -392,7 +399,10 @@ export default async function LandingNicho({
                                                 </p>
                                                 <p className="mt-2 font-mono text-2xl text-giz">
                                                     {brl(p.precoMensal)}
-                                                    <span className="text-xs text-penumbra"> /mês</span>
+                                                    <span className="text-xs text-penumbra">
+                                                        {' '}
+                                                        /mês
+                                                    </span>
                                                 </p>
                                                 <p className="mt-1 h-4 font-mono text-xs text-penumbra/75">
                                                     {PRECO_ORIGINAL[p.id] !== null ? (
@@ -429,7 +439,9 @@ export default async function LandingNicho({
                                                         ) : v ? (
                                                             <Check />
                                                         ) : (
-                                                            <span className="text-penumbra/40">—</span>
+                                                            <span className="text-penumbra/40">
+                                                                —
+                                                            </span>
                                                         )}
                                                     </td>
                                                 )
@@ -441,7 +453,10 @@ export default async function LandingNicho({
                                     <tr>
                                         <td className="pt-6" />
                                         {planos.map((p) => (
-                                            <td key={p.id} className={`px-4 pb-4 pt-6 ${destaque(p.id)}`}>
+                                            <td
+                                                key={p.id}
+                                                className={`px-4 pb-4 pt-6 ${destaque(p.id)}`}
+                                            >
                                                 <Link
                                                     href="/sign-up"
                                                     className={`block rounded-full py-2.5 text-center text-sm font-semibold transition-colors duration-200 ${
