@@ -164,15 +164,22 @@ export default async function LandingNicho({ params }: { params: Promise<{ nicho
             </header>
 
             <main className="relative z-10 mx-auto max-w-[90rem] px-6 sm:px-10 lg:px-16">
-                {/* ── Hero — a dor do nicho ──────────────────────────── */}
+                {/* ── Hero — a abertura do filme: o resultado primeiro ── */}
                 <section className="relative pt-44 sm:pt-52">
+                    <span
+                        aria-hidden
+                        className="pointer-events-none absolute -right-8 top-16 select-none font-mono text-[clamp(7rem,26vw,22rem)] font-bold leading-none tracking-tighter text-fantasma sm:top-4"
+                    >
+                        {dados.abertura.hora}
+                    </span>
+
                     <div className="relative">
                         <div className="mascara">
                             <p
                                 className="font-mono text-xs uppercase tracking-[0.3em] text-marca"
                                 style={{ animationDelay: '350ms' }}
                             >
-                                VamoAgendar {dados.rotulo}
+                                {dados.abertura.eyebrow}
                             </p>
                         </div>
                         <h1 className="mt-8 font-display text-[clamp(2.5rem,6.5vw,5.75rem)] font-extrabold leading-[1.0] tracking-[-0.035em]">
@@ -257,13 +264,13 @@ export default async function LandingNicho({ params }: { params: Promise<{ nicho
                         aria-hidden
                         className="pointer-events-none absolute -left-10 top-8 select-none font-mono text-[clamp(6rem,22vw,18rem)] font-bold leading-none tracking-tighter text-fantasma"
                     >
-                        09:12
+                        {dados.dor.hora}
                     </span>
 
                     <div className="relative">
                         <Reveal>
                             <p className="font-mono text-xs uppercase tracking-[0.3em] text-marca">
-                                09:12 — {dados.dor.rotulo}
+                                {dados.dor.hora} — {dados.dor.rotulo}
                             </p>
                         </Reveal>
 
@@ -319,7 +326,7 @@ export default async function LandingNicho({ params }: { params: Promise<{ nicho
                         aria-hidden
                         className="pointer-events-none absolute right-0 top-1/3 select-none font-mono text-[clamp(6rem,20vw,16rem)] font-bold leading-none tracking-tighter text-fantasma"
                     >
-                        08:00
+                        {dados.beneficios[0].hora}
                     </span>
 
                     {dados.beneficios.map((b, i) => (
@@ -330,9 +337,7 @@ export default async function LandingNicho({ params }: { params: Promise<{ nicho
                             } ${i % 2 === 1 ? 'lg:ml-[46%]' : ''}`}
                         >
                             <Reveal>
-                                <p className="font-mono text-sm text-marca">
-                                    {String(i + 1).padStart(2, '0')}
-                                </p>
+                                <p className="font-mono text-sm text-marca">{b.hora}</p>
                                 <h3 className="mt-4 font-display text-[clamp(1.6rem,3vw,2.25rem)] font-bold leading-snug tracking-[-0.02em]">
                                     {b.titulo}
                                 </h3>

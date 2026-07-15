@@ -681,15 +681,21 @@ primeiro item P0 com testes for implementado.
 
 ## ✅ Itens resolvidos (histórico)
 
-- **2026-07-15 — P0.6 (adendo): 4ª vertical `/para/barbeiro`**: mesma estrutura
-  SSG das três originais (entrada nova em `src/lib/nichos.ts`; nenhuma mudança de
-  template além do campo `expressaoClientes`, que tirou do `page.tsx` a única frase
-  com gênero fixo — "onde suas clientes estiverem"). Copy no masculino, mirando o
-  barbeiro que atende sozinho; estúdio com várias cadeiras/barbeiros fica
-  explicitamente fora em "o que não tenta ser" (multi-profissional segue em
-  "Depois de evidência"). De quebra: `.prettierrc` criado (4 espaços, aspas
-  simples, sem ponto e vírgula) — o hook PostToolUse rodava Prettier sem config e
-  reformatava arquivos inteiros para o estilo default, poluindo diffs.
+- **2026-07-15 — P0.6 (adendo): 4ª vertical `/para/barbeiro` + verticais
+  reescritas como o "filme" da landing principal**: crítica do owner acatada — as
+  verticais reusavam o figurino da principal (ruído, relógios gigantes) mas tinham
+  virado lista de features; a principal é um dia narrado no relógio. Reescrita:
+  hero abre pelo resultado ("Caiu mais um corte na agenda. Você nem viu.") com
+  relógio gigante e eyebrow de cena (`abertura.hora`/`eyebrow`), a dor tem horário
+  próprio por nicho (`dor.hora` substitui o 09:12 fixo) e os benefícios viraram
+  momentos cronológicos do dia (`beneficios[].hora` substitui a numeração 01/02/03).
+  Campos `nome`/`rotulo` removidos (não usados); `expressaoClientes` tirou do
+  template a única frase com gênero fixo. Barbeiro: copy no masculino, mirando quem
+  atende sozinho; estúdio com várias cadeiras fica explicitamente fora em "o que
+  não tenta ser" (multi-profissional segue em "Depois de evidência"). De quebra:
+  `.prettierrc` criado (4 espaços, aspas simples, sem ponto e vírgula) — o hook
+  PostToolUse rodava Prettier sem config e reformatava arquivos inteiros para o
+  estilo default, poluindo diffs.
   - **3 verticais SSG** em `src/app/para/[nicho]/page.tsx` (template
     compartilhado; `dynamicParams = false` + `generateStaticParams` — as três
     rotas saem estáticas no build, sem Clerk/Supabase no caminho):
