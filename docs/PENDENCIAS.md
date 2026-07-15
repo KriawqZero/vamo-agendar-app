@@ -3,9 +3,9 @@
 Lista viva de tarefas identificadas. Revisar antes de cada nova etapa de
 desenvolvimento — e obrigatoriamente antes de implementar o checkout Asaas.
 
-Última atualização: 2026-07-12 (correção de priorização: produto agora, preparação
-de lançamento depois; estado de cada item verificado no código e no banco em
-2026-07-11 e re-verificado por amostragem em 2026-07-12).
+Última atualização: 2026-07-15 (adicionado o passo "Go-live do banco" em "Demais
+preparações de lançamento": ativação do hook de imutabilidade de migrations e troca
+da seção DEV do CLAUDE.md; priorização anterior de 2026-07-12 mantida).
 
 ---
 
@@ -600,6 +600,15 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
 - Testes críticos de segurança e concorrência (ver seção "Qualidade e testes").
 - Observabilidade de produção (error tracking, alertas). *Parte mínima para pilotos:
   o log de disparos do P0.1 já cobre o essencial de mensageria.*
+- **Go-live do banco — fim da fase "DEV livre" de migrations** (três passos, na ordem):
+  1. Ativar o hook PreToolUse de imutabilidade de migrations, pronto e testado em
+     `.claude/hooks/migrations-prod.md` (copiar o bloco JSON para `hooks.PreToolUse`
+     do `.claude/settings.json` seguindo as instruções do próprio arquivo).
+  2. Remover do `CLAUDE.md` o bullet "Editar migrations existentes é permitido NESTA
+     FASE" (seção "Banco de dados (fase atual: DEV)").
+  3. Substituir a seção "Banco de dados (fase atual: DEV)" do `CLAUDE.md` pela versão
+     prod: migrations aplicadas são imutáveis, correção = nova migration via
+     `supabase db diff`, hard reset proibido.
 - Backups e recuperação; testes de carga.
 - Domínio definitivo, e-mails de produção e configurações finais (lembrete herdado:
   configurar `SUPABASE_SECRET_KEY` e demais envs no Railway/produção).

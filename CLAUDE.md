@@ -57,6 +57,14 @@ Em Server Actions B2B, valide `const { orgId } = await auth()` antes de operar e
 
 Tabelas: `perfis_empresas` (identidade + slug público), `servicos`, `horarios_funcionamento` (dia_semana 0–6 + janelas), `excecoes_agenda` (feriados/bloqueios), `whatsapp_configs` (instância Evolution + templates), `clientes`, `agendamentos` (status: pendente/confirmado/concluido/cancelado), `assinaturas` (planos plus/pro; gratuito = sem linha vigente), `disparos_whatsapp` (log append-only de auditoria de mensageria — sem conteúdo nem telefone).
 
+### Banco de dados (fase atual: DEV)
+
+- O banco pode ser destruído e recriado livremente. Prefira schema limpo a migrations incrementais.
+- Hard reset documentado em `docs/RESET_AMBIENTE_DEV.md` — use quando o schema divergir.
+- Editar migrations existentes é permitido NESTA FASE (relaxamento temporário do "nunca editar `supabase/migrations/`" acima).
+- Hook de imutabilidade de migrations existe pronto em `.claude/hooks/migrations-prod.md`; ativar no go-live (passos no checklist de `docs/PENDENCIAS.md`, seção "Obrigatório antes do lançamento público").
+- ⚠️ Ao entrar em prod, esta seção será substituída por regras de imutabilidade.
+
 ### Engine de disponibilidade (`src/lib/booking-engine.ts`)
 
 `obterSlotsDisponiveis()` calcula slots livres: horário de funcionamento do dia → subtrai exceções/bloqueios → subtrai janelas ocupadas (agendamentos ativos + `duracao_minutos`) → grade de 15 min → filtra slots passados. **Timezone**: banco em UTC, interpretação em `America/Sao_Paulo` (limites do dia: `${dateStr}T00:00:00-03:00` a `T23:59:59-03:00`). A action pública de criação re-executa a engine antes do INSERT para prevenir double-booking.
