@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit|Write|Glob|Grep|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -e '[.tool_input.file_path // empty, .tool_input.path // empty, .tool_input.notebook_path // empty, .tool_input.glob // empty] + (if .tool_name == \"Glob\" then [.tool_input.pattern // empty] else [] end) | map(test(\"(^|/)(lixo|\\\\.obsidian|\\\\.trash)(/|$)\")) | any' >/dev/null && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Diretório proibido (lixo/, .obsidian/ ou .trash/): uso pessoal do usuário, não deve ser lido nem modificado pelo Claude Code.\"}}' || true",
+            "statusMessage": "Verificando diretórios proibidos..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -e '.tool_input.command // \"\" | test(\"(^|[^[:alnum:]_.-])(lixo|\\\\.obsidian|\\\\.trash)(/|$|[^[:alnum:]_.-])\")' >/dev/null && echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"Comando toca diretório proibido (lixo/, .obsidian/ ou .trash/): uso pessoal do usuário, não deve ser lido nem modificado pelo Claude Code.\"}}' || true",
+            "statusMessage": "Verificando diretórios proibidos..."
+          }
+        ]
+      }
+    ]
+  }
+}
