@@ -88,13 +88,13 @@ interface DiaHorario {
 }
 
 const ANTECEDENCIA_OPCOES = [
-    { valor: 15, rotulo: '15 minutos' },
-    { valor: 30, rotulo: '30 minutos' },
-    { valor: 60, rotulo: '1 hora' },
-    { valor: 120, rotulo: '2 horas' },
-    { valor: 240, rotulo: '4 horas' },
-    { valor: 720, rotulo: '12 horas' },
-    { valor: 1440, rotulo: '24 horas' },
+    { valor: 15, rotulo: '15 min' },
+    { valor: 30, rotulo: '30 min' },
+    { valor: 60, rotulo: '1 h' },
+    { valor: 120, rotulo: '2 h' },
+    { valor: 240, rotulo: '4 h' },
+    { valor: 720, rotulo: '12 h' },
+    { valor: 1440, rotulo: '24 h' },
 ]
 
 const HORIZONTE_OPCOES = [
@@ -339,29 +339,45 @@ export default function AgendaClient({
         startTransition(async () => {
             try {
                 await salvarHorariosFuncionamento(horariosFlat)
-
-                if (configsAlteradas) {
-                    await salvarPerfilEmpresa({
-                        slug,
-                        nomeEstabelecimento,
-                        descricao,
-                        telefoneContato,
-                        corMarca,
-                        exibirLogo,
-                        timezone,
-                        antecedenciaMinimaMinutos,
-                        horizonteMaximoDias,
-                    })
-                }
-
-                setMsgHorarios({ tipo: 'sucesso', texto: 'Horários salvos com sucesso!' })
-                router.refresh()
             } catch (err) {
                 setMsgHorarios({
                     tipo: 'erro',
                     texto: mensagemDeErro(err, 'Erro ao salvar horários'),
                 })
+                return
             }
+
+            if (configsAlteradas) {
+                try {
+                    // Campos que não pertencem a esta aba vêm do perfil PERSISTIDO
+                    // (prop), nunca do estado local da aba Perfil — senão, editar
+                    // Perfil sem salvar e depois só mexer nas regras de agendamento
+                    // aqui publicaria essas edições em aberto silenciosamente.
+                    await salvarPerfilEmpresa({
+                        slug: perfilEmpresa?.slug || '',
+                        nomeEstabelecimento: perfilEmpresa?.nome_estabelecimento || '',
+                        descricao: perfilEmpresa?.descricao || '',
+                        telefoneContato: perfilEmpresa?.telefone_contato || '',
+                        corMarca: perfilEmpresa?.cor_marca ?? null,
+                        exibirLogo: perfilEmpresa?.exibir_logo ?? true,
+                        timezone: perfilEmpresa?.timezone || TIMEZONE_PADRAO,
+                        antecedenciaMinimaMinutos,
+                        horizonteMaximoDias,
+                    })
+                } catch (err) {
+                    // Horários já foram gravados nesta chamada — não mascarar o
+                    // sucesso parcial como se nada tivesse sido salvo.
+                    setMsgHorarios({
+                        tipo: 'erro',
+                        texto: `Horários salvos, mas as regras de agendamento não foram salvas: ${mensagemDeErro(err, 'erro ao salvar configurações')}`,
+                    })
+                    router.refresh()
+                    return
+                }
+            }
+
+            setMsgHorarios({ tipo: 'sucesso', texto: 'Horários salvos com sucesso!' })
+            router.refresh()
         })
     }
 
