@@ -79,12 +79,13 @@ export default function BookingWizard({ perfil, servicos, tenantHash }: BookingW
     >([])
 
     useEffect(() => {
-        // Gera os próximos N dias (horizonte do tenant) a partir de hoje, no fuso do estabelecimento.
+        // Gera os dias de hoje até hoje + horizonte (inclusive), no fuso do estabelecimento —
+        // mesma semântica de "N dias à frente" aceita pela engine (obterSlotsDisponiveis).
         const tz = perfil.timezone || TIMEZONE_PADRAO
         const hojeStr = diaLocal(new Date(), tz)
         const datas = []
         const horizonte = perfil.horizonte_maximo_dias ?? 14
-        for (let i = 0; i < horizonte; i++) {
+        for (let i = 0; i <= horizonte; i++) {
             const dateStr = somarDias(hojeStr, i)
             // Rótulos derivados da data de calendário (meio-dia UTC) — não dependem
             // do fuso do navegador do cliente.
