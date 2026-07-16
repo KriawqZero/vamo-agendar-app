@@ -6,8 +6,9 @@ desenvolvimento — e obrigatoriamente antes de implementar o checkout Asaas.
 Última atualização: 2026-07-16 (P0.12(a) — grade inteligente de horários — resolvido;
 absorveu e fechou os três subitens do P1.7 sobre múltiplas janelas, antecedência
 mínima e horizonte máximo. P0.12(b) customização visual e (c) layout mobile
-continuam pendentes, assim como P1.11 absorvido em (b). Priorização de 2026-07-12
-mantida).
+continuam pendentes, assim como P1.11 absorvido em (b). Revisão final do branch
+adicionou achados de baixo risco à seção 9 e dois itens de pré-lançamento. Priorização
+de 2026-07-12 mantida).
 
 ---
 
@@ -498,6 +499,28 @@ posterior, salvo evidência de necessidade nos pilotos.
 - Docs: substituir o neologismo "infraudável" (docs/07 e spec) por "impossível de
   fraudar"; ajustar a referência "ver seção seguinte" na seção 4 do docs/07.
   *(pendente)*
+- Corrida estreita em `AgendaClient.tsx` (`handleSalvarHorarios`, ~linhas 350-366):
+  quando as configs de agendamento mudam, a action reenvia os campos de perfil a
+  partir da prop `perfilEmpresa` (não do estado local) por design — mas se o usuário
+  salvar a aba Perfil e, antes do `router.refresh()` propagar a prop atualizada,
+  submeter Horários com configs alteradas, essa chamada regrava o perfil com valores
+  pré-refresh. Raro (exige dois submits em sequência rápida); dano limitado a reverter
+  para um valor já persistido antes. *(apontado na revisão final da grade inteligente,
+  2026-07-16)*
+- Submit de Horários com configs alteradas (`AgendaClient.tsx:356`) sempre acaba
+  chamando `salvarPerfilEmpresa`, que em `perfis-empresas.ts:221-229` sincroniza o
+  logo da organização via API do Clerk mesmo quando só antecedência/horizonte
+  mudaram — round-trip evitável. *(apontado na revisão final da grade inteligente,
+  2026-07-16)*
+- `adicionarJanela` (`AgendaClient.tsx:262-273`, via `somarMinutos`) sugere uma janela
+  `23:59–23:59` inválida quando a janela anterior do dia termina às 23:59 — a
+  validação visual bloqueia o save (sem corrupção de dados), mas é beco de UX; não
+  sugerir janela sem espaço. *(apontado na revisão final da grade inteligente,
+  2026-07-16)*
+- Endurecer os asserts de rejeição em `src/lib/__tests__/horarios.test.ts` (várias
+  linhas, ex. 18, 33, 83, 87, 91): hoje checam só `not.toBeNull()`, sem travar o
+  texto da mensagem de erro. *(apontado na revisão final da grade inteligente,
+  2026-07-16)*
 - Melhorias maiores de onboarding/ativação (guiar o tenant até o "setup completo"):
   especificar a partir dos dados do funil (P0.5).
 
@@ -704,6 +727,19 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
   3. Substituir a seção "Banco de dados (fase atual: DEV)" do `CLAUDE.md` pela versão
      prod: migrations aplicadas são imutáveis, correção = nova migration via
      `supabase db diff`, hard reset proibido.
+- Engine de disponibilidade — agendamento que atravessa a meia-noite: `obterSlotsDisponiveis`
+  busca os agendamentos do dia via `limitesDoDia` (`src/lib/booking-engine.ts:266-282`),
+  que filtra `data_hora` dentro do próprio dia — um agendamento iniciado à noite da
+  véspera com duração longa o suficiente para invadir a madrugada não é subtraído dos
+  slots do dia seguinte. Comportamento pré-existente ao branch da grade inteligente
+  (não introduzido por ele), só alcançável com janelas noturnas + serviços longos;
+  tratar antes de aceitar tenants com horário estendido. *(achado da revisão final da
+  grade inteligente, 2026-07-16)*
+- Pre-flight de CHECK constraints em dados reais antes de aplicar migration com
+  `VALIDATE CONSTRAINT`: `ck_hora_fim_apos_inicio` (e futuros CHECKs equivalentes)
+  falham a aplicação se existir linha legada que viole a regra — validar dados de
+  produção antes de aplicar. *(achado da revisão final da grade inteligente,
+  2026-07-16)*
 - Backups e recuperação; testes de carga.
 - Domínio definitivo, e-mails de produção e configurações finais (lembrete herdado:
   configurar `SUPABASE_SECRET_KEY` e demais envs no Railway/produção).
