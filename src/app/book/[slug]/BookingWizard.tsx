@@ -73,7 +73,7 @@ export default function BookingWizard({ perfil, servicos, tenantHash }: BookingW
         id: string
     } | null>(null)
 
-    // Lista de datas dos próximos 14 dias para exibir no seletor horizontal
+    // Lista de datas dos próximos N dias (horizonte do tenant) para exibir no seletor horizontal
     const [datasDisponiveis, setDatasDisponiveis] = useState<
         { label: string; dateStr: string; diaSemana: string }[]
     >([])
