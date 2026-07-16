@@ -10,12 +10,12 @@ import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 import { capturarEventoTenant } from '@/lib/analytics/server'
 
 interface AgendamentoPublicoParams {
-    tenantId: string;
-    servicoId: string;
-    dataHora: string; // ISO string em UTC
-    clienteNome: string;
-    clienteTelefone: string; // WhatsApp
-    clienteEmail?: string;
+    tenantId: string
+    servicoId: string
+    dataHora: string // ISO string em UTC
+    clienteNome: string
+    clienteTelefone: string // WhatsApp
+    clienteEmail?: string
 }
 
 /**
@@ -27,7 +27,7 @@ export async function criarAgendamentoPublico({
     dataHora,
     clienteNome,
     clienteTelefone,
-    clienteEmail
+    clienteEmail,
 }: AgendamentoPublicoParams) {
     // 1. Sanitizar e validar dados de entrada básicos
     if (!tenantId || !servicoId || !dataHora || !clienteNome || !clienteTelefone) {
@@ -46,10 +46,10 @@ export async function criarAgendamentoPublico({
 
     const supabase = await createClient()
 
-    // 2. Validar que o tenant existe (e obter o fuso do estabelecimento)
+    // 2. Validar que o tenant existe (e obter o fuso e as regras de acesso do estabelecimento)
     const { data: tenant, error: tError } = await supabase
         .from('perfis_empresas')
-        .select('tenant_id, timezone')
+        .select('tenant_id, timezone, antecedencia_minima_minutos, horizonte_maximo_dias')
         .eq('tenant_id', tenantId)
         .maybeSingle()
 
@@ -58,6 +58,13 @@ export async function criarAgendamentoPublico({
     }
 
     const timezone = tenant.timezone || TIMEZONE_PADRAO
+    // Mesmo regrasAcesso usado em obterSlotsPublicos: sem isto, a validação do
+    // slot escolhido (item 4 abaixo) não reconhece a antecedência/horizonte do
+    // tenant e um slot fora da regra apareceria como "válido" no servidor.
+    const regrasAcesso = {
+        antecedenciaMinutos: tenant.antecedencia_minima_minutos ?? 15,
+        horizonteDias: tenant.horizonte_maximo_dias ?? 14,
+    }
 
     // 3. Buscar informações do serviço (duração), exigindo que esteja ativo e
     // pertença ao MESMO tenant — impede agendamento cruzado entre tenants.
@@ -82,10 +89,11 @@ export async function criarAgendamentoPublico({
         dateStr,
         duracaoServicoMinutos: servico.duracao_minutos,
         supabase,
-        timezone
+        timezone,
+        regrasAcesso,
     })
 
-    const horarioEscolhidoValido = slotsLivres.some(sl => sl.datetime === dataHora)
+    const horarioEscolhidoValido = slotsLivres.some((sl) => sl.datetime === dataHora)
     if (!horarioEscolhidoValido) {
         // Funil: abandono por double-booking. Nunca pode afetar o throw abaixo.
         try {
@@ -93,7 +101,9 @@ export async function criarAgendamentoPublico({
         } catch (analyticsErr) {
             console.error('[analytics] booking_failed não capturado (ignorado):', analyticsErr)
         }
-        throw new Error('Este horário já foi preenchido ou está indisponível. Por favor, selecione outro.')
+        throw new Error(
+            'Este horário já foi preenchido ou está indisponível. Por favor, selecione outro.',
+        )
     }
 
     // A partir daqui as ESCRITAS usam o cliente PRIVILEGIADO (somente servidor):
@@ -128,7 +138,7 @@ export async function criarAgendamentoPublico({
                 tenant_id: tenantId,
                 nome: clienteNome.trim(),
                 telefone: telefoneLimpo,
-                email: clienteEmail?.trim() || null
+                email: clienteEmail?.trim() || null,
             })
             .select('id')
             .single()
@@ -148,7 +158,7 @@ export async function criarAgendamentoPublico({
             cliente_id: clienteId,
             servico_id: servicoId,
             data_hora: dataHora,
-            status: 'confirmado'
+            status: 'confirmado',
         })
         .select('id, data_hora, status')
         .single()
@@ -168,7 +178,7 @@ export async function criarAgendamentoPublico({
     // Funil: agendamento público concluído (sem nome/telefone — nunca PII).
     try {
         capturarEventoTenant('booking_completed', tenantId, {
-            servico_duracao_minutos: servico.duracao_minutos
+            servico_duracao_minutos: servico.duracao_minutos,
         })
     } catch (analyticsErr) {
         console.error('[analytics] booking_completed não capturado (ignorado):', analyticsErr)
@@ -184,7 +194,7 @@ export async function criarAgendamentoPublico({
         clienteNome,
         clienteTelefone,
         dataHora,
-        timezone
+        timezone,
     })
 
     return agendamento
@@ -241,20 +251,24 @@ export async function obterDadosBookingPublico(slug: string) {
 
     return {
         perfil,
-        servicos: servicos || []
+        servicos: servicos || [],
     }
 }
 
 /**
  * Retorna os slots disponíveis calculados para uma data e duração de serviço.
  */
-export async function obterSlotsPublicos(tenantId: string, dateStr: string, duracaoMinutos: number) {
+export async function obterSlotsPublicos(
+    tenantId: string,
+    dateStr: string,
+    duracaoMinutos: number,
+) {
     const supabase = await createClient()
 
-    // Fuso do estabelecimento (SELECT anon permitido em perfis_empresas).
+    // Fuso e regras de acesso do estabelecimento (SELECT anon permitido em perfis_empresas).
     const { data: perfil } = await supabase
         .from('perfis_empresas')
-        .select('timezone')
+        .select('timezone, antecedencia_minima_minutos, horizonte_maximo_dias')
         .eq('tenant_id', tenantId)
         .maybeSingle()
 
@@ -263,6 +277,10 @@ export async function obterSlotsPublicos(tenantId: string, dateStr: string, dura
         dateStr,
         duracaoServicoMinutos: duracaoMinutos,
         supabase,
-        timezone: perfil?.timezone || TIMEZONE_PADRAO
+        timezone: perfil?.timezone || TIMEZONE_PADRAO,
+        regrasAcesso: {
+            antecedenciaMinutos: perfil?.antecedencia_minima_minutos ?? 15,
+            horizonteDias: perfil?.horizonte_maximo_dias ?? 14,
+        },
     })
 }
