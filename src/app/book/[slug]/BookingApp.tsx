@@ -328,7 +328,7 @@ export default function BookingApp({
                 />
             )}
 
-            <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col sm:border-x sm:border-fio lg:mx-0 lg:min-h-0 lg:max-w-none lg:flex-1 lg:overflow-hidden lg:border-x-0">
+            <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col sm:max-w-lg sm:border-x sm:border-fio md:max-w-xl lg:mx-0 lg:min-h-0 lg:max-w-none lg:flex-1 lg:overflow-hidden lg:border-x-0">
                 {!ehSucesso && (
                     <CabecalhoEstabelecimento
                         className="lg:hidden"
@@ -344,7 +344,7 @@ export default function BookingApp({
                     />
                 )}
 
-                <main className="flex-1 px-5 pb-40 pt-5 lg:min-h-0 lg:overflow-y-auto lg:px-0 lg:pb-0 lg:pt-0">
+                <main className="flex-1 px-5 pb-40 pt-5 sm:px-8 md:px-10 lg:min-h-0 lg:overflow-y-auto lg:px-0 lg:pb-0 lg:pt-0">
                     <div className="lg:mx-auto lg:max-w-2xl lg:px-10 lg:py-10">
                         <div
                             key={etapa}

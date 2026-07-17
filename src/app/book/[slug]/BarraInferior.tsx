@@ -40,7 +40,7 @@ export default function BarraInferior({
 
     return (
         <div className={`fixed inset-x-0 bottom-0 z-30 ${className}`}>
-            <div className="mx-auto w-full max-w-md border-t border-fio bg-bastidor px-5 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 sm:border-x sm:border-fio">
+            <div className="mx-auto w-full max-w-md border-t border-fio bg-bastidor px-5 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 sm:max-w-lg sm:border-x sm:border-fio sm:px-8 md:max-w-xl md:px-10">
                 <div className="flex items-center justify-between gap-4">
                     <ResumoAgendamento
                         servico={servico}

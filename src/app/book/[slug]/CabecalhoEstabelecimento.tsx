@@ -55,7 +55,7 @@ export default function CabecalhoEstabelecimento({
             <header
                 className={`sticky top-0 z-20 border-b border-fio bg-palco/95 backdrop-blur ${className}`}
             >
-                <div className="flex items-center gap-3 px-5 py-3">
+                <div className="flex items-center gap-3 px-5 py-3 sm:px-8 md:px-10">
                     <button
                         type="button"
                         onClick={onVoltar}
@@ -88,7 +88,7 @@ export default function CabecalhoEstabelecimento({
                     )}
                     <span className="truncate font-display text-sm font-semibold">{nome}</span>
                 </div>
-                <div className="px-5 pb-3">{progresso}</div>
+                <div className="px-5 pb-3 sm:px-8 md:px-10">{progresso}</div>
             </header>
         )
     }
@@ -112,7 +112,7 @@ export default function CabecalhoEstabelecimento({
                 <div className="h-16 w-full bg-[color-mix(in_oklab,var(--acento,var(--marca))_12%,transparent)]" />
             )}
 
-            <div className="px-5">
+            <div className="px-5 sm:px-8 md:px-10">
                 <div className={`flex items-end gap-3 ${capaUrl ? '-mt-7' : '-mt-6'}`}>
                     {logoUrl ? (
                         <Image
