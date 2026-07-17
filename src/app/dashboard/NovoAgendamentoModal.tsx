@@ -2,63 +2,55 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react'
 import { listarClientes } from '@/app/actions/clientes'
-import { obterSlotsDashboard, criarAgendamentoManual, remarcarAgendamento } from '@/app/actions/agendamentos'
+import {
+    obterSlotsDashboard,
+    criarAgendamentoManual,
+    remarcarAgendamento,
+} from '@/app/actions/agendamentos'
 import { somarDias, formatarDataHoraLonga } from '@/lib/timezone'
+import { formatarTelefone } from '@/lib/telefone'
 
 interface ServicoOpcao {
-    id: string;
-    nome: string;
-    preco: number;
-    duracao_minutos: number;
+    id: string
+    nome: string
+    preco: number
+    duracao_minutos: number
 }
 
 interface ClienteOpcao {
-    id: string;
-    nome: string;
-    telefone: string | null;
+    id: string
+    nome: string
+    telefone: string | null
 }
 
 /** Dados mínimos para abrir o modal no modo remarcação. */
 export interface DadosRemarcacao {
-    agendamentoId: string;
-    clienteNome: string;
-    servicoNome: string;
-    duracaoMinutos: number;
+    agendamentoId: string
+    clienteNome: string
+    servicoNome: string
+    duracaoMinutos: number
 }
 
 interface NovoAgendamentoModalProps {
-    servicos: ServicoOpcao[];
+    servicos: ServicoOpcao[]
     /** Plano com WhatsApp + instância conectada: habilita o envio opcional. */
-    podeEnviarWhatsapp: boolean;
-    hoje: string; // YYYY-MM-DD no fuso do estabelecimento
-    timezone: string;
-    remarcacao: DadosRemarcacao | null;
-    aoFechar: () => void;
-    aoConcluir: () => void;
+    podeEnviarWhatsapp: boolean
+    hoje: string // YYYY-MM-DD no fuso do estabelecimento
+    timezone: string
+    remarcacao: DadosRemarcacao | null
+    aoFechar: () => void
+    aoConcluir: () => void
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-
-const formatarTelefone = (valor: string) => {
-    const digitos = valor.replace(/\D/g, '')
-    const limitado = digitos.slice(0, 11)
-    if (limitado.length <= 2) {
-        return limitado.length > 0 ? `(${limitado}` : ''
-    }
-    if (limitado.length <= 6) {
-        return `(${limitado.slice(0, 2)}) ${limitado.slice(2)}`
-    }
-    if (limitado.length <= 10) {
-        return `(${limitado.slice(0, 2)}) ${limitado.slice(2, 6)}-${limitado.slice(6)}`
-    }
-    return `(${limitado.slice(0, 2)}) ${limitado.slice(2, 7)}-${limitado.slice(7)}`
-}
 
 /** Rótulos de dia derivados da data de calendário — independem do fuso do navegador. */
 const rotuloDia = (dateStr: string) => {
     const d = new Date(`${dateStr}T12:00:00Z`)
     return {
-        diaSemana: d.toLocaleDateString('pt-BR', { weekday: 'short', timeZone: 'UTC' }).replace('.', ''),
+        diaSemana: d
+            .toLocaleDateString('pt-BR', { weekday: 'short', timeZone: 'UTC' })
+            .replace('.', ''),
         diaMes: dateStr.slice(8, 10),
     }
 }
@@ -72,7 +64,7 @@ export default function NovoAgendamentoModal({
     timezone,
     remarcacao,
     aoFechar,
-    aoConcluir
+    aoConcluir,
 }: NovoAgendamentoModalProps) {
     const ehRemarcacao = remarcacao !== null
     const [isPending, startTransition] = useTransition()
@@ -83,7 +75,10 @@ export default function NovoAgendamentoModal({
     const [busca, setBusca] = useState('')
     // Resultados sempre pareados com a busca que os produziu: "buscando" é
     // DERIVADO (busca ≠ buscaConcluida), sem setState síncrono no effect.
-    const [resultadoBusca, setResultadoBusca] = useState<{ busca: string; clientes: ClienteOpcao[] } | null>(null)
+    const [resultadoBusca, setResultadoBusca] = useState<{
+        busca: string
+        clientes: ClienteOpcao[]
+    } | null>(null)
     const [clienteSelecionado, setClienteSelecionado] = useState<ClienteOpcao | null>(null)
     const [criandoNovo, setCriandoNovo] = useState(false)
     const [novoNome, setNovoNome] = useState('')
@@ -99,7 +94,10 @@ export default function NovoAgendamentoModal({
     const [dataSelecionada, setDataSelecionada] = useState(hoje)
     // Mesmo padrão derivado dos resultados de busca: os slots carregados levam
     // a chave (dia|duração) que os produziu.
-    const [slotsCarregados, setSlotsCarregados] = useState<{ chave: string; slots: { time: string; datetime: string }[] } | null>(null)
+    const [slotsCarregados, setSlotsCarregados] = useState<{
+        chave: string
+        slots: { time: string; datetime: string }[]
+    } | null>(null)
     const [slotSelecionado, setSlotSelecionado] = useState<string | null>(null)
 
     // ── Passo 4: resumo ─────────────────────────────────────────────
@@ -144,12 +142,13 @@ export default function NovoAgendamentoModal({
                 res = await obterSlotsDashboard(
                     dataSelecionada,
                     duracaoAtual,
-                    remarcacao?.agendamentoId
+                    remarcacao?.agendamentoId,
                 )
             } catch {
                 res = []
             }
-            if (ativo) setSlotsCarregados({ chave: `${dataSelecionada}|${duracaoAtual}`, slots: res })
+            if (ativo)
+                setSlotsCarregados({ chave: `${dataSelecionada}|${duracaoAtual}`, slots: res })
         }
         buscar()
         return () => {
@@ -181,7 +180,7 @@ export default function NovoAgendamentoModal({
     const prenderFoco = (e: React.KeyboardEvent) => {
         if (e.key !== 'Tab') return
         const focaveis = painelRef.current?.querySelectorAll<HTMLElement>(
-            'button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])'
+            'button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])',
         )
         if (!focaveis || focaveis.length === 0) return
         const primeiro = focaveis[0]
@@ -248,12 +247,15 @@ export default function NovoAgendamentoModal({
                         clienteId: clienteSelecionado?.id,
                         clienteNome: clienteSelecionado ? undefined : novoNome.trim(),
                         clienteTelefone: clienteSelecionado ? undefined : novoTelefone,
-                        enviarWhatsApp: podeEnviarWhatsapp && enviarWhatsApp
+                        enviarWhatsApp: podeEnviarWhatsapp && enviarWhatsApp,
                     })
                 }
                 aoConcluir()
             } catch (err) {
-                const msg = err instanceof Error && err.message ? err.message : 'Erro ao salvar o agendamento.'
+                const msg =
+                    err instanceof Error && err.message
+                        ? err.message
+                        : 'Erro ao salvar o agendamento.'
                 setErro(msg)
                 // Conflito de horário: volta ao passo de horário com a grade atualizada.
                 if (msg.includes('conflita') || msg.includes('indisponível')) {
@@ -421,7 +423,9 @@ export default function NovoAgendamentoModal({
                                         <input
                                             type="tel"
                                             value={novoTelefone}
-                                            onChange={(e) => setNovoTelefone(formatarTelefone(e.target.value))}
+                                            onChange={(e) =>
+                                                setNovoTelefone(formatarTelefone(e.target.value))
+                                            }
                                             placeholder="(11) 99999-9999"
                                             className="w-full rounded-xl border border-fio bg-bastidor px-4 py-3 text-sm text-giz outline-none placeholder:text-penumbra focus:border-marca/50"
                                         />
@@ -488,7 +492,9 @@ export default function NovoAgendamentoModal({
                             <p className="text-sm text-nevoa">
                                 {ehRemarcacao ? (
                                     <>
-                                        <span className="font-medium text-giz">{remarcacao.clienteNome}</span>
+                                        <span className="font-medium text-giz">
+                                            {remarcacao.clienteNome}
+                                        </span>
                                         {' · '}
                                         {remarcacao.servicoNome}
                                     </>
@@ -543,7 +549,10 @@ export default function NovoAgendamentoModal({
                             {carregandoSlots ? (
                                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                                     {Array.from({ length: 8 }).map((_, i) => (
-                                        <div key={i} className="h-10 animate-pulse rounded-xl bg-veu" />
+                                        <div
+                                            key={i}
+                                            className="h-10 animate-pulse rounded-xl bg-veu"
+                                        />
                                     ))}
                                 </div>
                             ) : slots.length === 0 ? (
@@ -592,7 +601,9 @@ export default function NovoAgendamentoModal({
                                         serviço
                                     </p>
                                     <p className="text-sm font-medium text-giz">
-                                        {ehRemarcacao ? remarcacao.servicoNome : servicoSelecionado?.nome}
+                                        {ehRemarcacao
+                                            ? remarcacao.servicoNome
+                                            : servicoSelecionado?.nome}
                                         <span className="ml-2 font-mono text-xs text-nevoa">
                                             {duracaoAtual} min
                                             {!ehRemarcacao && servicoSelecionado
@@ -633,8 +644,8 @@ export default function NovoAgendamentoModal({
                                 {isPending
                                     ? 'salvando…'
                                     : ehRemarcacao
-                                        ? 'confirmar remarcação'
-                                        : 'confirmar agendamento'}
+                                      ? 'confirmar remarcação'
+                                      : 'confirmar agendamento'}
                             </button>
                         </div>
                     )}
