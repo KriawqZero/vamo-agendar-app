@@ -26,10 +26,10 @@ export default function EtapaSucesso({
     }, [])
 
     return (
-        <section className="aparecer flex flex-col items-center pt-10 text-center">
+        <section className="aparecer flex flex-col items-center pt-10 text-center lg:mx-auto lg:max-w-xl">
             <div
                 aria-hidden="true"
-                className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
+                className="demo-pop flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
             >
                 <svg
                     className="h-8 w-8"

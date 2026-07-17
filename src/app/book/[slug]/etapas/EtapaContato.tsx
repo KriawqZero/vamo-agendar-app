@@ -46,7 +46,7 @@ export default function EtapaContato({
                 Sem cadastro — seus dados servem só para este agendamento.
             </p>
 
-            <form id="form-contato" action={formAction} className="mt-4 space-y-4">
+            <form id="form-contato" action={formAction} className="mt-4 space-y-4 lg:max-w-md">
                 {erro && (
                     <p
                         role="alert"
