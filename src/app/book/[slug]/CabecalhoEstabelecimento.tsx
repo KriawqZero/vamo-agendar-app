@@ -57,7 +57,7 @@ export default function CabecalhoEstabelecimento({
                         type="button"
                         onClick={onVoltar}
                         aria-label="Voltar para a etapa anterior"
-                        className="flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full border border-fio text-giz transition-all duration-200 hover:border-fio-forte"
+                        className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full border border-fio text-giz transition-all duration-200 hover:border-fio-forte"
                     >
                         <svg
                             className="h-4 w-4"
@@ -145,7 +145,7 @@ export default function CabecalhoEstabelecimento({
                                 href={`https://instagram.com/${instagram}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-fio px-3 py-1 text-xs font-medium text-nevoa transition-all duration-200 hover:border-fio-forte hover:text-giz"
+                                className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-fio px-3.5 py-1 text-xs font-medium text-nevoa transition-all duration-200 hover:border-fio-forte hover:text-giz"
                             >
                                 <svg
                                     className="h-3.5 w-3.5"
@@ -173,7 +173,7 @@ export default function CabecalhoEstabelecimento({
                                 href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(endereco)}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full border border-fio px-3 py-1 text-xs font-medium text-nevoa transition-all duration-200 hover:border-fio-forte hover:text-giz"
+                                className="inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-full border border-fio px-3.5 py-1 text-xs font-medium text-nevoa transition-all duration-200 hover:border-fio-forte hover:text-giz"
                             >
                                 <svg
                                     className="h-3.5 w-3.5 shrink-0"

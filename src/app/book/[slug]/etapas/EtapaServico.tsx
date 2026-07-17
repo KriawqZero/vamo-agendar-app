@@ -32,7 +32,7 @@ export default function EtapaServico({
             <h2
                 ref={tituloRef}
                 tabIndex={-1}
-                className="font-display text-lg font-semibold outline-none"
+                className="scroll-mt-24 font-display text-lg font-semibold outline-none"
             >
                 Escolha o serviço
             </h2>
@@ -42,15 +42,14 @@ export default function EtapaServico({
                     Este estabelecimento ainda não publicou serviços. Volte em breve.
                 </p>
             ) : (
-                <div role="radiogroup" aria-label="Serviços disponíveis" className="mt-4 space-y-2">
+                <div aria-label="Serviços disponíveis" className="mt-4 space-y-2">
                     {servicos.map((servico) => {
                         const selecionado = servicoSelecionado?.id === servico.id
                         return (
                             <button
                                 key={servico.id}
                                 type="button"
-                                role="radio"
-                                aria-checked={selecionado}
+                                aria-pressed={selecionado}
                                 onClick={() => onSelecionar(servico)}
                                 className={`flex w-full cursor-pointer items-center justify-between gap-4 rounded-2xl border p-4 text-left transition-all duration-200 ${
                                     selecionado

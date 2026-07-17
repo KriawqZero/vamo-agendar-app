@@ -359,10 +359,10 @@ export default async function Home() {
                                 Com a sua marca em tudo.
                             </h3>
                             <p className="mt-5 leading-relaxed text-nevoa">
-                                Link personalizado com o seu nome, as cores da sua identidade e a
-                                sua logo na página. O cliente sente que está agendando com você —
-                                porque está.{' '}
-                                <span className="text-penumbra/75">(planos Plus e Pro)</span>
+                                Sua cor, sua logo e sua foto de capa na página — e o link
+                                personalizado com o seu nome. O cliente sente que está agendando com
+                                você — porque está.{' '}
+                                <span className="text-penumbra/75">(plano Pro)</span>
                             </p>
                         </Reveal>
                     </div>

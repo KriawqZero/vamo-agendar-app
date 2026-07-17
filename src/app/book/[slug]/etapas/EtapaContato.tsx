@@ -1,11 +1,16 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { formatarTelefone } from '@/lib/telefone'
 
 interface EtapaContatoProps {
     formAction: (formData: FormData) => void
     erro: string | null
+    /** Nome/telefone vivem no BookingApp: voltar de etapa não apaga o que foi digitado. */
+    nome: string
+    onNomeChange: (valor: string) => void
+    telefone: string
+    onTelefoneChange: (valor: string) => void
     autoFoco: boolean
 }
 
@@ -14,21 +19,26 @@ interface EtapaContatoProps {
  * no CTA da barra inferior (<button form="form-contato">); a validação/envio vive
  * no useActionState do BookingApp.
  */
-export default function EtapaContato({ formAction, erro, autoFoco }: EtapaContatoProps) {
+export default function EtapaContato({
+    formAction,
+    erro,
+    nome,
+    onNomeChange,
+    telefone,
+    onTelefoneChange,
+    autoFoco,
+}: EtapaContatoProps) {
     const tituloRef = useRef<HTMLHeadingElement>(null)
     useEffect(() => {
         if (autoFoco) tituloRef.current?.focus()
     }, [autoFoco])
-
-    const [nome, setNome] = useState('')
-    const [telefone, setTelefone] = useState('')
 
     return (
         <section className="aparecer-rapido">
             <h2
                 ref={tituloRef}
                 tabIndex={-1}
-                className="font-display text-lg font-semibold outline-none"
+                className="scroll-mt-24 font-display text-lg font-semibold outline-none"
             >
                 Seus dados
             </h2>
@@ -57,7 +67,7 @@ export default function EtapaContato({ formAction, erro, autoFoco }: EtapaContat
                         required
                         autoComplete="name"
                         value={nome}
-                        onChange={(e) => setNome(e.target.value)}
+                        onChange={(e) => onNomeChange(e.target.value)}
                         placeholder="Como quer ser chamado"
                         className="min-h-12 w-full rounded-xl border border-fio bg-bastidor px-4 text-sm outline-hidden transition-all duration-200 focus:border-[var(--acento,var(--marca))]"
                     />
@@ -75,7 +85,7 @@ export default function EtapaContato({ formAction, erro, autoFoco }: EtapaContat
                         autoComplete="tel-national"
                         inputMode="numeric"
                         value={telefone}
-                        onChange={(e) => setTelefone(formatarTelefone(e.target.value))}
+                        onChange={(e) => onTelefoneChange(formatarTelefone(e.target.value))}
                         placeholder="(11) 99999-9999"
                         className="min-h-12 w-full rounded-xl border border-fio bg-bastidor px-4 font-mono text-sm outline-hidden transition-all duration-200 focus:border-[var(--acento,var(--marca))]"
                     />

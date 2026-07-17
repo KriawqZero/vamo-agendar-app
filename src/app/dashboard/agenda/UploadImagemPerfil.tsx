@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useActionState, useRef, useTransition } from 'react'
+import React, { useActionState, useTransition } from 'react'
 import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import {
@@ -31,7 +31,6 @@ const ROTULOS: Record<TipoImagemPerfil, { alt: string; enviar: string; limite: s
  */
 export default function UploadImagemPerfil({ tipo, urlAtual, liberado }: UploadImagemPerfilProps) {
     const router = useRouter()
-    const inputArquivoRef = useRef<HTMLInputElement>(null)
     const idInput = `upload-${tipo}`
 
     const [erroEnvio, enviarAction, enviando] = useActionState(
@@ -101,7 +100,6 @@ export default function UploadImagemPerfil({ tipo, urlAtual, liberado }: UploadI
                     <form action={enviarAction}>
                         <input type="hidden" name="tipo" value={tipo} />
                         <input
-                            ref={inputArquivoRef}
                             id={idInput}
                             type="file"
                             name="arquivo"
@@ -110,7 +108,11 @@ export default function UploadImagemPerfil({ tipo, urlAtual, liberado }: UploadI
                             disabled={!liberado || ocupado}
                             onChange={(e) => {
                                 if (e.target.files?.length) {
+                                    // requestSubmit() captura o FormData sincronamente;
+                                    // o reset permite reenviar o MESMO arquivo depois
+                                    // (remover + reenviar, ou retry após falha).
                                     e.target.form?.requestSubmit()
+                                    e.target.value = ''
                                 }
                             }}
                         />

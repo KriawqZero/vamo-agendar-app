@@ -41,6 +41,38 @@ const EXTENSAO_POR_MIME: Record<string, string> = {
     'image/webp': 'webp',
 }
 
+// O MIME declarado pelo browser é verificado contra a assinatura real do arquivo
+// (magic bytes) — o bucket é público com CDN; sem isso, um tenant autenticado
+// poderia hospedar bytes arbitrários servidos como image/* sob o domínio do produto.
+async function assinaturaConfere(arquivo: File, mime: string): Promise<boolean> {
+    const cabecalho = new Uint8Array(await arquivo.slice(0, 12).arrayBuffer())
+    switch (mime) {
+        case 'image/jpeg':
+            return cabecalho[0] === 0xff && cabecalho[1] === 0xd8 && cabecalho[2] === 0xff
+        case 'image/png':
+            return (
+                cabecalho[0] === 0x89 &&
+                cabecalho[1] === 0x50 &&
+                cabecalho[2] === 0x4e &&
+                cabecalho[3] === 0x47
+            )
+        case 'image/webp':
+            // RIFF....WEBP
+            return (
+                cabecalho[0] === 0x52 &&
+                cabecalho[1] === 0x49 &&
+                cabecalho[2] === 0x46 &&
+                cabecalho[3] === 0x46 &&
+                cabecalho[8] === 0x57 &&
+                cabecalho[9] === 0x45 &&
+                cabecalho[10] === 0x42 &&
+                cabecalho[11] === 0x50
+            )
+        default:
+            return false
+    }
+}
+
 export type TipoImagemPerfil = keyof typeof CONFIG_IMAGENS
 
 export async function enviarImagemPerfil(formData: FormData): Promise<{ url: string }> {
@@ -63,6 +95,9 @@ export async function enviarImagemPerfil(formData: FormData): Promise<{ url: str
     const extensao = EXTENSAO_POR_MIME[arquivo.type]
     if (!extensao) {
         throw new Error('Formato não suportado. Envie uma imagem JPG, PNG ou WebP.')
+    }
+    if (!(await assinaturaConfere(arquivo, arquivo.type))) {
+        throw new Error('O arquivo não parece ser uma imagem válida. Envie JPG, PNG ou WebP.')
     }
     if (arquivo.size > config.tamanhoMaximoBytes) {
         const limiteMb = Math.round(config.tamanhoMaximoBytes / (1024 * 1024))

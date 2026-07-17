@@ -9,6 +9,15 @@
 -- tenant; a preferência separada perdeu a função.
 alter table "public"."perfis_empresas" drop column "exibir_logo";
 
+-- logo_url muda de proveniência: antes era sincronizado do Clerk (img.clerk.com),
+-- agora é upload próprio no bucket imagens-perfis. URLs legadas do Clerk quebrariam
+-- o next/image da página pública (host fora de images.remotePatterns) — zera tudo
+-- que não seja do bucket novo; o tenant Pro sobe o logo de novo no dashboard.
+update "public"."perfis_empresas"
+set logo_url = null
+where logo_url is not null
+  and logo_url not like '%/storage/v1/object/public/imagens-perfis/%';
+
 alter table "public"."perfis_empresas" add column "capa_url" text;
 
 alter table "public"."perfis_empresas" add column "endereco" text;

@@ -87,6 +87,17 @@ export default function BookingApp({
         data_hora: string
     } | null>(null)
 
+    // Contato vive aqui (não na etapa): voltar para conferir o horário não pode
+    // apagar o que o cliente já digitou — Fricção Zero.
+    const [nome, setNome] = useState('')
+    const [telefone, setTelefone] = useState('')
+
+    // Erros do submit são estado próprio (não o retorno do useActionState) para
+    // poderem ser limpos ao trocar de slot/etapa — sem erro fantasma no remount.
+    const [erroEnvio, setErroEnvio] = useState<string | null>(null)
+    // Aviso exibido na etapa de data/hora quando o slot escolhido foi tomado.
+    const [avisoDataHora, setAvisoDataHora] = useState<string | null>(null)
+
     const timezone = perfil.timezone || TIMEZONE_PADRAO
     const acento = classesAcento(Boolean(personalizacao.corMarca))
 
@@ -173,6 +184,13 @@ export default function BookingApp({
     const selecionarData = (dateStr: string) => {
         setDataEscolhidaPeloCliente(dateStr)
         setSlotSelecionado(null)
+        setAvisoDataHora(null)
+    }
+
+    const selecionarSlot = (slot: Slot) => {
+        setSlotSelecionado(slot)
+        setAvisoDataHora(null)
+        setErroEnvio(null)
     }
 
     const avancar = () => {
@@ -187,42 +205,59 @@ export default function BookingApp({
         if (etapa === 'data_hora') {
             mudarEtapa('servico')
         } else if (etapa === 'contato') {
+            setErroEnvio(null)
             mudarEtapa('data_hora')
         }
     }
 
-    // Submit da etapa de contato: valida, chama a action pública (contrato intacto)
-    // e devolve a mensagem de erro para render com role="alert". O CTA fica na
-    // barra inferior (<button form="form-contato">) — pending vem do useActionState.
-    const [erroEnvio, enviarAction, enviando] = useActionState(
-        async (_anterior: string | null, formData: FormData): Promise<string | null> => {
+    // Submit da etapa de contato: valida e chama a action pública (contrato intacto).
+    // O CTA fica na barra inferior (<button form="form-contato">) — pending vem do
+    // useActionState; o erro vai para `erroEnvio` (estado limpável). Slot tomado por
+    // outro cliente (double-booking) volta para data/hora com a grade refeita.
+    const [, enviarAction, enviando] = useActionState(
+        async (_anterior: null, formData: FormData): Promise<null> => {
+            setErroEnvio(null)
             if (!servicoSelecionado || !slotSelecionado) {
-                return 'Escolha o serviço e o horário antes de confirmar.'
+                setErroEnvio('Escolha o serviço e o horário antes de confirmar.')
+                return null
             }
-            const nome = String(formData.get('nome') ?? '').trim()
+            const nomeInformado = String(formData.get('nome') ?? '').trim()
             const telefoneLimpo = String(formData.get('telefone') ?? '').replace(/\D/g, '')
-            if (!nome) {
-                return 'Informe seu nome.'
+            if (!nomeInformado) {
+                setErroEnvio('Informe seu nome.')
+                return null
             }
             if (telefoneLimpo.length < 10 || telefoneLimpo.length > 11) {
-                return 'Informe o WhatsApp com DDD (10 ou 11 dígitos).'
+                setErroEnvio('Informe o WhatsApp com DDD (10 ou 11 dígitos).')
+                return null
             }
             try {
                 const res = await criarAgendamentoPublico({
                     tenantId: perfil.tenant_id,
                     servicoId: servicoSelecionado.id,
                     dataHora: slotSelecionado.datetime,
-                    clienteNome: nome,
+                    clienteNome: nomeInformado,
                     clienteTelefone: telefoneLimpo,
                 })
                 setAgendamentoCriado(res)
                 mudarEtapa('sucesso')
-                return null
             } catch (err) {
-                return err instanceof Error
-                    ? err.message
-                    : 'Não foi possível confirmar o agendamento. Tente outro horário.'
+                const mensagem =
+                    err instanceof Error
+                        ? err.message
+                        : 'Não foi possível confirmar o agendamento. Tente outro horário.'
+                if (mensagem.includes('já foi preenchido')) {
+                    // Recuperação de double-booking: solta o slot morto, refaz a
+                    // grade e leva o cliente direto para escolher outro horário.
+                    setSlotSelecionado(null)
+                    setTentativaSlots((t) => t + 1)
+                    setAvisoDataHora(mensagem)
+                    mudarEtapa('data_hora')
+                } else {
+                    setErroEnvio(mensagem)
+                }
             }
+            return null
         },
         null,
     )
@@ -278,15 +313,24 @@ export default function BookingApp({
                         carregando={carregandoSlots}
                         erro={erroSlots}
                         onTentarDeNovo={() => setTentativaSlots((t) => t + 1)}
+                        aviso={avisoDataHora}
                         slotSelecionado={slotSelecionado}
-                        onSelecionarSlot={setSlotSelecionado}
+                        onSelecionarSlot={selecionarSlot}
                         acento={acento}
                         autoFoco={jaNavegou}
                     />
                 )}
 
                 {etapa === 'contato' && (
-                    <EtapaContato formAction={enviarAction} erro={erroEnvio} autoFoco={jaNavegou} />
+                    <EtapaContato
+                        formAction={enviarAction}
+                        erro={erroEnvio}
+                        nome={nome}
+                        onNomeChange={setNome}
+                        telefone={telefone}
+                        onTelefoneChange={setTelefone}
+                        autoFoco={jaNavegou}
+                    />
                 )}
 
                 {etapa === 'sucesso' && agendamentoCriado && (
