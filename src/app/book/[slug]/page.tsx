@@ -17,7 +17,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     const { slug } = await params
     const dados = await obterDadosCached(slug)
     if (!dados) {
-        return { title: 'Agenda não encontrada · VamoAgendar' }
+        // notFound() aqui (antes do streaming) garante o status 404 — na página,
+        // com loading.tsx, o shell já teria ido com 200.
+        notFound()
     }
 
     const titulo = `${dados.perfil.nome_estabelecimento} · Agendar horário`
