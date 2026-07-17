@@ -3,12 +3,13 @@
 Lista viva de tarefas identificadas. Revisar antes de cada nova etapa de
 desenvolvimento — e obrigatoriamente antes de implementar o checkout Asaas.
 
-Última atualização: 2026-07-16 (P0.12(a) — grade inteligente de horários — resolvido;
-absorveu e fechou os três subitens do P1.7 sobre múltiplas janelas, antecedência
-mínima e horizonte máximo. P0.12(b) customização visual e (c) layout mobile
-continuam pendentes, assim como P1.11 absorvido em (b). Revisão final do branch
-adicionou achados de baixo risco à seção 9 e dois itens de pré-lançamento. Priorização
-de 2026-07-12 mantida).
+Última atualização: 2026-07-17 (P0.12(b) e (c) — customização do tenant e redesign
+mobile-first do booking público — resolvidos; fecham também o P1.11. Decisões do
+owner registradas: **toda customização visual é exclusiva do Pro** e o **Plus caminha
+para descontinuação** (não ganha recursos novos; tratado em conversa futura); imagens
+por upload próprio no Supabase Storage (bucket `imagens-perfis`), nunca por URL.
+P1.8 parcialmente alinhado: e-mail saiu da UI pública, WhatsApp obrigatório por ora,
+regra-alvo "pelo menos um dos dois" registrada. Priorização de 2026-07-12 mantida).
 
 ---
 
@@ -348,10 +349,10 @@ otimizar campanhas.
 
 **Dependências/decisões:** escolher os 2–3 nichos iniciais; P0.5 para medir.
 
-### 12. Redesign do booking público — grade de horários inteligente, customização do tenant e layout mobile-first
+### 12. ~~Redesign do booking público — grade de horários inteligente, customização do tenant e layout mobile-first~~ — ✅ Resolvido (a: 2026-07-16; b/c: 2026-07-17)
 
-**Registrado em 2026-07-16 .** Três problemas no `/book/[slug]`,
-decididos pelo owner como um único bloco de trabalho:
+**Registrado em 2026-07-16.** Três problemas no `/book/[slug]`,
+decididos pelo owner como um único bloco de trabalho — todos resolvidos:
 
 **a) ~~Temporização dos horários é burra (grade fixa de 15 min).~~ — ✅ Resolvido em
 2026-07-16** *(absorveu e fechou os três subitens do P1.7: múltiplas janelas por dia,
@@ -397,42 +398,35 @@ agendamentos já existentes. Cuidados verificados no código:
 
 </details>
 
-**b) Customização visual do tenant (Plus/Pro) mínima/inexistente.** *(absorve o P1.11)*
+**b) ~~Customização visual do tenant mínima/inexistente.~~ — ✅ Resolvido em
+2026-07-17** *(absorve e fecha o P1.11)*
 
-Estado atual verificado: `cor_marca`/`logo_url` existem no schema, com gating e UI de
-edição prontos no dashboard, mas **nada é consumido** em `/book/[slug]` — a página
-pública é idêntica para todos os tenants. Resultado esperado: a página do booking
-refletir a marca do tenant (cor, logo, e o que mais o redesign definir como
-customizável), entregando o valor visível dos planos pagos.
+Escopo estendido decidido pelo owner: cor + logo + **capa** + bio (reutiliza
+`descricao`) + Instagram/endereço. **Toda customização visual (cor, logo, capa) é
+exclusiva do Pro** — o Plus vai ser descontinuado em conversa futura e não ganha
+recursos novos (`corPersonalizada` saiu do Plus em `planos.ts`). Imagens por **upload
+próprio** no bucket público `imagens-perfis` do Supabase Storage (o sync do logo via
+Clerk foi removido; nunca pedir URL de imagem). Instagram/endereço são infos básicas,
+livres em todos os planos. A página pública consome tudo **sanitizado pelo plano
+vigente** (`obterDadosBookingPublico` → chave `personalizacao`; downgrade não zera
+colunas, o valor persistido é ignorado — mesmo padrão do slug efetivo). Detalhes em
+"Itens resolvidos" no fim deste documento.
 
-**c) Layout atual tem cara de "SaaS de dev", não de serviço do dia a dia.**
+**c) ~~Layout com cara de "SaaS de dev".~~ — ✅ Resolvido em 2026-07-17**
 
-Estado atual verificado: o wizard é um **card flutuante centrado**
-(`max-w-xl mx-auto` + `rounded-3xl shadow-xl` em `BookingWizard.tsx:191`, sobre fundo
-com glows radiais em `page.tsx:38-41`), paleta zinc/violet genérica — inclusive fora
-da identidade visual oficial do VamoAgendar. Funciona no desktop, mas no celular
-(estimativa do owner: ~98% de quem agenda) parece ferramenta de desenvolvedor, não uma
-página onde um cliente comum marca corte de cabelo ou nail design.
+`BookingWizard.tsx` (card flutuante zinc/violet) substituído pelo fluxo de etapas em
+tela cheia estilo app (`BookingApp.tsx` + `CabecalhoEstabelecimento` + `BarraInferior`
++ `etapas/*`): identidade do estabelecimento no topo (capa/logo/bio/chips, colapsa em
+barra sticky com progresso), barra-resumo fixa que se preenche com as escolhas + CTA
+sempre à mão, identidade oficial como base (tokens + Poppins) e acento do tenant Pro
+por cima com contraste calculado. Junto: `generateMetadata` por tenant (OG = capa),
+`notFound()` real (404), a11y (radiogroups, labels, `role=alert`, foco por etapa) e
+eliminação das classes mortas de animação.
 
-Resultado esperado: repensar layout e estrutura mobile-first de verdade (fluxo de tela
-cheia no celular, não card flutuante), com linguagem visual de consumo — alinhada à
-identidade oficial como base e à customização do tenant do item (b) por cima.
-
-**Critérios de conclusão:** ~~grade de horários deixa de ser fixa de 15 min e segue a
-regra decidida~~ (a, feito); página pública reflete cor/logo do tenant pagante (b);
-booking no celular tem aparência e fluxo de produto de consumo (c); ~~validação por
-string exata e testes da engine atualizados de forma coerente~~ (a, feito).
-
-**Arquivos:** ~~`src/lib/booking-engine.ts`~~ (a, feito — junto de
-`src/app/actions/public-booking.ts`, `src/app/actions/agenda.ts`,
-`src/lib/horarios.ts` e `src/lib/__tests__/booking-engine.test.ts`/`horarios.test.ts`);
-restam `src/app/book/[slug]/page.tsx`, `src/app/book/[slug]/BookingWizard.tsx`,
-`src/app/dashboard/NovoAgendamentoModal.tsx` (mesma engine) e possivelmente
-`supabase/schemas/` (config visual por tenant) para (b)/(c).
-
-**Dependências/decisões:** ~~desenhar a regra da grade antes de codar~~ e ~~decidir se
-os itens correlatos do P1.7 entram neste bloco~~ — resolvidos (a, ver acima); falta
-decidir o escopo de customização além de cor/logo (b).
+**Critérios de conclusão:** ~~grade de horários~~ (a, feito); ~~página pública reflete
+cor/logo do tenant pagante~~ (b, feito — cor/logo/capa, só Pro); ~~booking no celular
+com aparência e fluxo de produto de consumo~~ (c, feito); ~~validação por string exata
+e testes da engine~~ (a, feito — contratos preservados também em b/c).
 
 ---
 
@@ -463,19 +457,22 @@ Não transformar este conjunto em um sistema completo de gestão.
 
 ### 8. Consistência WhatsApp ou e-mail (booking público)
 
-`docs/05` diz "WhatsApp **ou** e-mail (um dos dois)"; a UI do wizard aceita qualquer
-um dos dois (`BookingWizard.tsx:149`); mas a Server Action **exige** WhatsApp
-(`public-booking.ts:31-38` — quem informa só e-mail passa na UI e recebe erro da
-action) e envio por e-mail **não existe** (Resend não é usado em lugar nenhum do
-código).
+`docs/05` dizia "WhatsApp **ou** e-mail (um dos dois)"; a UI antiga aceitava qualquer
+um dos dois, mas a Server Action **exige** WhatsApp e envio por e-mail **não existe**
+(Resend não é usado em lugar nenhum do código).
 
-**Decisão pragmática recomendada (registrada):** como o WhatsApp é o núcleo do
-produto, **WhatsApp obrigatório** no primeiro recorte; remover a promessa de e-mail
-da UI e do docs/05 enquanto o fluxo não existir; manter Resend/e-mail como evolução
-posterior, salvo evidência de necessidade nos pilotos.
+**Alinhado no redesign do booking (2026-07-17, decisão do owner):** por enquanto,
+**WhatsApp obrigatório** — a etapa de contato nova pede só Nome + WhatsApp e o campo
+de e-mail **saiu da UI pública** (a promessa era falsa: nada envia e-mail e quem
+mandava só e-mail estourava na action). O parâmetro `clienteEmail` da action segue
+opcional (contrato preservado).
 
-**Critério de conclusão:** código, docs, validação e copy comunicam a mesma regra
-(hoje há três comportamentos diferentes).
+**Regra-alvo registrada pelo owner:** quando envio por e-mail existir, a regra volta
+a ser "**pelo menos um dos dois**" (e-mail OU WhatsApp — qualquer um serve, mas tem
+que ter algum). Este item fica aberto até lá.
+
+**Critério de conclusão:** envio por e-mail implementado e a regra "um dos dois"
+valendo em UI + action + copy + docs/05 ao mesmo tempo.
 
 **Arquivos:** `src/app/book/[slug]/BookingWizard.tsx`, `src/app/actions/public-booking.ts`,
 `docs/05-PRODUTO_E_VISAO.md`.
@@ -507,11 +504,6 @@ posterior, salvo evidência de necessidade nos pilotos.
   pré-refresh. Raro (exige dois submits em sequência rápida); dano limitado a reverter
   para um valor já persistido antes. *(apontado na revisão final da grade inteligente,
   2026-07-16)*
-- Submit de Horários com configs alteradas (`AgendaClient.tsx:356`) sempre acaba
-  chamando `salvarPerfilEmpresa`, que em `perfis-empresas.ts:221-229` sincroniza o
-  logo da organização via API do Clerk mesmo quando só antecedência/horizonte
-  mudaram — round-trip evitável. *(apontado na revisão final da grade inteligente,
-  2026-07-16)*
 - `adicionarJanela` (`AgendaClient.tsx:262-273`, via `somarMinutos`) sugere uma janela
   `23:59–23:59` inválida quando a janela anterior do dia termina às 23:59 — a
   validação visual bloqueia o save (sem corrupção de dados), mas é beco de UX; não
@@ -537,13 +529,12 @@ posterior, salvo evidência de necessidade nos pilotos.
 - Código: `hidePersonal` no `<OrganizationSwitcher>` do layout do dashboard
   (verificado 2026-07-11: ainda não aplicado).
 
-### 11. Cor e logo do tenant na página pública de booking — → absorvido pelo P0.12
+### 11. ~~Cor e logo do tenant na página pública de booking~~ — ✅ resolvido via P0.12(b) em 2026-07-17
 
-**Absorvido pelo P0.12 em 2026-07-16** (redesign do booking público) — a customização
-visual do tenant será tratada lá, como parte do novo layout. Escopo original mantido
-como referência: estrutura pronta (colunas `cor_marca`/`logo_url`, gating e UI do
-dashboard já existem) — falta o consumo em `/book/[slug]`. É a entrega visível do
-valor dos planos Plus/Pro. (Ver docs/07 "Recursos preparados mas não implementados".)
+**Absorvido pelo P0.12 em 2026-07-16 e fechado em 2026-07-17** com o redesign do
+booking público: cor, logo e capa do tenant Pro aplicados em `/book/[slug]` (upload
+próprio no Storage; sanitização pelo plano vigente). Ver P0.12(b) e "Itens
+resolvidos".
 
 ---
 
@@ -811,6 +802,52 @@ primeiro item P0 com testes for implementado.
 ---
 
 ## ✅ Itens resolvidos (histórico)
+
+- **2026-07-17 — P0.12(b)+(c): customização do tenant e redesign mobile-first do
+  booking público** — fecha também o P1.11:
+  - **Decisões do owner**: escopo estendido (cor + logo + capa + bio via `descricao` +
+    Instagram/endereço); **customização visual só no Pro** (`corPersonalizada` saiu do
+    Plus — o Plus será descontinuado em conversa futura e não ganha recursos novos);
+    imagens por **upload próprio** (nunca pedir URL — "revela produto amador");
+    Instagram/endereço livres em todos os planos; layout de **etapas em tela cheia**
+    escolhido sobre mockup; contato com WhatsApp obrigatório por ora (ver P1.8).
+  - **Banco**: `capa_url`, `instagram` (CHECK de formato) e `endereco` (CHECK ≤200)
+    em `perfis_empresas`; CHECK `#rrggbb` em `cor_marca`; **drop de `exibir_logo`**
+    (com upload próprio, subir/remover já expressa a intenção). Migrations
+    `20260717173021_personalizacao_booking_publico` (diff limpo do ruído de
+    REVOKE/GRANT do migra) e `20260717173148_storage_imagens_perfis` aplicadas no
+    cloud.
+  - **Storage**: bucket público `imagens-perfis` (5MB, jpeg/png/webp, sem SVG),
+    paths `<org_id>/logo|capa-<epoch>.<ext>` com cache-busting. **Sem políticas em
+    `storage.objects`**: neste projeto o `postgres` não é owner da tabela (Supabase
+    atual) e não pode criar políticas ali — o bucket ficou default-deny e TODA
+    escrita passa pelas actions `enviarImagemPerfil`/`removerImagemPerfil`
+    (`imagens-perfil.ts`: `auth()` + gating Pro + MIME/tamanho validados + path
+    derivado do `orgId` + `createAdminClient()`), postura mais restritiva que RLS de
+    pasta. Upload anônimo direto na API do Storage negado (verificado por curl).
+  - **Actions**: `salvarPerfilEmpresa` sem o sync de logo do Clerk e sem
+    `exibirLogo`; valida hex da cor e normaliza Instagram; `obterDadosBookingPublico`
+    **estendido** com `personalizacao {corMarca, logoUrl, capaUrl}` sanitizada pelo
+    plano vigente (downgrade ignora valor persistido — verificado: página via
+    `slug_gratuito` sem acento após cancelar assinatura) e campos crus neutralizados
+    no `perfil`.
+  - **Página pública**: `BookingWizard.tsx` deletado; `BookingApp.tsx` +
+    `CabecalhoEstabelecimento` (capa/logo/bio/chips que colapsa em barra sticky com
+    progresso) + `BarraInferior` (barra-resumo que se preenche com as escolhas + CTA)
+    + `etapas/` (serviço; data/hora com grupos manhã/tarde/noite; contato só
+    nome+WhatsApp com `useActionState`; sucesso com endereço/mapa/Instagram).
+    Identidade oficial (tokens + Poppins) como base; acento do tenant via CSS vars
+    `--acento`/`--acento-texto` (contraste WCAG calculado no servidor,
+    `src/lib/cores.ts`); `generateMetadata` por tenant (OG = capa quando houver),
+    `notFound()` real com 404 (exigiu `notFound()` no `generateMetadata` e remoção
+    do `loading.tsx` — Next 16 faz streaming da metadata e o shell sairia com 200),
+    a11y (radiogroups, `htmlFor`, `role=alert`, foco por etapa, touch ≥44px,
+    `prefers-reduced-motion`), classes mortas de animação eliminadas
+    (`.aparecer-rapido` real no globals). Analytics preservado byte a byte.
+  - **Contratos preservados**: engine intocada, `obterSlotsPublicos` e
+    `criarAgendamentoPublico` idênticos (validação por igualdade exata de datetime),
+    `NovoAgendamentoModal` só trocou `formatarTelefone` local pelo import de
+    `src/lib/telefone.ts`.
 
 - **2026-07-16 — P0.12(a): grade inteligente de horários (regra anti-buraco)** —
   absorve e fecha os três subitens do P1.7 (múltiplas janelas por dia, antecedência
