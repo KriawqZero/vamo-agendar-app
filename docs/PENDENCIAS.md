@@ -3,13 +3,15 @@
 Lista viva de tarefas identificadas. Revisar antes de cada nova etapa de
 desenvolvimento — e obrigatoriamente antes de implementar o checkout Asaas.
 
-Última atualização: 2026-07-17 (P0.12(b) e (c) — customização do tenant e redesign
-mobile-first do booking público — resolvidos; fecham também o P1.11. Decisões do
-owner registradas: **toda customização visual é exclusiva do Pro** e o **Plus caminha
-para descontinuação** (não ganha recursos novos; tratado em conversa futura); imagens
-por upload próprio no Supabase Storage (bucket `imagens-perfis`), nunca por URL.
-P1.8 parcialmente alinhado: e-mail saiu da UI pública, WhatsApp obrigatório por ora,
-regra-alvo "pelo menos um dos dois" registrada. Priorização de 2026-07-12 mantida).
+Última atualização: 2026-07-17 (P0.12-desktop — responsividade real + split de 2
+painéis no desktop do booking público — resolvido, ver "Itens resolvidos". Antes
+dele: P0.12(b) e (c) — customização do tenant e redesign mobile-first do booking
+público — resolvidos; fecham também o P1.11. Decisões do owner registradas: **toda
+customização visual é exclusiva do Pro** e o **Plus caminha para descontinuação**
+(não ganha recursos novos; tratado em conversa futura); imagens por upload próprio no
+Supabase Storage (bucket `imagens-perfis`), nunca por URL. P1.8 parcialmente
+alinhado: e-mail saiu da UI pública, WhatsApp obrigatório por ora, regra-alvo "pelo
+menos um dos dois" registrada. Priorização de 2026-07-12 mantida).
 
 ---
 
@@ -802,6 +804,49 @@ primeiro item P0 com testes for implementado.
 ---
 
 ## ✅ Itens resolvidos (histórico)
+
+- **2026-07-17 — P0.12-desktop: responsividade real + split de 2 painéis no
+  desktop do booking público** — segue o P0.12(c) (que entregou só o mobile):
+  - **Decisões do owner**: mobile permanece idêntico ao aprovado; tablet (`sm`/`md`)
+    é a mesma coluna, só mais larga/arejada; desktop (`lg`, 1024px+) ganha uma
+    experiência própria — split de 2 painéis, painel da marca fixo à esquerda,
+    animações de transição entre etapas, degrade bonito sem customização (usa a
+    identidade oficial do VamoAgendar) e mais "dahora" com cor/capa/logo do tenant
+    Pro.
+  - **Princípio de implementação**: o conteúdo de cada etapa (`etapas/*`) renderiza
+    uma única vez (mesmo `<form id="form-contato">`, mesmos inputs); só o chrome
+    (identidade/resumo/progresso/CTA/voltar) é duplicado por breakpoint via
+    `lg:hidden` / `hidden lg:flex` — a variante inativa sai do layout, do tab-order e
+    da árvore de acessibilidade (`display:none`), então coexistir no DOM é
+    inofensivo. Shell desktop replica o idiom já validado em
+    `dashboard/layout.tsx` (`lg:flex lg:h-dvh lg:overflow-hidden`, `lg:min-h-0` em
+    todo flex-child com `overflow-y-auto` — documentado em `docs/04`).
+  - **Componentes novos** em `src/app/book/[slug]/`: `PainelMarca.tsx` (halo
+    tintado — 22% com cor do tenant, 14% no fallback da marca —, capa+scrim com
+    nome/logo sobrepostos em branco ou fallback idêntico ao `CabecalhoEstabelecimento`
+    sem capa, bio, chips, resumo e stepper), `StepperVertical.tsx` (3 passos
+    verticais; concluído vira botão que volta direto, com 44px de área de toque via
+    `-m-1.5` sobre um dote visual de 32px; atual com anel na cor do tenant; futuro
+    só leitura), `RodapeAcaoDesktop.tsx` (CTA + Voltar em fluxo normal, nunca
+    fixed/sticky), `ResumoAgendamento.tsx` (extração da comanda do
+    `BarraInferior`, reaproveitada pelos dois), `passos.ts` (fonte única de
+    `ORDEM_ETAPAS`/`ROTULOS_ETAPAS` — evita o progresso mobile e o stepper desktop
+    divergirem).
+  - **`BookingApp.tsx`**: estado `direcao` (avancar/voltar) anima o slide entre
+    etapas no desktop (`.desliza-passo-avancar/voltar` no `globals.css`,
+    `prefers-reduced-motion` respeitado, mobile intacto com `.aparecer-rapido`);
+    `irParaEtapa` generaliza `voltar()` para o clique no stepper (só retrocede,
+    nunca pula para uma etapa futura); recuperação de double-booking preservada
+    (soma `setDirecao('voltar')`); nome/telefone elevados e `erroEnvio` limpável
+    preservados.
+  - **Contratos/analytics inalterados**: `criarAgendamentoPublico`,
+    `obterSlotsPublicos`, engine, `obterDadosBookingPublico`, `booking_started`
+    (1x/visita)/`booking_completed`/`booking_failed` — nenhum tocado.
+  - **Verificação**: `pnpm lint`/`pnpm build` verdes; screenshots em 390/834/1440,
+    claro/escuro, com walkthrough completo (serviço → data/hora → contato →
+    sucesso) via automação CDP; fallback sem customização conferido pelo slug
+    gratuito do tenant Pro de teste (assinatura cancelada e revertida via Supabase
+    MCP só para o teste, sem alterar dado real).
 
 - **2026-07-17 — P0.12(b)+(c): customização do tenant e redesign mobile-first do
   booking público** — fecha também o P1.11:
