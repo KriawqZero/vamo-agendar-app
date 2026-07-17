@@ -177,6 +177,58 @@
   }
 }
 
+/* ── Transição direcional do booking público (desktop) ───────────
+   No mobile o slide não existe: as classes .desliza-passo-* só ganham
+   animation dentro do breakpoint lg (abaixo disso a troca de etapa
+   continua sendo só o .aparecer-rapido da <section>, intacto). No
+   desktop a <section> desliga o próprio fade (redundante com o slide
+   do wrapper) e quem anima é o wrapper `key={etapa}` do BookingApp. */
+@keyframes desliza-x-avancar {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes desliza-x-voltar {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .aparecer-rapido {
+    animation: none;
+  }
+
+  .desliza-passo-avancar {
+    animation: desliza-x-avancar 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .desliza-passo-voltar {
+    animation: desliza-x-voltar 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+/* Depois do bloco lg de propósito: numa tela grande com redução de
+   movimento, as duas media queries batem ao mesmo tempo e a ordem no
+   arquivo decide o empate de especificidade — esta precisa vencer. */
+@media (prefers-reduced-motion: reduce) {
+  .desliza-passo-avancar,
+  .desliza-passo-voltar {
+    animation: none;
+  }
+}
+
 body {
   background: var(--palco);
   color: var(--giz);

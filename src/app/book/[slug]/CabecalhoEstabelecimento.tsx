@@ -14,6 +14,7 @@ interface CabecalhoEstabelecimentoProps {
     etapa: Exclude<EtapaBooking, 'sucesso'>
     onVoltar: () => void
     acento: ClassesAcento
+    className?: string
 }
 
 const ORDEM_ETAPAS: Exclude<EtapaBooking, 'sucesso'>[] = ['servico', 'data_hora', 'contato']
@@ -33,6 +34,7 @@ export default function CabecalhoEstabelecimento({
     etapa,
     onVoltar,
     acento,
+    className = '',
 }: CabecalhoEstabelecimentoProps) {
     const indiceEtapa = ORDEM_ETAPAS.indexOf(etapa)
 
@@ -51,7 +53,9 @@ export default function CabecalhoEstabelecimento({
 
     if (etapa !== 'servico') {
         return (
-            <header className="sticky top-0 z-20 border-b border-fio bg-palco/95 backdrop-blur">
+            <header
+                className={`sticky top-0 z-20 border-b border-fio bg-palco/95 backdrop-blur ${className}`}
+            >
                 <div className="flex items-center gap-3 px-5 py-3">
                     <button
                         type="button"
@@ -91,7 +95,7 @@ export default function CabecalhoEstabelecimento({
     }
 
     return (
-        <header>
+        <header className={className || undefined}>
             {capaUrl ? (
                 <div className="relative h-44 w-full">
                     <Image

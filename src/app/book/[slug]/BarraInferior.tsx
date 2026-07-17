@@ -14,6 +14,7 @@ interface BarraInferiorProps {
     podeAvancar: boolean
     onAvancar: () => void
     acento: ClassesAcento
+    className?: string
 }
 
 const formatarPreco = (preco: number) =>
@@ -33,13 +34,14 @@ export default function BarraInferior({
     podeAvancar,
     onAvancar,
     acento,
+    className = '',
 }: BarraInferiorProps) {
     const ehContato = etapa === 'contato'
 
     const classesCta = `min-h-12 shrink-0 cursor-pointer rounded-full px-6 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${acento.cta}`
 
     return (
-        <div className="fixed inset-x-0 bottom-0 z-30">
+        <div className={`fixed inset-x-0 bottom-0 z-30 ${className}`}>
             <div className="mx-auto w-full max-w-md border-t border-fio bg-bastidor px-5 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 sm:border-x sm:border-fio">
                 <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0" aria-live="polite">

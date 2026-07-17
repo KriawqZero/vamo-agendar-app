@@ -278,87 +278,96 @@ export default function BookingApp({
             : null
 
     return (
-        <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col sm:border-x sm:border-fio">
-            {etapa !== 'sucesso' && (
-                <CabecalhoEstabelecimento
-                    nome={perfil.nome_estabelecimento}
-                    descricao={perfil.descricao}
-                    instagram={perfil.instagram}
-                    endereco={perfil.endereco}
-                    logoUrl={personalizacao.logoUrl}
-                    capaUrl={personalizacao.capaUrl}
-                    etapa={etapa}
-                    onVoltar={voltar}
-                    acento={acento}
-                />
-            )}
-
-            <main className="flex-1 px-5 pb-40 pt-5">
-                {etapa === 'servico' && (
-                    <EtapaServico
-                        servicos={servicos}
-                        servicoSelecionado={servicoSelecionado}
-                        onSelecionar={selecionarServico}
-                        acento={acento}
-                        autoFoco={jaNavegou}
-                    />
-                )}
-
-                {etapa === 'data_hora' && (
-                    <EtapaDataHora
-                        datas={datasDisponiveis}
-                        dataSelecionada={dataSelecionada}
-                        onSelecionarData={selecionarData}
-                        slots={slots}
-                        carregando={carregandoSlots}
-                        erro={erroSlots}
-                        onTentarDeNovo={() => setTentativaSlots((t) => t + 1)}
-                        aviso={avisoDataHora}
-                        slotSelecionado={slotSelecionado}
-                        onSelecionarSlot={selecionarSlot}
-                        acento={acento}
-                        autoFoco={jaNavegou}
-                    />
-                )}
-
-                {etapa === 'contato' && (
-                    <EtapaContato
-                        formAction={enviarAction}
-                        erro={erroEnvio}
-                        nome={nome}
-                        onNomeChange={setNome}
-                        telefone={telefone}
-                        onTelefoneChange={setTelefone}
-                        autoFoco={jaNavegou}
-                    />
-                )}
-
-                {etapa === 'sucesso' && agendamentoCriado && (
-                    <EtapaSucesso
-                        nomeEstabelecimento={perfil.nome_estabelecimento}
-                        servicoNome={servicoSelecionado?.nome ?? ''}
-                        dataHoraLonga={formatarDataHoraLonga(agendamentoCriado.data_hora, timezone)}
-                        endereco={perfil.endereco}
+        <div className="lg:flex lg:h-dvh lg:overflow-hidden">
+            <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col sm:border-x sm:border-fio lg:mx-0 lg:min-h-0 lg:max-w-none lg:flex-1 lg:overflow-hidden lg:border-x-0">
+                {etapa !== 'sucesso' && (
+                    <CabecalhoEstabelecimento
+                        nome={perfil.nome_estabelecimento}
+                        descricao={perfil.descricao}
                         instagram={perfil.instagram}
-                        onAgendarOutro={agendarOutro}
+                        endereco={perfil.endereco}
+                        logoUrl={personalizacao.logoUrl}
+                        capaUrl={personalizacao.capaUrl}
+                        etapa={etapa}
+                        onVoltar={voltar}
+                        acento={acento}
                     />
                 )}
-            </main>
 
-            {etapa !== 'sucesso' && (
-                <BarraInferior
-                    etapa={etapa}
-                    servico={servicoSelecionado}
-                    dataCurta={dataCurta}
-                    horaCurta={slotSelecionado?.time ?? null}
-                    enviando={enviando}
-                    podeAvancar={
-                        etapa === 'servico' ? Boolean(servicoSelecionado) : Boolean(slotSelecionado)
-                    }
-                    onAvancar={avancar}
-                    acento={acento}
-                />
-            )}
+                <main className="flex-1 px-5 pb-40 pt-5 lg:min-h-0 lg:overflow-y-auto lg:px-0 lg:pb-0 lg:pt-0">
+                    <div className="lg:mx-auto lg:max-w-2xl lg:px-10 lg:py-10">
+                        {etapa === 'servico' && (
+                            <EtapaServico
+                                servicos={servicos}
+                                servicoSelecionado={servicoSelecionado}
+                                onSelecionar={selecionarServico}
+                                acento={acento}
+                                autoFoco={jaNavegou}
+                            />
+                        )}
+
+                        {etapa === 'data_hora' && (
+                            <EtapaDataHora
+                                datas={datasDisponiveis}
+                                dataSelecionada={dataSelecionada}
+                                onSelecionarData={selecionarData}
+                                slots={slots}
+                                carregando={carregandoSlots}
+                                erro={erroSlots}
+                                onTentarDeNovo={() => setTentativaSlots((t) => t + 1)}
+                                aviso={avisoDataHora}
+                                slotSelecionado={slotSelecionado}
+                                onSelecionarSlot={selecionarSlot}
+                                acento={acento}
+                                autoFoco={jaNavegou}
+                            />
+                        )}
+
+                        {etapa === 'contato' && (
+                            <EtapaContato
+                                formAction={enviarAction}
+                                erro={erroEnvio}
+                                nome={nome}
+                                onNomeChange={setNome}
+                                telefone={telefone}
+                                onTelefoneChange={setTelefone}
+                                autoFoco={jaNavegou}
+                            />
+                        )}
+
+                        {etapa === 'sucesso' && agendamentoCriado && (
+                            <EtapaSucesso
+                                nomeEstabelecimento={perfil.nome_estabelecimento}
+                                servicoNome={servicoSelecionado?.nome ?? ''}
+                                dataHoraLonga={formatarDataHoraLonga(
+                                    agendamentoCriado.data_hora,
+                                    timezone,
+                                )}
+                                endereco={perfil.endereco}
+                                instagram={perfil.instagram}
+                                onAgendarOutro={agendarOutro}
+                            />
+                        )}
+                    </div>
+                </main>
+
+                {etapa !== 'sucesso' && (
+                    <BarraInferior
+                        etapa={etapa}
+                        servico={servicoSelecionado}
+                        dataCurta={dataCurta}
+                        horaCurta={slotSelecionado?.time ?? null}
+                        enviando={enviando}
+                        podeAvancar={
+                            etapa === 'servico'
+                                ? Boolean(servicoSelecionado)
+                                : Boolean(slotSelecionado)
+                        }
+                        onAvancar={avancar}
+                        acento={acento}
+                    />
+                )}
+            </div>
         </div>
     )
 }
