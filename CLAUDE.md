@@ -103,6 +103,7 @@ Se o WhatsApp do tenant estiver desconectado, o fluxo falha **silenciosamente** 
 | `PENDENCIAS.md` | Lista viva de tarefas e bugs — **consultar antes de cada nova etapa** |
 | `ASSINATURAS.md` | Snippets para testes/simulação de assinaturas em dev |
 | `RESET_AMBIENTE_DEV.md` | Procedimento de reset total do ambiente dev |
+| `relatorios-socio/README.md` | Prestação de contas ao sócio: painel + relatório semanal (`/diario-socio`, `/relatorio-socio`) |
 | `SUPABASE_DECLARATIVE-DATABASE-SCHEMA.md` | Exceções do fluxo de migrations declarativas |
 
 `lixo/` — documentos descartados na limpeza de 2026-07-10. **Nunca use como referência** (contém tecnologias banidas e fluxos depreciados).
