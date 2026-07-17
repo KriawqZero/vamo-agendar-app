@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import type { ClassesAcento } from './acento'
 import type { EtapaBooking } from './BookingApp'
+import { ORDEM_ETAPAS } from './passos'
 
 interface CabecalhoEstabelecimentoProps {
     nome: string
@@ -16,8 +17,6 @@ interface CabecalhoEstabelecimentoProps {
     acento: ClassesAcento
     className?: string
 }
-
-const ORDEM_ETAPAS: Exclude<EtapaBooking, 'sucesso'>[] = ['servico', 'data_hora', 'contato']
 
 /**
  * Identidade do estabelecimento no topo do fluxo. Na etapa de serviço aparece por

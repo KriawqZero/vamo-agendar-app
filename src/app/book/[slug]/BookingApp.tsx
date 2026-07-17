@@ -5,6 +5,7 @@ import { obterSlotsPublicos, criarAgendamentoPublico } from '@/app/actions/publi
 import { diaLocal, somarDias, formatarDataHoraLonga, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { capturarEvento } from '@/lib/analytics/client'
 import { classesAcento } from './acento'
+import { ORDEM_ETAPAS } from './passos'
 import CabecalhoEstabelecimento from './CabecalhoEstabelecimento'
 import BarraInferior from './BarraInferior'
 import EtapaServico from './etapas/EtapaServico'
@@ -68,6 +69,9 @@ export default function BookingApp({
     tenantHash,
 }: BookingAppProps) {
     const [etapa, setEtapa] = useState<EtapaBooking>('servico')
+    // Sentido da última navegação — anima o slide direcional no desktop (a
+    // <section> de cada etapa continua com .aparecer-rapido no mobile).
+    const [direcao, setDirecao] = useState<'avancar' | 'voltar'>('avancar')
     // Funil: booking_started dispara uma única vez, na primeira interação real.
     const bookingIniciado = useRef(false)
     // Evita roubar o foco no carregamento inicial — só foca o título após navegação.
@@ -195,19 +199,37 @@ export default function BookingApp({
 
     const avancar = () => {
         if (etapa === 'servico' && servicoSelecionado) {
+            setDirecao('avancar')
             mudarEtapa('data_hora')
         } else if (etapa === 'data_hora' && slotSelecionado) {
+            setDirecao('avancar')
             mudarEtapa('contato')
         }
     }
 
     const voltar = () => {
         if (etapa === 'data_hora') {
+            setDirecao('voltar')
             mudarEtapa('servico')
         } else if (etapa === 'contato') {
             setErroEnvio(null)
+            setDirecao('voltar')
             mudarEtapa('data_hora')
         }
+    }
+
+    // Navegação direta pelo stepper vertical do desktop: só retrocede (nunca
+    // pula para uma etapa futura ainda não preenchida) — generaliza `voltar()`
+    // para saltos de mais de um passo (ex.: contato → serviço).
+    const irParaEtapa = (alvo: EtapaBooking) => {
+        if (alvo === 'sucesso') return
+        if (etapa === 'sucesso') return
+        const indiceAlvo = ORDEM_ETAPAS.indexOf(alvo)
+        const indiceAtual = ORDEM_ETAPAS.indexOf(etapa)
+        if (indiceAlvo === -1 || indiceAlvo >= indiceAtual) return
+        if (etapa === 'contato') setErroEnvio(null)
+        setDirecao('voltar')
+        mudarEtapa(alvo)
     }
 
     // Submit da etapa de contato: valida e chama a action pública (contrato intacto).
@@ -252,6 +274,7 @@ export default function BookingApp({
                     setSlotSelecionado(null)
                     setTentativaSlots((t) => t + 1)
                     setAvisoDataHora(mensagem)
+                    setDirecao('voltar')
                     mudarEtapa('data_hora')
                 } else {
                     setErroEnvio(mensagem)
@@ -277,10 +300,12 @@ export default function BookingApp({
             ? `${dataEscolhida.diaSemana} ${dataEscolhida.label}`
             : null
 
+    const ehSucesso = etapa === 'sucesso'
+
     return (
         <div className="lg:flex lg:h-dvh lg:overflow-hidden">
             <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col sm:border-x sm:border-fio lg:mx-0 lg:min-h-0 lg:max-w-none lg:flex-1 lg:overflow-hidden lg:border-x-0">
-                {etapa !== 'sucesso' && (
+                {!ehSucesso && (
                     <CabecalhoEstabelecimento
                         nome={perfil.nome_estabelecimento}
                         descricao={perfil.descricao}
@@ -296,62 +321,71 @@ export default function BookingApp({
 
                 <main className="flex-1 px-5 pb-40 pt-5 lg:min-h-0 lg:overflow-y-auto lg:px-0 lg:pb-0 lg:pt-0">
                     <div className="lg:mx-auto lg:max-w-2xl lg:px-10 lg:py-10">
-                        {etapa === 'servico' && (
-                            <EtapaServico
-                                servicos={servicos}
-                                servicoSelecionado={servicoSelecionado}
-                                onSelecionar={selecionarServico}
-                                acento={acento}
-                                autoFoco={jaNavegou}
-                            />
-                        )}
+                        <div
+                            key={etapa}
+                            className={
+                                direcao === 'voltar'
+                                    ? 'desliza-passo-voltar'
+                                    : 'desliza-passo-avancar'
+                            }
+                        >
+                            {etapa === 'servico' && (
+                                <EtapaServico
+                                    servicos={servicos}
+                                    servicoSelecionado={servicoSelecionado}
+                                    onSelecionar={selecionarServico}
+                                    acento={acento}
+                                    autoFoco={jaNavegou}
+                                />
+                            )}
 
-                        {etapa === 'data_hora' && (
-                            <EtapaDataHora
-                                datas={datasDisponiveis}
-                                dataSelecionada={dataSelecionada}
-                                onSelecionarData={selecionarData}
-                                slots={slots}
-                                carregando={carregandoSlots}
-                                erro={erroSlots}
-                                onTentarDeNovo={() => setTentativaSlots((t) => t + 1)}
-                                aviso={avisoDataHora}
-                                slotSelecionado={slotSelecionado}
-                                onSelecionarSlot={selecionarSlot}
-                                acento={acento}
-                                autoFoco={jaNavegou}
-                            />
-                        )}
+                            {etapa === 'data_hora' && (
+                                <EtapaDataHora
+                                    datas={datasDisponiveis}
+                                    dataSelecionada={dataSelecionada}
+                                    onSelecionarData={selecionarData}
+                                    slots={slots}
+                                    carregando={carregandoSlots}
+                                    erro={erroSlots}
+                                    onTentarDeNovo={() => setTentativaSlots((t) => t + 1)}
+                                    aviso={avisoDataHora}
+                                    slotSelecionado={slotSelecionado}
+                                    onSelecionarSlot={selecionarSlot}
+                                    acento={acento}
+                                    autoFoco={jaNavegou}
+                                />
+                            )}
 
-                        {etapa === 'contato' && (
-                            <EtapaContato
-                                formAction={enviarAction}
-                                erro={erroEnvio}
-                                nome={nome}
-                                onNomeChange={setNome}
-                                telefone={telefone}
-                                onTelefoneChange={setTelefone}
-                                autoFoco={jaNavegou}
-                            />
-                        )}
+                            {etapa === 'contato' && (
+                                <EtapaContato
+                                    formAction={enviarAction}
+                                    erro={erroEnvio}
+                                    nome={nome}
+                                    onNomeChange={setNome}
+                                    telefone={telefone}
+                                    onTelefoneChange={setTelefone}
+                                    autoFoco={jaNavegou}
+                                />
+                            )}
 
-                        {etapa === 'sucesso' && agendamentoCriado && (
-                            <EtapaSucesso
-                                nomeEstabelecimento={perfil.nome_estabelecimento}
-                                servicoNome={servicoSelecionado?.nome ?? ''}
-                                dataHoraLonga={formatarDataHoraLonga(
-                                    agendamentoCriado.data_hora,
-                                    timezone,
-                                )}
-                                endereco={perfil.endereco}
-                                instagram={perfil.instagram}
-                                onAgendarOutro={agendarOutro}
-                            />
-                        )}
+                            {ehSucesso && agendamentoCriado && (
+                                <EtapaSucesso
+                                    nomeEstabelecimento={perfil.nome_estabelecimento}
+                                    servicoNome={servicoSelecionado?.nome ?? ''}
+                                    dataHoraLonga={formatarDataHoraLonga(
+                                        agendamentoCriado.data_hora,
+                                        timezone,
+                                    )}
+                                    endereco={perfil.endereco}
+                                    instagram={perfil.instagram}
+                                    onAgendarOutro={agendarOutro}
+                                />
+                            )}
+                        </div>
                     </div>
                 </main>
 
-                {etapa !== 'sucesso' && (
+                {!ehSucesso && (
                     <BarraInferior
                         etapa={etapa}
                         servico={servicoSelecionado}
