@@ -42,7 +42,10 @@ export default function EtapaServico({
                     Este estabelecimento ainda não publicou serviços. Volte em breve.
                 </p>
             ) : (
-                <div aria-label="Serviços disponíveis" className="mt-4 space-y-2">
+                <div
+                    aria-label="Serviços disponíveis"
+                    className="mt-4 space-y-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0"
+                >
                     {servicos.map((servico) => {
                         const selecionado = servicoSelecionado?.id === servico.id
                         return (

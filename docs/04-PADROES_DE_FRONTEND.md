@@ -37,6 +37,7 @@ O visual do **VamoAgendar** deve ser premium, limpo e extremamente focado na usa
 1. **Responsividade Mobile-First:**
    * Profissionais autônomos e clientes finais usam a aplicação majoritariamente em smartphones.
    * Toda tela ou componente deve ser perfeitamente visualizado e operável em telas pequenas. Use layouts flexíveis, grids responsivos e paddings adequados para toques de dedos.
+   * **Idiom de shell split desktop** (`lg:` 1024px+, usado em `dashboard/layout.tsx` e `book/[slug]/BookingApp.tsx`): raiz `lg:flex lg:h-dvh lg:overflow-hidden`; painel fixo lateral com `lg:h-full lg:min-h-0 lg:overflow-y-auto` próprio; `<main>` da coluna principal é o único elemento que rola (`lg:min-h-0 lg:overflow-y-auto`); rodapé de ação sempre em fluxo normal (flex-child), **nunca** `fixed`/`sticky` no desktop — o `lg:min-h-0` em todo flex-child com `overflow-y-auto` é obrigatório (sem ele o item empurra a altura da linha em vez de rolar sozinho). Ao duplicar chrome por breakpoint (ex.: CTA mobile fixo vs. rodapé desktop em fluxo), use `lg:hidden` / `hidden lg:flex` nas duas variantes — `display:none` já remove a inativa do tab-order e da árvore de acessibilidade, então as duas podem coexistir no DOM sem risco.
 
 2. **Uso de Variáveis do Tailwind v4:**
    * Evite inline styles e CSS customizado arbitrário.

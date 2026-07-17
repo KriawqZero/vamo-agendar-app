@@ -71,7 +71,7 @@ export default function EtapaDataHora({
             )}
 
             <div
-                className="-mx-5 mt-4 flex snap-x gap-2 overflow-x-auto px-5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                className="-mx-5 mt-4 flex snap-x gap-2 overflow-x-auto px-5 pb-2 [scrollbar-width:none] lg:mx-0 lg:grid lg:grid-cols-7 lg:gap-2 lg:overflow-visible lg:snap-none lg:px-0 [&::-webkit-scrollbar]:hidden"
                 aria-label="Datas disponíveis"
             >
                 {datas.map((data) => {
@@ -82,7 +82,7 @@ export default function EtapaDataHora({
                             type="button"
                             aria-pressed={selecionada}
                             onClick={() => onSelecionarData(data.dateStr)}
-                            className={`min-w-16 shrink-0 cursor-pointer snap-start rounded-2xl border px-3 py-2.5 text-center transition-all duration-200 ${
+                            className={`min-w-16 shrink-0 cursor-pointer snap-start rounded-2xl border px-3 py-2.5 text-center transition-all duration-200 lg:min-w-0 ${
                                 selecionada
                                     ? acento.fill
                                     : 'border-fio bg-bastidor hover:border-fio-forte'
@@ -103,7 +103,7 @@ export default function EtapaDataHora({
 
             <div className="mt-4" aria-live="polite">
                 {carregando ? (
-                    <div className="grid grid-cols-3 gap-2">
+                    <div className="grid grid-cols-3 gap-2 lg:grid-cols-4">
                         {Array.from({ length: 9 }).map((_, i) => (
                             <div key={i} className="h-11 animate-pulse rounded-xl bg-veu" />
                         ))}
@@ -136,7 +136,7 @@ export default function EtapaDataHora({
                                     {grupo.titulo}
                                 </h3>
                                 <div
-                                    className="mt-2 grid grid-cols-3 gap-2"
+                                    className="mt-2 grid grid-cols-3 gap-2 lg:grid-cols-4"
                                     aria-label={`Horários da ${grupo.titulo.toLowerCase()}`}
                                 >
                                     {grupo.slots.map((slot) => {

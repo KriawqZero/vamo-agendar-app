@@ -41,13 +41,33 @@ flowchart LR
    > existir, volta a valer "pelo menos um dos dois" (e-mail OU WhatsApp).
 6. **Confirmação:** O cliente confirma no CTA da barra inferior e visualiza a tela de sucesso com os detalhes do agendamento (incluindo endereço com link de mapa e Instagram do estabelecimento, quando cadastrados). Um lembrete é agendado no Upstash QStash para envio de mensagem via WhatsApp.
 
-**Layout (desde 2026-07-17, P0.12c):** o fluxo é de **etapas em tela cheia**
-mobile-first (sensação de app, não card flutuante): cabeçalho com a identidade do
-estabelecimento (capa/logo/cor para tenants Pro; bio, Instagram e endereço para
-todos) que colapsa numa barra compacta com progresso, e **barra-resumo fixa** no
-rodapé que se preenche com as escolhas (serviço · preço · duração · data · hora) com
-o CTA sempre visível. Base visual = identidade oficial do VamoAgendar; o acento do
-tenant Pro entra por cima com contraste garantido.
+**Layout (P0.12c, 2026-07-17; responsividade P0.12-desktop, 2026-07-17):** o fluxo é
+de **etapas em tela cheia**, com três níveis de largura — o conteúdo de cada etapa
+(`etapas/*`) renderiza uma única vez; só o chrome ao redor muda por breakpoint:
+
+- **Celular (< `sm`, o desenho original):** sensação de app, não card flutuante.
+  Cabeçalho com a identidade do estabelecimento (capa/logo/cor para tenants Pro; bio,
+  Instagram e endereço para todos) que colapsa numa barra compacta com progresso, e
+  **barra-resumo fixa** no rodapé que se preenche com as escolhas (serviço · preço ·
+  duração · data · hora) com o CTA sempre visível.
+- **Tablet (`sm`/`md`, 640–1024px):** mesma coluna única, só mais larga e arejada
+  (`sm:max-w-lg md:max-w-xl`, padding maior em lockstep entre cabeçalho/conteúdo/barra
+  — os três têm que crescer juntos ou a barra fixa centralizada desalinha).
+- **Desktop (`lg`, 1024px+):** **split de 2 painéis**, no idiom já usado no
+  `dashboard/layout.tsx` (`lg:flex lg:h-dvh lg:overflow-hidden`, painel esquerdo fixo,
+  `<main>` é o único que rola). Painel da marca fixo à esquerda
+  (`PainelMarca.tsx`: halo tintado pela cor do tenant — ou pela marca VamoAgendar sem
+  customização —, identidade, resumo do agendamento e `StepperVertical.tsx` com os 3
+  passos, concluídos clicáveis para voltar); a etapa atual ocupa a coluna direita;
+  `RodapeAcaoDesktop.tsx` substitui a barra fixa mobile (CTA + Voltar, em fluxo normal,
+  nunca fixed/sticky). Transição entre etapas com slide direcional
+  (`desliza-passo-avancar/voltar` no `globals.css`, `prefers-reduced-motion`
+  respeitado). Tela de sucesso nunca mostra o painel da marca (ocupa a coluna toda,
+  centralizada).
+
+Base visual = identidade oficial do VamoAgendar; o acento do tenant Pro entra por
+cima (preenchimentos/bordas/halo/stepper — nunca texto solto) com contraste
+garantido.
 
 ---
 
