@@ -3,9 +3,12 @@
 Lista viva de tarefas identificadas. Revisar antes de cada nova etapa de
 desenvolvimento — e obrigatoriamente antes de implementar o checkout Asaas.
 
-Última atualização: 2026-07-15 (4ª landing vertical `/para/barbeiro` adicionada ao
-P0.6 resolvido; `.prettierrc` criado espelhando o estilo do código para o hook de
-formatação; priorização anterior de 2026-07-12 mantida).
+Última atualização: 2026-07-16 (P0.12(a) — grade inteligente de horários — resolvido;
+absorveu e fechou os três subitens do P1.7 sobre múltiplas janelas, antecedência
+mínima e horizonte máximo. P0.12(b) customização visual e (c) layout mobile
+continuam pendentes, assim como P1.11 absorvido em (b). Revisão final do branch
+adicionou achados de baixo risco à seção 9 e dois itens de pré-lançamento. Priorização
+de 2026-07-12 mantida).
 
 ---
 
@@ -345,6 +348,92 @@ otimizar campanhas.
 
 **Dependências/decisões:** escolher os 2–3 nichos iniciais; P0.5 para medir.
 
+### 12. Redesign do booking público — grade de horários inteligente, customização do tenant e layout mobile-first
+
+**Registrado em 2026-07-16 .** Três problemas no `/book/[slug]`,
+decididos pelo owner como um único bloco de trabalho:
+
+**a) ~~Temporização dos horários é burra (grade fixa de 15 min).~~ — ✅ Resolvido em
+2026-07-16** *(absorveu e fechou os três subitens do P1.7: múltiplas janelas por dia,
+antecedência mínima e horizonte máximo configuráveis)*
+
+Regra anti-buraco escolhida pelo owner entre as candidatas em aberto: grade de 15 em 15
+min ancorada no início de cada intervalo livre do dia, mais um candidato colado no fim
+do intervalo — escondendo qualquer candidato que deixasse, antes ou depois dele, uma
+sobra menor que a menor duração de serviço ativa do tenant (sobra inaproveitável por
+nenhum serviço). Implementado em `gerarSlotsAntiBuraco`/`obterSlotsDisponiveis`
+(`src/lib/booking-engine.ts`); a validação por string exata do booking público e do
+agendamento manual foi preservada. Junto (mesmo código tocado): `horarios_funcionamento`
+passou a aceitar N janelas por dia (RPC atômica `substituir_horarios_funcionamento`, até
+3/dia na UI da agenda); `antecedencia_minima_minutos` (default 15) e
+`horizonte_maximo_dias` (default 14) em `perfis_empresas`, aplicados por instante
+(atravessa virada de dia) e enforced no servidor — não só na UI. O fluxo manual do
+dashboard fica **fora** de antecedência e horizonte (walk-in permitido, decisão do
+owner). Ver "Itens resolvidos" no fim deste documento.
+
+<details><summary>Escopo original (histórico)</summary>
+
+(histórico) a) Temporização dos horários é burra (grade fixa de 15 min).
+
+Estado atual verificado: `slotStep = 15` hardcoded em `src/lib/booking-engine.ts:159` —
+os inícios de slot são sempre de 15 em 15 min, independente do serviço, da duração e do
+tenant. Consequência prática: um serviço de 45 min oferece 08:00/08:15/08:30..., o
+cliente escolhe 08:15 e a agenda fica com sobras de 15 min inutilizáveis antes/depois.
+
+Resultado esperado: um sistema de horários mais inteligente. **A regra exata está em
+aberto** (decisão do owner durante a execução); direções candidatas a avaliar:
+passo = duração do serviço (grade alinhada, zero sobra), passo configurável por tenant
+ou por serviço, ou alinhamento automático que minimize buracos considerando os
+agendamentos já existentes. Cuidados verificados no código:
+
+- A validação do booking público e do agendamento manual compara o slot escolhido por
+  **string exata** contra a engine (`public-booking.ts`, `agendamentos.ts`) — mudar a
+  grade muda o contrato; os testes byte a byte de `booking-engine.test.ts` vão acusar.
+- A mesma engine serve o `NovoAgendamentoModal` do dashboard — a grade nova vale para
+  os dois fluxos.
+- Itens correlatos do P1.7 (antecedência mínima configurável — margem fixa de 15 min em
+  `booking-engine.ts:154` — e múltiplas janelas por dia): decidir se entram agora, já
+  que o código tocado é o mesmo.
+
+</details>
+
+**b) Customização visual do tenant (Plus/Pro) mínima/inexistente.** *(absorve o P1.11)*
+
+Estado atual verificado: `cor_marca`/`logo_url` existem no schema, com gating e UI de
+edição prontos no dashboard, mas **nada é consumido** em `/book/[slug]` — a página
+pública é idêntica para todos os tenants. Resultado esperado: a página do booking
+refletir a marca do tenant (cor, logo, e o que mais o redesign definir como
+customizável), entregando o valor visível dos planos pagos.
+
+**c) Layout atual tem cara de "SaaS de dev", não de serviço do dia a dia.**
+
+Estado atual verificado: o wizard é um **card flutuante centrado**
+(`max-w-xl mx-auto` + `rounded-3xl shadow-xl` em `BookingWizard.tsx:191`, sobre fundo
+com glows radiais em `page.tsx:38-41`), paleta zinc/violet genérica — inclusive fora
+da identidade visual oficial do VamoAgendar. Funciona no desktop, mas no celular
+(estimativa do owner: ~98% de quem agenda) parece ferramenta de desenvolvedor, não uma
+página onde um cliente comum marca corte de cabelo ou nail design.
+
+Resultado esperado: repensar layout e estrutura mobile-first de verdade (fluxo de tela
+cheia no celular, não card flutuante), com linguagem visual de consumo — alinhada à
+identidade oficial como base e à customização do tenant do item (b) por cima.
+
+**Critérios de conclusão:** ~~grade de horários deixa de ser fixa de 15 min e segue a
+regra decidida~~ (a, feito); página pública reflete cor/logo do tenant pagante (b);
+booking no celular tem aparência e fluxo de produto de consumo (c); ~~validação por
+string exata e testes da engine atualizados de forma coerente~~ (a, feito).
+
+**Arquivos:** ~~`src/lib/booking-engine.ts`~~ (a, feito — junto de
+`src/app/actions/public-booking.ts`, `src/app/actions/agenda.ts`,
+`src/lib/horarios.ts` e `src/lib/__tests__/booking-engine.test.ts`/`horarios.test.ts`);
+restam `src/app/book/[slug]/page.tsx`, `src/app/book/[slug]/BookingWizard.tsx`,
+`src/app/dashboard/NovoAgendamentoModal.tsx` (mesma engine) e possivelmente
+`supabase/schemas/` (config visual por tenant) para (b)/(c).
+
+**Dependências/decisões:** ~~desenhar a regra da grade antes de codar~~ e ~~decidir se
+os itens correlatos do P1.7 entram neste bloco~~ — resolvidos (a, ver acima); falta
+decidir o escopo de customização além de cor/logo (b).
+
 ---
 
 ## 🟡 P1 — Melhorias do núcleo do produto
@@ -353,14 +442,19 @@ otimizar campanhas.
 
 Sem inflar o MVP — classificação por urgência:
 
-- **Fortes candidatas a "agora" (validar nos primeiros pilotos):**
-  - **Mais de uma janela por dia** (ex.: 08h–12h e 14h–18h). Estado atual: impossível —
-    `UNIQUE (tenant_id, dia_semana)` em `horarios_funcionamento` limita a 1 janela/dia.
-    Impacta schema, `agenda.ts`, UI da agenda e a engine (que usa `maybeSingle()`).
-  - **Antecedência mínima configurável.** Estado atual: margem fixa de 15 min
-    (`booking-engine.ts:170`). Profissionais reais costumam querer 1–24 h.
-- **Avaliar junto aos primeiros pilotos:** horizonte máximo de agendamento
-  configurável (hoje fixo em 14 dias no `BookingWizard.tsx:72`).
+- ~~**Mais de uma janela por dia** (ex.: 08h–12h e 14h–18h)~~ — ✅ absorvido pelo
+  P0.12(a) e resolvido em 2026-07-16: `UNIQUE (tenant_id, dia_semana)` caiu, RPC
+  atômica `substituir_horarios_funcionamento` grava até 3 janelas/dia (limite da UI
+  da agenda), engine passou a ler N janelas por `.select()` em vez de
+  `.maybeSingle()`.
+- ~~**Antecedência mínima configurável.**~~ — ✅ absorvido pelo P0.12(a) e resolvido
+  em 2026-07-16: coluna `antecedencia_minima_minutos` (default 15) em
+  `perfis_empresas`, select de 15 min a 24 h na UI da agenda, aplicada por instante
+  (atravessa virada de dia) e enforced no servidor.
+- ~~**Horizonte máximo de agendamento configurável.**~~ — ✅ absorvido pelo P0.12(a)
+  e resolvido em 2026-07-16: coluna `horizonte_maximo_dias` (default 14), select de
+  7 a 90 dias na UI da agenda, `BookingWizard` usa o horizonte do tenant em vez do
+  fixo de 14 dias.
 - **Depende do nicho:** buffer entre atendimentos (verificar necessidade antes).
 - **Depois de evidência:** cancelamento/reagendamento pelo próprio cliente (hoje
   inexistente; exige decisão sobre link seguro sem login — manter Fricção Zero).
@@ -405,6 +499,28 @@ posterior, salvo evidência de necessidade nos pilotos.
 - Docs: substituir o neologismo "infraudável" (docs/07 e spec) por "impossível de
   fraudar"; ajustar a referência "ver seção seguinte" na seção 4 do docs/07.
   *(pendente)*
+- Corrida estreita em `AgendaClient.tsx` (`handleSalvarHorarios`, ~linhas 350-366):
+  quando as configs de agendamento mudam, a action reenvia os campos de perfil a
+  partir da prop `perfilEmpresa` (não do estado local) por design — mas se o usuário
+  salvar a aba Perfil e, antes do `router.refresh()` propagar a prop atualizada,
+  submeter Horários com configs alteradas, essa chamada regrava o perfil com valores
+  pré-refresh. Raro (exige dois submits em sequência rápida); dano limitado a reverter
+  para um valor já persistido antes. *(apontado na revisão final da grade inteligente,
+  2026-07-16)*
+- Submit de Horários com configs alteradas (`AgendaClient.tsx:356`) sempre acaba
+  chamando `salvarPerfilEmpresa`, que em `perfis-empresas.ts:221-229` sincroniza o
+  logo da organização via API do Clerk mesmo quando só antecedência/horizonte
+  mudaram — round-trip evitável. *(apontado na revisão final da grade inteligente,
+  2026-07-16)*
+- `adicionarJanela` (`AgendaClient.tsx:262-273`, via `somarMinutos`) sugere uma janela
+  `23:59–23:59` inválida quando a janela anterior do dia termina às 23:59 — a
+  validação visual bloqueia o save (sem corrupção de dados), mas é beco de UX; não
+  sugerir janela sem espaço. *(apontado na revisão final da grade inteligente,
+  2026-07-16)*
+- Endurecer os asserts de rejeição em `src/lib/__tests__/horarios.test.ts` (várias
+  linhas, ex. 18, 33, 83, 87, 91): hoje checam só `not.toBeNull()`, sem travar o
+  texto da mensagem de erro. *(apontado na revisão final da grade inteligente,
+  2026-07-16)*
 - Melhorias maiores de onboarding/ativação (guiar o tenant até o "setup completo"):
   especificar a partir dos dados do funil (P0.5).
 
@@ -421,11 +537,13 @@ posterior, salvo evidência de necessidade nos pilotos.
 - Código: `hidePersonal` no `<OrganizationSwitcher>` do layout do dashboard
   (verificado 2026-07-11: ainda não aplicado).
 
-### 11. Cor e logo do tenant na página pública de booking
+### 11. Cor e logo do tenant na página pública de booking — → absorvido pelo P0.12
 
-Estrutura pronta (colunas `cor_marca`/`logo_url`, gating e UI do dashboard já
-existem) — falta o consumo em `/book/[slug]`. É a entrega visível do valor dos planos
-Plus/Pro; esforço baixo. (Ver docs/07 "Recursos preparados mas não implementados".)
+**Absorvido pelo P0.12 em 2026-07-16** (redesign do booking público) — a customização
+visual do tenant será tratada lá, como parte do novo layout. Escopo original mantido
+como referência: estrutura pronta (colunas `cor_marca`/`logo_url`, gating e UI do
+dashboard já existem) — falta o consumo em `/book/[slug]`. É a entrega visível do
+valor dos planos Plus/Pro. (Ver docs/07 "Recursos preparados mas não implementados".)
 
 ---
 
@@ -609,6 +727,19 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
   3. Substituir a seção "Banco de dados (fase atual: DEV)" do `CLAUDE.md` pela versão
      prod: migrations aplicadas são imutáveis, correção = nova migration via
      `supabase db diff`, hard reset proibido.
+- Engine de disponibilidade — agendamento que atravessa a meia-noite: `obterSlotsDisponiveis`
+  busca os agendamentos do dia via `limitesDoDia` (`src/lib/booking-engine.ts:266-282`),
+  que filtra `data_hora` dentro do próprio dia — um agendamento iniciado à noite da
+  véspera com duração longa o suficiente para invadir a madrugada não é subtraído dos
+  slots do dia seguinte. Comportamento pré-existente ao branch da grade inteligente
+  (não introduzido por ele), só alcançável com janelas noturnas + serviços longos;
+  tratar antes de aceitar tenants com horário estendido. *(achado da revisão final da
+  grade inteligente, 2026-07-16)*
+- Pre-flight de CHECK constraints em dados reais antes de aplicar migration com
+  `VALIDATE CONSTRAINT`: `ck_hora_fim_apos_inicio` (e futuros CHECKs equivalentes)
+  falham a aplicação se existir linha legada que viole a regra — validar dados de
+  produção antes de aplicar. *(achado da revisão final da grade inteligente,
+  2026-07-16)*
 - Backups e recuperação; testes de carga.
 - Domínio definitivo, e-mails de produção e configurações finais (lembrete herdado:
   configurar `SUPABASE_SECRET_KEY` e demais envs no Railway/produção).
@@ -681,6 +812,43 @@ primeiro item P0 com testes for implementado.
 
 ## ✅ Itens resolvidos (histórico)
 
+- **2026-07-16 — P0.12(a): grade inteligente de horários (regra anti-buraco)** —
+  absorve e fecha os três subitens do P1.7 (múltiplas janelas por dia, antecedência
+  mínima e horizonte máximo configuráveis):
+  - **Regra escolhida pelo owner** entre as candidatas em aberto: grade de 15 em 15
+    min ancorada no início de cada intervalo livre do dia + um candidato colado no
+    fim do intervalo (`b - duracaoMinutos`), escondendo qualquer candidato que
+    deixasse, antes ou depois dele, uma sobra menor que a menor duração de serviço
+    ativa do tenant — sobra que nenhum serviço conseguiria preencher depois.
+    Implementada em `gerarSlotsAntiBuraco`/`obterSlotsDisponiveis`
+    (`src/lib/booking-engine.ts`); a validação por string exata do booking público
+    e do agendamento manual foi preservada (nenhuma quebra de contrato).
+  - **Banco**: colunas `antecedencia_minima_minutos` (default 15, CHECK >= 0) e
+    `horizonte_maximo_dias` (default 14, CHECK 1–365) em `perfis_empresas`; a
+    `UNIQUE (tenant_id, dia_semana)` de `horarios_funcionamento` caiu (N janelas por
+    dia); RPC `substituir_horarios_funcionamento` (SECURITY INVOKER, delete+insert
+    numa única transação, `tenant_id` sempre derivado do JWT, nunca do payload)
+    evita perda de dados se o insert falhar após o delete. Migration
+    `20260716162901_grade_inteligente_agenda` aplicada no Supabase Cloud.
+  - **Actions**: o booking público (`public-booking.ts`) passa `regrasAcesso`
+    (antecedência por instante — atravessa virada de dia — e horizonte) para a
+    engine, enforced no servidor mesmo que a UI seja contornada; o fluxo manual do
+    dashboard (`agendamentos.ts`) fica de fora de ambas as regras — walk-in
+    permitido, decisão do owner. Validação pura `validarJanelasFuncionamento`
+    (`src/lib/horarios.ts`, testável isoladamente) checa sobreposição/ordem das N
+    janelas antes de chamar a RPC.
+  - **UI**: aba Horários da agenda (`AgendaClient.tsx`) com até 3 janelas por dia e
+    selects de antecedência (15 min–24 h) e horizonte (7–90 dias); o
+    `BookingWizard` público passou a gerar os próximos dias a partir do horizonte
+    real do tenant em vez do fixo de 14 dias.
+  - **Bug corrigido durante o trabalho** (revisão pós-implementação): salvar a aba
+    Horários publicava silenciosamente edições em aberto da aba Perfil (payload
+    montado do estado local compartilhado entre abas) e mascarava sucesso parcial
+    (horários gravados + config de regras falhando aparecia como "erro ao salvar
+    horários"). Corrigido: payload dos campos fora do escopo da aba Horários vem
+    sempre do perfil persistido (prop), nunca do estado local editável; erro parcial
+    tem mensagem própria.
+  - Verificado em 2026-07-16: `pnpm test` 65/65, `pnpm build` verde.
 - **2026-07-15 — P0.6 (adendo): 4ª vertical `/para/barbeiro` + verticais
   reescritas como o "filme" da landing principal**: crítica do owner acatada — as
   verticais reusavam o figurino da principal (ruído, relógios gigantes) mas tinham

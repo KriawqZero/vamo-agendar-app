@@ -7,13 +7,15 @@ import { obterAssinaturaVigente } from '@/lib/assinaturas'
 import { ehTimezoneValida, TIMEZONE_PADRAO } from '@/lib/timezone'
 
 interface PerfilEmpresaInput {
-    slug: string;
-    nomeEstabelecimento: string;
-    descricao?: string;
-    telefoneContato?: string;
-    corMarca?: string | null;
-    exibirLogo?: boolean;
-    timezone?: string;
+    slug: string
+    nomeEstabelecimento: string
+    descricao?: string
+    telefoneContato?: string
+    corMarca?: string | null
+    exibirLogo?: boolean
+    timezone?: string
+    antecedenciaMinimaMinutos?: number
+    horizonteMaximoDias?: number
 }
 
 /**
@@ -63,7 +65,7 @@ export async function obterPerfilEmpresa() {
                 slug_gratuito: slugGerado,
                 nome_estabelecimento: organizacao.name,
             },
-            { onConflict: 'tenant_id', ignoreDuplicates: true }
+            { onConflict: 'tenant_id', ignoreDuplicates: true },
         )
         .select()
         .maybeSingle()
@@ -102,9 +104,9 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
         .toLowerCase()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '') // Remove acentos
-        .replace(/[^a-z0-9-_]/g, '-')    // Substitui caracteres especiais por hífens
-        .replace(/-+/g, '-')             // Remove hífens duplicados
-        .replace(/^-+|-+$/g, '')         // Limpa extremidades
+        .replace(/[^a-z0-9-_]/g, '-') // Substitui caracteres especiais por hífens
+        .replace(/-+/g, '-') // Remove hífens duplicados
+        .replace(/^-+|-+$/g, '') // Limpa extremidades
 
     if (!input.nomeEstabelecimento.trim()) {
         throw new Error('O nome do estabelecimento é obrigatório.')
@@ -122,7 +124,9 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
     // Busca o perfil atual para decidir slug e detectar alterações bloqueadas
     const { data: perfilAtual, error: perfilError } = await supabase
         .from('perfis_empresas')
-        .select('slug, slug_gratuito, cor_marca, logo_url, exibir_logo, timezone')
+        .select(
+            'slug, slug_gratuito, cor_marca, logo_url, exibir_logo, timezone, antecedencia_minima_minutos, horizonte_maximo_dias',
+        )
         .eq('tenant_id', orgId)
         .maybeSingle()
 
@@ -145,7 +149,7 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
         } else if (slugFormatado !== perfilAtual.slug_gratuito) {
             throw new Error(
                 'Personalizar o link é um recurso do plano Plus. ' +
-                'Faça upgrade em Plano no menu para escolher seu link.'
+                    'Faça upgrade em Plano no menu para escolher seu link.',
             )
         } else {
             // Mantém o slug armazenado (customizado ou não) intacto
@@ -160,7 +164,9 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
     const corMarcaNova = input.corMarca?.trim() || null
 
     if (corMarcaNova !== (perfilAtual?.cor_marca ?? null) && !recursos.corPersonalizada) {
-        throw new Error('Cor personalizada é um recurso do plano Plus. Faça upgrade em Plano no menu.')
+        throw new Error(
+            'Cor personalizada é um recurso do plano Plus. Faça upgrade em Plano no menu.',
+        )
     }
 
     // Exibição do logo é preferência do tenant, mas alterá-la exige o plano Pro
@@ -177,6 +183,39 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
             throw new Error('Fuso horário inválido.')
         }
         timezoneFinal = input.timezone
+    }
+
+    // Regras de acesso do fluxo público (antecedência mínima e horizonte
+    // máximo de agendamento). Ausentes = não altera. Espelha/aperta os CHECKs
+    // do banco (perfis_empresas_antecedencia_minima_minutos_check e
+    // perfis_empresas_horizonte_maximo_dias_check) — validação server-side,
+    // não confia apenas no CHECK.
+    let antecedenciaFinal = perfilAtual?.antecedencia_minima_minutos ?? 15
+    if (input.antecedenciaMinimaMinutos !== undefined) {
+        if (
+            !Number.isFinite(input.antecedenciaMinimaMinutos) ||
+            !Number.isInteger(input.antecedenciaMinimaMinutos) ||
+            input.antecedenciaMinimaMinutos < 0 ||
+            input.antecedenciaMinimaMinutos > 10080
+        ) {
+            throw new Error(
+                'Antecedência mínima inválida. Use um valor entre 0 e 10080 minutos (1 semana).',
+            )
+        }
+        antecedenciaFinal = input.antecedenciaMinimaMinutos
+    }
+
+    let horizonteFinal = perfilAtual?.horizonte_maximo_dias ?? 14
+    if (input.horizonteMaximoDias !== undefined) {
+        if (
+            !Number.isFinite(input.horizonteMaximoDias) ||
+            !Number.isInteger(input.horizonteMaximoDias) ||
+            input.horizonteMaximoDias < 1 ||
+            input.horizonteMaximoDias > 365
+        ) {
+            throw new Error('Horizonte máximo inválido. Use um valor entre 1 e 365 dias.')
+        }
+        horizonteFinal = input.horizonteMaximoDias
     }
 
     // Logo não é input do usuário: para tenants Pro com exibição ligada,
@@ -200,7 +239,9 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
         logo_url: logoUrlNovo,
         exibir_logo: exibirLogoNovo,
         timezone: timezoneFinal,
-        updated_at: new Date().toISOString()
+        antecedencia_minima_minutos: antecedenciaFinal,
+        horizonte_maximo_dias: horizonteFinal,
+        updated_at: new Date().toISOString(),
     }
 
     // Como tenant_id é a chave primária, usamos upsert

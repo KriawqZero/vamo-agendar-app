@@ -1,0 +1,834 @@
+<title>VamoAgendar — Progresso</title>
+<style>
+  :root {
+    --accent-cyan: #3DBAED;
+    --accent-blue: #3961D5;
+    --accent-purple: #4219B0;
+
+    --bg: #F4F7FD;
+    --surface: #FFFFFF;
+    --surface-alt: #ECF1FB;
+    --border: #DCE4F5;
+    --track: #E3E9F8;
+    --ink: #17203E;
+    --ink-secondary: #47517A;
+    --ink-muted: #5A6690;
+    --accent-text: #3961D5;
+    --shadow: 0 1px 2px rgba(23, 32, 62, 0.04), 0 8px 24px rgba(23, 32, 62, 0.06);
+
+    /* estado dos passos — sempre acompanhado de ícone + texto, nunca só cor */
+    --status-done-bg: #E1F5EA;
+    --status-done-ink: #087349;
+    --status-progress-bg: #FCEBD2;
+    --status-progress-ink: #9A5308;
+    --status-progress-solid: #E8973A;
+    --status-todo-bg: var(--surface-alt);
+    --status-todo-ink: var(--ink-muted);
+
+    --font-base: Poppins, -apple-system, "Segoe UI", sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0B0F1E;
+      --surface: #131A2E;
+      --surface-alt: #1A2338;
+      --border: #26304C;
+      --track: #232C48;
+      --ink: #EAEEFB;
+      --ink-secondary: #B7C0E0;
+      --ink-muted: #8892B8;
+      --accent-text: #8FB4F5;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.35);
+
+      --status-done-bg: rgba(16, 185, 129, 0.16);
+      --status-done-ink: #5FD9A4;
+      --status-progress-bg: rgba(232, 151, 58, 0.18);
+      --status-progress-ink: #F0AE63;
+      --status-progress-solid: #EDA84F;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #0B0F1E;
+    --surface: #131A2E;
+    --surface-alt: #1A2338;
+    --border: #26304C;
+    --track: #232C48;
+    --ink: #EAEEFB;
+    --ink-secondary: #B7C0E0;
+    --ink-muted: #8892B8;
+    --accent-text: #8FB4F5;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.35);
+
+    --status-done-bg: rgba(16, 185, 129, 0.16);
+    --status-done-ink: #5FD9A4;
+    --status-progress-bg: rgba(232, 151, 58, 0.18);
+    --status-progress-ink: #F0AE63;
+    --status-progress-solid: #EDA84F;
+  }
+
+  :root[data-theme="light"] {
+    --bg: #F4F7FD;
+    --surface: #FFFFFF;
+    --surface-alt: #ECF1FB;
+    --border: #DCE4F5;
+    --track: #E3E9F8;
+    --ink: #17203E;
+    --ink-secondary: #47517A;
+    --ink-muted: #5A6690;
+    --accent-text: #3961D5;
+    --shadow: 0 1px 2px rgba(23, 32, 62, 0.04), 0 8px 24px rgba(23, 32, 62, 0.06);
+
+    --status-done-bg: #E1F5EA;
+    --status-done-ink: #087349;
+    --status-progress-bg: #FCEBD2;
+    --status-progress-ink: #9A5308;
+    --status-progress-solid: #E8973A;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-base);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .hero {
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    border-radius: 20px;
+    padding: 28px 24px;
+    box-shadow: var(--shadow);
+  }
+
+  .hero h1 {
+    margin: 0;
+    color: #FFFFFF;
+    font-size: clamp(1.6rem, 6vw, 2.1rem);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  .hero .subtitle {
+    margin: 6px 0 0;
+    color: rgba(255, 255, 255, 0.86);
+    font-size: 1rem;
+    font-weight: 400;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 24px;
+    box-shadow: var(--shadow);
+  }
+
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+    .card:hover { transform: translateY(-2px); }
+  }
+
+  .card h2 {
+    margin: 0 0 6px;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+
+  .card > h2:first-child {
+    margin-bottom: 18px;
+  }
+
+  svg.chip-icon { width: 14px; height: 14px; flex: 0 0 auto; display: block; }
+
+  /* --- Rumo ao lançamento --- */
+
+  .stat-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .stat-count {
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+  }
+
+  .stat-num {
+    font-size: 3.2rem;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .stat-den {
+    font-size: 1.5rem;
+    font-weight: 500;
+    color: var(--ink-secondary);
+  }
+
+  .stat-badge {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--accent-text);
+    background: var(--surface-alt);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-label {
+    margin: 4px 0 18px;
+    color: var(--ink-secondary);
+    font-size: 1rem;
+  }
+
+  .step-track {
+    display: flex;
+    gap: 4px;
+  }
+
+  .step-track .seg {
+    flex: 1 1 0;
+    height: 16px;
+    border-radius: 6px;
+    background: var(--track);
+  }
+
+  .step-track .seg.done {
+    background: var(--accent-blue);
+  }
+
+  .step-track .seg.progress {
+    background: var(--status-progress-solid);
+  }
+
+  .step-legend {
+    list-style: none;
+    margin: 12px 0 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+  }
+
+  .step-legend li {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--ink-secondary);
+  }
+
+  .step-legend .legend-count {
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-muted);
+  }
+
+  .step-legend li.is-done svg { color: var(--status-done-ink); }
+  .step-legend li.is-progress svg { color: var(--status-progress-ink); }
+  .step-legend li.is-todo svg { color: var(--status-todo-ink); }
+
+  .support-text {
+    margin: 16px 0 0;
+    color: var(--ink-secondary);
+    font-size: 1rem;
+    line-height: 1.6;
+    max-width: 58ch;
+  }
+
+  /* --- grupos e itens de passos (usado em "Rumo ao lançamento" e "Também antes") --- */
+
+  .group-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0 0 2px;
+    font-size: 0.94rem;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.4;
+  }
+
+  .group-heading .icon-wrap {
+    margin-top: 1px;
+  }
+
+  .group-heading .icon-wrap {
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+  }
+
+  .group-heading.is-done .icon-wrap { background: var(--status-done-bg); color: var(--status-done-ink); }
+  .group-heading.is-progress .icon-wrap { background: var(--status-progress-bg); color: var(--status-progress-ink); }
+  .group-heading.is-todo .icon-wrap { background: var(--status-todo-bg); color: var(--status-todo-ink); }
+
+  .group-heading-note {
+    font-weight: 400;
+    color: var(--ink-muted);
+    font-size: 0.85rem;
+  }
+
+  .step-group + .step-group,
+  details.step-collapse + .step-group {
+    margin-top: 20px;
+  }
+
+  .step-list {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .step-item {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 11px 12px;
+    border-radius: 12px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+  }
+
+  .step-item--flat {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .step-num {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    font-weight: 700;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--ink-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .step-body {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .step-title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--ink);
+    line-height: 1.45;
+  }
+
+  .step-note {
+    margin: 6px 0 0;
+    font-size: 0.85rem;
+    color: var(--ink-secondary);
+    line-height: 1.5;
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .chip-done { background: var(--status-done-bg); color: var(--status-done-ink); }
+  .chip-progress { background: var(--status-progress-bg); color: var(--status-progress-ink); }
+  .chip-todo { background: var(--status-todo-bg); color: var(--status-todo-ink); }
+
+  details.step-collapse summary,
+  details.log-collapse summary {
+    cursor: pointer;
+    list-style: none;
+  }
+
+  details.step-collapse summary::-webkit-details-marker,
+  details.log-collapse summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .chevron {
+    width: 9px;
+    height: 9px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+    flex: 0 0 auto;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .chevron { transition: transform 0.15s ease; }
+  }
+
+  details[open] .chevron { transform: rotate(-135deg); }
+
+  details.step-collapse summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+  }
+
+  details.step-collapse summary .group-heading { margin: 0; }
+
+  details.step-collapse summary:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 2px;
+  }
+
+  details.step-collapse .step-list { margin-top: 10px; }
+
+  .footnote {
+    margin: 18px 2px 0;
+    padding-left: 12px;
+    border-left: 2px solid var(--border);
+    font-size: 0.85rem;
+    color: var(--ink-muted);
+    line-height: 1.55;
+  }
+
+  /* --- Últimas atualizações --- */
+
+  .log {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .log-item {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .log-date {
+    flex: 0 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 14px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    color: var(--ink-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .log-item.is-latest .log-date {
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+    border-color: transparent;
+    color: #FFFFFF;
+  }
+
+  .log-day {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .log-dd {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+
+  .log-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 2px 0 0;
+    color: var(--ink-secondary);
+    font-size: 1rem;
+    line-height: 1.62;
+    max-width: 58ch;
+  }
+
+  .log-item.is-latest .log-text {
+    color: var(--ink);
+  }
+
+  .log-gap {
+    text-align: center;
+    margin: -6px 0;
+    padding-left: 70px;
+    font-size: 0.82rem;
+    color: var(--ink-muted);
+  }
+
+  details.log-collapse {
+    margin-top: 4px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  details.log-collapse summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 2px 2px 2px;
+    color: var(--accent-text);
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+
+  details.log-collapse summary:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 3px;
+    border-radius: 6px;
+  }
+
+  details.log-collapse .log-collapse-count {
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-muted);
+    font-weight: 500;
+    margin-right: auto;
+    margin-left: 6px;
+  }
+
+  details.log-collapse .log {
+    margin-top: 18px;
+  }
+
+  /* --- Relatórios semanais --- */
+
+  .reports-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .reports-list:empty {
+    display: none;
+  }
+
+  .reports-list a {
+    color: var(--accent-text);
+    text-decoration: none;
+    font-weight: 500;
+  }
+
+  .reports-list a:hover,
+  .reports-list a:focus-visible {
+    text-decoration: underline;
+  }
+
+  .reports-list a:focus-visible {
+    outline: 2px solid var(--accent-text);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  .placeholder {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: 0.95rem;
+  }
+
+  /* --- Rodapé --- */
+
+  .footer {
+    text-align: center;
+    padding-top: 8px;
+  }
+
+  .footer p {
+    margin: 0;
+    color: var(--ink-muted);
+    font-size: 0.82rem;
+  }
+</style>
+
+<main class="page">
+
+  <svg style="position: absolute; width: 0; height: 0; overflow: hidden" aria-hidden="true" focusable="false">
+    <symbol id="icon-check" viewBox="0 0 20 20">
+      <path d="M4 10.3L8.2 14.5L16 6.2" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"></path>
+    </symbol>
+    <symbol id="icon-progress" viewBox="0 0 20 20">
+      <circle cx="10" cy="10" r="7.3" fill="none" stroke="currentColor" stroke-width="2.3" opacity="0.32"></circle>
+      <path d="M10 2.7A7.3 7.3 0 0 1 17.3 10" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"></path>
+    </symbol>
+    <symbol id="icon-todo" viewBox="0 0 20 20">
+      <circle cx="10" cy="10" r="7.3" fill="none" stroke="currentColor" stroke-width="2.3" stroke-dasharray="2.6 3.4"></circle>
+    </symbol>
+  </svg>
+
+  <header class="hero">
+    <h1>VamoAgendar</h1>
+    <p class="subtitle">Acompanhamento do projeto</p>
+  </header>
+
+  <section class="card" aria-labelledby="h-progresso">
+    <h2 id="h-progresso">Rumo ao lançamento</h2>
+
+    <div class="stat-row">
+      <span class="stat-count"><span class="stat-num">6</span><span class="stat-den">/11</span></span>
+      <span class="stat-badge">≈ 55%</span>
+    </div>
+    <p class="stat-label">passos críticos concluídos</p>
+
+    <div
+      class="step-track"
+      role="progressbar"
+      aria-valuenow="55"
+      aria-valuemin="0"
+      aria-valuemax="100"
+      aria-label="Progresso rumo ao lançamento: 6 de 11 passos críticos concluídos, 1 em andamento, 4 a fazer — aproximadamente 55 por cento"
+    >
+      <span class="seg done" aria-hidden="true"></span>
+      <span class="seg done" aria-hidden="true"></span>
+      <span class="seg done" aria-hidden="true"></span>
+      <span class="seg done" aria-hidden="true"></span>
+      <span class="seg done" aria-hidden="true"></span>
+      <span class="seg done" aria-hidden="true"></span>
+      <span class="seg progress" aria-hidden="true"></span>
+      <span class="seg todo" aria-hidden="true"></span>
+      <span class="seg todo" aria-hidden="true"></span>
+      <span class="seg todo" aria-hidden="true"></span>
+      <span class="seg todo" aria-hidden="true"></span>
+    </div>
+
+    <ul class="step-legend">
+      <li class="is-done"><svg class="chip-icon" aria-hidden="true"><use href="#icon-check"></use></svg>Concluído <span class="legend-count">(6)</span></li>
+      <li class="is-progress"><svg class="chip-icon" aria-hidden="true"><use href="#icon-progress"></use></svg>Em andamento <span class="legend-count">(1)</span></li>
+      <li class="is-todo"><svg class="chip-icon" aria-hidden="true"><use href="#icon-todo"></use></svg>A fazer <span class="legend-count">(4)</span></li>
+    </ul>
+
+    <p class="support-text">Dos 11 passos essenciais para abrir o produto ao público, 6 já estão concluídos. Veja abaixo quais são os 11 e como está cada um.</p>
+
+    <details class="step-collapse" style="margin-top: 18px">
+      <summary>
+        <span class="group-heading is-done">
+          <span class="icon-wrap"><svg class="chip-icon" aria-hidden="true"><use href="#icon-check"></use></svg></span>
+          6 passos concluídos
+        </span>
+        <span class="chevron" aria-hidden="true"></span>
+      </summary>
+      <ul class="step-list">
+        <li class="step-item">
+          <span class="step-num">1</span>
+          <div class="step-body"><p class="step-title">Mensagens automáticas de WhatsApp confiáveis — confirmação e lembrete funcionando de verdade</p></div>
+        </li>
+        <li class="step-item">
+          <span class="step-num">2</span>
+          <div class="step-body"><p class="step-title">Correção de um erro grave que impedia visitantes de agendar pela página pública</p></div>
+        </li>
+        <li class="step-item">
+          <span class="step-num">3</span>
+          <div class="step-body"><p class="step-title">Agendamento manual pelo profissional — para horários combinados por telefone ou WhatsApp</p></div>
+        </li>
+        <li class="step-item">
+          <span class="step-num">4</span>
+          <div class="step-body"><p class="step-title">Horários corretos em qualquer cidade do Brasil, independente do fuso</p></div>
+        </li>
+        <li class="step-item">
+          <span class="step-num">5</span>
+          <div class="step-body"><p class="step-title">Medição de uso do produto — saber onde as pessoas desistem e o que melhorar</p></div>
+        </li>
+        <li class="step-item">
+          <span class="step-num">6</span>
+          <div class="step-body"><p class="step-title">Primeiras páginas de divulgação por tipo de profissão</p></div>
+        </li>
+      </ul>
+    </details>
+
+    <div class="step-group" style="margin-top: 20px">
+      <p class="group-heading is-progress">
+        <span class="icon-wrap"><svg class="chip-icon" aria-hidden="true"><use href="#icon-progress"></use></svg></span>
+        Em andamento
+      </p>
+      <ul class="step-list">
+        <li class="step-item">
+          <span class="step-num">7</span>
+          <div class="step-body"><p class="step-title">Página de agendamento com a cara do negócio de cada profissional (cor e logo próprios) e visual repensado para o celular</p></div>
+        </li>
+      </ul>
+    </div>
+
+    <div class="step-group">
+      <p class="group-heading is-todo">
+        <span class="icon-wrap"><svg class="chip-icon" aria-hidden="true"><use href="#icon-todo"></use></svg></span>
+        <span>A fazer <span class="group-heading-note">— reta final antes de abrir ao público</span></span>
+      </p>
+      <ul class="step-list">
+        <li class="step-item">
+          <span class="step-num">8</span>
+          <div class="step-body"><p class="step-title">Verificação completa de que cada empresa só enxerga os próprios dados</p></div>
+        </li>
+        <li class="step-item">
+          <span class="step-num">9</span>
+          <div class="step-body"><p class="step-title">Garantia de que duas pessoas nunca consigam marcar o mesmo horário ao mesmo tempo</p></div>
+        </li>
+        <li class="step-item">
+          <span class="step-num">10</span>
+          <div class="step-body"><p class="step-title">Proteção contra agendamentos falsos e uso abusivo</p></div>
+        </li>
+        <li class="step-item">
+          <span class="step-num">11</span>
+          <div class="step-body"><p class="step-title">Preparações finais de lançamento — endereço definitivo do site, monitoramento e afins</p></div>
+        </li>
+      </ul>
+    </div>
+
+    <p class="footnote">Esta lista pode ganhar itens novos conforme o projeto avança — quando o total mudar, é sinal de cuidado com a qualidade, não de atraso.</p>
+  </section>
+
+  <section class="card" aria-labelledby="h-antes">
+    <h2 id="h-antes">Também antes do lançamento</h2>
+    <p class="support-text" style="margin-top: 0">Melhorias importantes que também entram antes de abrir ao público, mas fora da lista de passos críticos acima.</p>
+
+    <ul class="step-list" style="margin-top: 16px">
+      <li class="step-item step-item--flat">
+        <span class="chip chip-progress"><svg class="chip-icon" aria-hidden="true"><use href="#icon-progress"></use></svg>Em grande parte concluído</span>
+        <div class="step-body">
+          <p class="step-title">Ajustes finos de agenda para o dia a dia real</p>
+          <p class="step-note">Várias janelas de atendimento por dia, antecedência mínima e prazo máximo de agendamento já entregues; falta avaliar intervalo entre atendimentos conforme o tipo de negócio.</p>
+        </div>
+      </li>
+      <li class="step-item step-item--flat">
+        <span class="chip chip-todo"><svg class="chip-icon" aria-hidden="true"><use href="#icon-todo"></use></svg>A fazer</span>
+        <div class="step-body">
+          <p class="step-title">Regra única de aviso ao cliente (WhatsApp e/ou e-mail) em todas as telas e textos</p>
+        </div>
+      </li>
+      <li class="step-item step-item--flat">
+        <span class="chip chip-todo"><svg class="chip-icon" aria-hidden="true"><use href="#icon-todo"></use></svg>A fazer</span>
+        <div class="step-body">
+          <p class="step-title">Primeiros passos guiados para o profissional recém-cadastrado, além de pequenos polimentos já mapeados</p>
+        </div>
+      </li>
+      <li class="step-item step-item--flat">
+        <span class="chip chip-todo"><svg class="chip-icon" aria-hidden="true"><use href="#icon-todo"></use></svg>A fazer</span>
+        <div class="step-body">
+          <p class="step-title">Ajustes de configuração no sistema de contas e login (trabalho interno)</p>
+        </div>
+      </li>
+      <li class="step-item step-item--flat">
+        <span class="chip chip-progress"><svg class="chip-icon" aria-hidden="true"><use href="#icon-progress"></use></svg>Em andamento</span>
+        <div class="step-body">
+          <p class="step-title">Cor e logo do profissional na página pública</p>
+          <p class="step-note">Virou parte do passo 7 da lista de passos críticos, acima.</p>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <section class="card" aria-labelledby="h-atualizacoes">
+    <h2 id="h-atualizacoes">Últimas atualizações</h2>
+
+    <ol class="log">
+      <li class="log-item is-latest">
+        <div class="log-date"><span class="log-day">Qui</span><span class="log-dd">16/07</span></div>
+        <p class="log-text">Entregamos a grade inteligente de horários: o sistema agora evita buracos vazios na agenda do profissional, aproveitando melhor o dia de trabalho, permite várias janelas de atendimento por dia e respeita regras de antecedência mínima e prazo máximo para agendar. Também corrigimos falhas que podiam misturar edições de perfil e esconder erros ao salvar horários.</p>
+      </li>
+      <li class="log-item">
+        <div class="log-date"><span class="log-day">Qua</span><span class="log-dd">15/07</span></div>
+        <p class="log-text">Dia misto de bastidores e produto: organizamos o fluxo interno de trabalho da equipe e uma base de boas práticas para o banco de dados, e ao mesmo tempo evoluímos as páginas de divulgação por nicho de profissão.</p>
+      </li>
+      <li class="log-item">
+        <div class="log-date"><span class="log-day">Ter</span><span class="log-dd">14/07</span></div>
+        <p class="log-text">Fizemos uma revisão final ampla, corrigindo comportamentos, brechas de segurança e detalhes de usabilidade, e confirmamos que essas correções foram aplicadas com segurança no ambiente de testes online. Trabalho de consolidação, sem novidade visível ainda.</p>
+      </li>
+      <li class="log-item">
+        <div class="log-date"><span class="log-day">Seg</span><span class="log-dd">13/07</span></div>
+        <p class="log-text">Semana de avanços grandes: o profissional já consegue confirmar de verdade a conexão do WhatsApp, marcar horários manualmente para um cliente e o sistema passou a respeitar o fuso horário correto de cada negócio. Também nasceram as páginas de divulgação segmentadas por tipo de profissão.</p>
+      </li>
+    </ol>
+
+    <details class="log-collapse">
+      <summary>
+        <span>Ver atualizações anteriores</span>
+        <span class="log-collapse-count">(6)</span>
+        <span class="chevron" aria-hidden="true"></span>
+      </summary>
+      <ol class="log">
+        <li class="log-item">
+          <div class="log-date"><span class="log-day">Dom</span><span class="log-dd">12/07</span></div>
+          <p class="log-text">Dia de organização interna: criamos uma ferramenta temporária de testes para garantir que os lembretes automáticos disparam corretamente, e documentamos como resetar o ambiente de desenvolvimento quando necessário. Sem mudança perceptível para quem usa o produto.</p>
+        </li>
+        <li class="log-item">
+          <div class="log-date"><span class="log-day">Sáb</span><span class="log-dd">11/07</span></div>
+          <p class="log-text">Trabalhamos nos bastidores conectando o sistema ao WhatsApp, preparando o motor que vai enviar as mensagens automáticas aos clientes, além de organização interna do projeto.</p>
+        </li>
+        <li class="log-item">
+          <div class="log-date"><span class="log-day">Sex</span><span class="log-dd">10/07</span></div>
+          <p class="log-text">Dia de consolidar o painel do profissional: as páginas de login e cadastro ganharam forma, surgiu um checklist de boas-vindas para orientar quem está configurando a conta, e a aparência do sistema (tema e fontes) foi ajustada. Também corrigimos um detalhe no envio de WhatsApp e organizamos a documentação interna.</p>
+        </li>
+        <li class="log-item">
+          <div class="log-date"><span class="log-day">Qui</span><span class="log-dd">09/07</span></div>
+          <p class="log-text">Dia dedicado aos planos de assinatura: ficou pronta a estrutura de planos (gratuito, intermediário e avançado), com limite de serviços por plano, WhatsApp liberado só no plano mais completo, e a tela onde o profissional escolhe e paga seu plano.</p>
+        </li>
+        <li class="log-item">
+          <div class="log-date"><span class="log-day">Qua</span><span class="log-dd">08/07</span></div>
+          <p class="log-text">Dia de entrega grande: nasceram de uma vez as peças centrais do produto — a base que guarda as informações do negócio, o mecanismo que calcula os horários livres, o painel do profissional, a tela pública de agendamento do cliente e o envio de mensagens por WhatsApp. Também corrigimos o acesso a páginas que precisavam ficar abertas ao público.</p>
+        </li>
+        <li class="log-gap">Sem registro de trabalho entre 04 e 07/07.</li>
+        <li class="log-item">
+          <div class="log-date"><span class="log-day">Sex</span><span class="log-dd">03/07</span></div>
+          <p class="log-text">Dia da fundação do projeto: a estrutura inicial do sistema foi criada e começamos a construir o login dos profissionais, já em português e com aparência personalizada.</p>
+        </li>
+      </ol>
+    </details>
+  </section>
+
+  <section class="card" aria-labelledby="h-relatorios">
+    <h2 id="h-relatorios">Relatórios semanais</h2>
+    <ul class="reports-list">
+      <li><a href="https://docs.google.com/document/d/1Xw89n4aroYt19PakhHMRXPqTTgpEW52n3zlxPHMejWo/edit" target="_blank" rel="noopener">Semana 10 a 16/07</a></li>
+    </ul>
+  </section>
+
+  <footer class="footer">
+    <p>Atualizado em 16/07/2026</p>
+  </footer>
+
+</main>

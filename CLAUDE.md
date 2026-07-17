@@ -55,7 +55,7 @@ Em Server Actions B2B, valide `const { orgId } = await auth()` antes de operar e
 - **Performance crítica**: sempre envolver `auth.jwt()` em subquery — `(SELECT auth.jwt() ->> 'org_id')` — para virar initPlan e evitar avaliação por linha.
 - Nomenclatura pt-BR: tabelas no **plural**, colunas no **singular**, `snake_case`; FKs como `<tabela_singular>_id`. Adicionar `COMMENT ON TABLE/POLICY` com a intenção de negócio.
 
-Tabelas: `perfis_empresas` (identidade + slug público), `servicos`, `horarios_funcionamento` (dia_semana 0–6 + janelas), `excecoes_agenda` (feriados/bloqueios), `whatsapp_configs` (instância Evolution + templates), `clientes`, `agendamentos` (status: pendente/confirmado/concluido/cancelado), `assinaturas` (planos plus/pro; gratuito = sem linha vigente), `disparos_whatsapp` (log append-only de auditoria de mensageria — sem conteúdo nem telefone).
+Tabelas: `perfis_empresas` (identidade + slug público + configs de agendamento: `antecedencia_minima_minutos`, `horizonte_maximo_dias`, `timezone`), `servicos`, `horarios_funcionamento` (dia_semana 0–6, **N janelas por dia**; semana salva de uma vez pela RPC atômica `substituir_horarios_funcionamento`, sobreposição validada na action via `src/lib/horarios.ts`), `excecoes_agenda` (feriados/bloqueios), `whatsapp_configs` (instância Evolution + templates), `clientes`, `agendamentos` (status: pendente/confirmado/concluido/cancelado), `assinaturas` (planos plus/pro; gratuito = sem linha vigente), `disparos_whatsapp` (log append-only de auditoria de mensageria — sem conteúdo nem telefone).
 
 ### Banco de dados (fase atual: DEV)
 
@@ -67,7 +67,7 @@ Tabelas: `perfis_empresas` (identidade + slug público), `servicos`, `horarios_f
 
 ### Engine de disponibilidade (`src/lib/booking-engine.ts`)
 
-`obterSlotsDisponiveis()` calcula slots livres: horário de funcionamento do dia → subtrai exceções/bloqueios → subtrai janelas ocupadas (agendamentos ativos + `duracao_minutos`) → grade de 15 min → filtra slots passados. **Timezone**: banco em UTC, interpretação em `America/Sao_Paulo` (limites do dia: `${dateStr}T00:00:00-03:00` a `T23:59:59-03:00`). A action pública de criação re-executa a engine antes do INSERT para prevenir double-booking.
+`obterSlotsDisponiveis()` calcula slots livres com **grade anti-buraco** (funções puras testáveis): N janelas de funcionamento do dia − exceções/bloqueios − agendamentos ativos = intervalos livres (`calcularIntervalosLivres`); em cada intervalo `[a, b)`, `gerarSlotsAntiBuraco` gera candidatos de 15 em 15 min ancorados em `a` + o candidato colado no fim (`b − duração`) e só oferece quem não cria sobra invendável: `gapAntes === 0 || gapAntes >= menorDuraçãoAtivaDoTenant || gapDepois === 0`. Regras de acesso via param opcional `regrasAcesso { antecedenciaMinutos, horizonteDias }`: os fluxos públicos passam as configs do tenant; o fluxo manual do dashboard **omite** (walk-in permitido, sem horizonte — decisão de produto). Antecedência é comparada por instante (funciona atravessando dias); horizonte é inclusivo (`hoje + N`). **Timezone**: banco em UTC, interpretação no fuso do tenant (`perfis_empresas.timezone`). A action pública re-executa a engine antes do INSERT e valida o horário por igualdade exata de `datetime` — prevenção de double-booking; mudar o formato da saída quebra esse contrato.
 
 ### Mensageria (Evolution API + QStash)
 
@@ -103,6 +103,7 @@ Se o WhatsApp do tenant estiver desconectado, o fluxo falha **silenciosamente** 
 | `PENDENCIAS.md` | Lista viva de tarefas e bugs — **consultar antes de cada nova etapa** |
 | `ASSINATURAS.md` | Snippets para testes/simulação de assinaturas em dev |
 | `RESET_AMBIENTE_DEV.md` | Procedimento de reset total do ambiente dev |
+| `relatorios-socio/README.md` | Prestação de contas ao sócio: painel + relatório semanal (`/diario-socio`, `/relatorio-socio`) |
 | `SUPABASE_DECLARATIVE-DATABASE-SCHEMA.md` | Exceções do fluxo de migrations declarativas |
 
 `lixo/` — documentos descartados na limpeza de 2026-07-10. **Nunca use como referência** (contém tecnologias banidas e fluxos depreciados).
