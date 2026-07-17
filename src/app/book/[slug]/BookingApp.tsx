@@ -9,6 +9,7 @@ import { classesAcento } from './acento'
 import { ORDEM_ETAPAS } from './passos'
 import CabecalhoEstabelecimento from './CabecalhoEstabelecimento'
 import PainelMarca from './PainelMarca'
+import RodapeAcaoDesktop from './RodapeAcaoDesktop'
 import BarraInferior from './BarraInferior'
 import EtapaServico from './etapas/EtapaServico'
 import EtapaDataHora from './etapas/EtapaDataHora'
@@ -330,6 +331,7 @@ export default function BookingApp({
             <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col sm:border-x sm:border-fio lg:mx-0 lg:min-h-0 lg:max-w-none lg:flex-1 lg:overflow-hidden lg:border-x-0">
                 {!ehSucesso && (
                     <CabecalhoEstabelecimento
+                        className="lg:hidden"
                         nome={perfil.nome_estabelecimento}
                         descricao={perfil.descricao}
                         instagram={perfil.instagram}
@@ -410,6 +412,7 @@ export default function BookingApp({
 
                 {!ehSucesso && (
                     <BarraInferior
+                        className="lg:hidden"
                         etapa={etapa}
                         servico={servicoSelecionado}
                         dataCurta={dataCurta}
@@ -421,6 +424,22 @@ export default function BookingApp({
                                 : Boolean(slotSelecionado)
                         }
                         onAvancar={avancar}
+                        acento={acento}
+                    />
+                )}
+
+                {!ehSucesso && (
+                    <RodapeAcaoDesktop
+                        className="hidden lg:flex lg:shrink-0"
+                        etapa={etapa}
+                        enviando={enviando}
+                        podeAvancar={
+                            etapa === 'servico'
+                                ? Boolean(servicoSelecionado)
+                                : Boolean(slotSelecionado)
+                        }
+                        onAvancar={avancar}
+                        onVoltar={etapa === 'servico' ? undefined : voltar}
                         acento={acento}
                     />
                 )}
