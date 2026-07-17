@@ -4,9 +4,11 @@ import { useActionState, useEffect, useMemo, useRef, useState } from 'react'
 import { obterSlotsPublicos, criarAgendamentoPublico } from '@/app/actions/public-booking'
 import { diaLocal, somarDias, formatarDataHoraLonga, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { capturarEvento } from '@/lib/analytics/client'
+import LuzAmbiente from '@/app/LuzAmbiente'
 import { classesAcento } from './acento'
 import { ORDEM_ETAPAS } from './passos'
 import CabecalhoEstabelecimento from './CabecalhoEstabelecimento'
+import PainelMarca from './PainelMarca'
 import BarraInferior from './BarraInferior'
 import EtapaServico from './etapas/EtapaServico'
 import EtapaDataHora from './etapas/EtapaDataHora'
@@ -304,6 +306,27 @@ export default function BookingApp({
 
     return (
         <div className="lg:flex lg:h-dvh lg:overflow-hidden">
+            <LuzAmbiente />
+
+            {!ehSucesso && (
+                <PainelMarca
+                    className="relative z-10 hidden lg:flex lg:h-full lg:min-h-0 lg:w-[22rem] lg:shrink-0 lg:flex-col lg:overflow-y-auto lg:border-r lg:border-fio xl:w-[26rem]"
+                    nome={perfil.nome_estabelecimento}
+                    descricao={perfil.descricao}
+                    instagram={perfil.instagram}
+                    endereco={perfil.endereco}
+                    logoUrl={personalizacao.logoUrl}
+                    capaUrl={personalizacao.capaUrl}
+                    acento={acento}
+                    temCor={Boolean(personalizacao.corMarca)}
+                    etapa={etapa}
+                    servico={servicoSelecionado}
+                    dataCurta={dataCurta}
+                    horaCurta={slotSelecionado?.time ?? null}
+                    onIrParaEtapa={irParaEtapa}
+                />
+            )}
+
             <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col sm:border-x sm:border-fio lg:mx-0 lg:min-h-0 lg:max-w-none lg:flex-1 lg:overflow-hidden lg:border-x-0">
                 {!ehSucesso && (
                     <CabecalhoEstabelecimento
