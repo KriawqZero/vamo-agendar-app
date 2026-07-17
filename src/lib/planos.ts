@@ -19,6 +19,7 @@ export interface DefinicaoPlano {
         linkPersonalizado: boolean
         corPersonalizada: boolean
         logoPersonalizado: boolean
+        capaPersonalizada: boolean
         whatsapp: boolean
     }
 }
@@ -36,6 +37,7 @@ export const PLANOS: Record<PlanoId, DefinicaoPlano> = Object.freeze({
             linkPersonalizado: false,
             corPersonalizada: false,
             logoPersonalizado: false,
+            capaPersonalizada: false,
             whatsapp: false,
         },
     },
@@ -49,8 +51,11 @@ export const PLANOS: Record<PlanoId, DefinicaoPlano> = Object.freeze({
         limiteServicosAtivos: null,
         recursos: {
             linkPersonalizado: true,
-            corPersonalizada: true,
+            // Customização visual é exclusiva do Pro (decisão de 2026-07-17; o Plus
+            // caminha para descontinuação e não deve ganhar recursos novos).
+            corPersonalizada: false,
             logoPersonalizado: false,
+            capaPersonalizada: false,
             whatsapp: false,
         },
     },
@@ -66,6 +71,7 @@ export const PLANOS: Record<PlanoId, DefinicaoPlano> = Object.freeze({
             linkPersonalizado: true,
             corPersonalizada: true,
             logoPersonalizado: true,
+            capaPersonalizada: true,
             whatsapp: true,
         },
     },
@@ -78,7 +84,7 @@ export const PLANOS: Record<PlanoId, DefinicaoPlano> = Object.freeze({
  */
 export function obterSlugEfetivo(
     perfil: { slug: string; slug_gratuito: string },
-    plano: PlanoId
+    plano: PlanoId,
 ): string {
     return PLANOS[plano].recursos.linkPersonalizado ? perfil.slug : perfil.slug_gratuito
 }

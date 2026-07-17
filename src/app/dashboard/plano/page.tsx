@@ -11,7 +11,9 @@ const formatarPreco = (valor: number) =>
 
 function LinhaRecurso({ liberado, children }: { liberado: boolean; children: React.ReactNode }) {
     return (
-        <li className={`flex items-center gap-2 text-sm ${liberado ? 'text-zinc-700 dark:text-zinc-200' : 'text-zinc-400 dark:text-zinc-600 line-through'}`}>
+        <li
+            className={`flex items-center gap-2 text-sm ${liberado ? 'text-zinc-700 dark:text-zinc-200' : 'text-zinc-400 dark:text-zinc-600 line-through'}`}
+        >
             <span aria-hidden>{liberado ? '✓' : '✕'}</span>
             {children}
         </li>
@@ -21,7 +23,9 @@ function LinhaRecurso({ liberado, children }: { liberado: boolean; children: Rea
 function CardPlano({ plano, atual }: { plano: DefinicaoPlano; atual: boolean }) {
     const r = plano.recursos
     return (
-        <div className={`flex flex-col rounded-2xl border p-6 bg-white dark:bg-zinc-900 transition-all duration-200 ${atual ? 'border-zinc-900 dark:border-zinc-100 shadow-md' : 'border-zinc-200 dark:border-zinc-800'}`}>
+        <div
+            className={`flex flex-col rounded-2xl border p-6 bg-white dark:bg-zinc-900 transition-all duration-200 ${atual ? 'border-zinc-900 dark:border-zinc-100 shadow-md' : 'border-zinc-200 dark:border-zinc-800'}`}
+        >
             <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold tracking-tight">{plano.nome}</h2>
                 {atual && (
@@ -48,13 +52,20 @@ function CardPlano({ plano, atual }: { plano: DefinicaoPlano; atual: boolean }) 
             </div>
             <ul className="mt-5 space-y-2 flex-1">
                 <LinhaRecurso liberado>
-                    {plano.limiteServicosAtivos === null ? 'Serviços ilimitados' : `Até ${plano.limiteServicosAtivos} serviços ativos`}
+                    {plano.limiteServicosAtivos === null
+                        ? 'Serviços ilimitados'
+                        : `Até ${plano.limiteServicosAtivos} serviços ativos`}
                 </LinhaRecurso>
                 <LinhaRecurso liberado>Link de agendamento</LinhaRecurso>
                 <LinhaRecurso liberado={r.linkPersonalizado}>Link personalizado</LinhaRecurso>
                 <LinhaRecurso liberado={r.corPersonalizada}>Cor personalizada</LinhaRecurso>
                 <LinhaRecurso liberado={r.logoPersonalizado}>Logo personalizado</LinhaRecurso>
-                <LinhaRecurso liberado={r.whatsapp}>Confirmações e lembretes por WhatsApp</LinhaRecurso>
+                <LinhaRecurso liberado={r.capaPersonalizada}>
+                    Imagem de capa na sua página
+                </LinhaRecurso>
+                <LinhaRecurso liberado={r.whatsapp}>
+                    Confirmações e lembretes por WhatsApp
+                </LinhaRecurso>
             </ul>
             {plano.id !== 'gratuito' && !atual && <CtaUpgrade planoId={plano.id} />}
         </div>
@@ -78,7 +89,8 @@ export default async function PlanoPage() {
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">Plano</h1>
                 <p className="text-zinc-500 dark:text-zinc-400 text-sm">
-                    Compare os planos e recursos do VamoAgendar. A assinatura online estará disponível em breve.
+                    Compare os planos e recursos do VamoAgendar. A assinatura online estará
+                    disponível em breve.
                 </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
