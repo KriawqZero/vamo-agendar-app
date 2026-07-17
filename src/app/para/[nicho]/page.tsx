@@ -106,6 +106,7 @@ const LINHAS_COMPARACAO: {
     },
     { rotulo: 'Cor da sua marca', valor: (p) => p.recursos.corPersonalizada },
     { rotulo: 'Sua logo na página', valor: (p) => p.recursos.logoPersonalizado },
+    { rotulo: 'Imagem de capa na sua página', valor: (p) => p.recursos.capaPersonalizada },
     {
         rotulo: 'Confirmação e lembrete por WhatsApp',
         valor: (p) => p.recursos.whatsapp,

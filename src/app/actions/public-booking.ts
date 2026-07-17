@@ -5,8 +5,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { obterSlotsDisponiveis } from '@/lib/booking-engine'
 import { diaLocal, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { dispararNotificacoesAgendamento } from '@/lib/notificacoes-agendamento'
-import { obterSlugEfetivo } from '@/lib/planos'
+import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
+import { ehHexValida } from '@/lib/cores'
 import { capturarEventoTenant } from '@/lib/analytics/server'
 
 interface AgendamentoPublicoParams {
@@ -236,7 +237,7 @@ export async function obterDadosBookingPublico(slug: string) {
         return null
     }
 
-    // 2. Buscar serviços ativos desta empresa
+    // 3. Buscar serviços ativos desta empresa
     const { data: servicos, error: sError } = await supabase
         .from('servicos')
         .select('*')
@@ -249,8 +250,21 @@ export async function obterDadosBookingPublico(slug: string) {
         throw new Error('Não foi possível carregar os serviços.')
     }
 
+    // 4. Personalização visual SANITIZADA pelo plano vigente (mesmo padrão do slug
+    // efetivo): downgrade não zera as colunas, então o valor persistido é ignorado
+    // quando o plano atual não inclui o recurso. Os campos crus são neutralizados
+    // no `perfil` para impedir consumo acidental fora deste objeto.
+    const recursos = PLANOS[plano].recursos
+    const personalizacao = {
+        corMarca:
+            recursos.corPersonalizada && ehHexValida(perfil.cor_marca) ? perfil.cor_marca : null,
+        logoUrl: recursos.logoPersonalizado ? (perfil.logo_url ?? null) : null,
+        capaUrl: recursos.capaPersonalizada ? (perfil.capa_url ?? null) : null,
+    }
+
     return {
-        perfil,
+        perfil: { ...perfil, cor_marca: null, logo_url: null, capa_url: null },
+        personalizacao,
         servicos: servicos || [],
     }
 }

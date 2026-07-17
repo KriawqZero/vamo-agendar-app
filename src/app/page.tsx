@@ -51,15 +51,20 @@ function Check() {
     )
 }
 
-const LINHAS_COMPARACAO: { rotulo: string; valor: (p: (typeof PLANOS)[PlanoId]) => string | boolean }[] = [
+const LINHAS_COMPARACAO: {
+    rotulo: string
+    valor: (p: (typeof PLANOS)[PlanoId]) => string | boolean
+}[] = [
     {
         rotulo: 'Serviços ativos',
-        valor: (p) => (p.limiteServicosAtivos === null ? 'Ilimitados' : `Até ${p.limiteServicosAtivos}`),
+        valor: (p) =>
+            p.limiteServicosAtivos === null ? 'Ilimitados' : `Até ${p.limiteServicosAtivos}`,
     },
     { rotulo: 'Página de agendamento com link', valor: () => true },
     { rotulo: 'Link personalizado (/sua-marca)', valor: (p) => p.recursos.linkPersonalizado },
     { rotulo: 'Cor da sua marca', valor: (p) => p.recursos.corPersonalizada },
     { rotulo: 'Sua logo na página', valor: (p) => p.recursos.logoPersonalizado },
+    { rotulo: 'Imagem de capa na sua página', valor: (p) => p.recursos.capaPersonalizada },
     { rotulo: 'Confirmação e lembrete por WhatsApp', valor: (p) => p.recursos.whatsapp },
 ]
 
@@ -300,8 +305,7 @@ export default async function Home() {
                 <section className="relative pt-[clamp(10rem,20vw,18rem)]">
                     <Reveal>
                         <h2 className="max-w-5xl font-display text-[clamp(2.5rem,7vw,6rem)] font-extrabold leading-[1.0] tracking-[-0.03em]">
-                            Essa conversa{' '}
-                            <span className="text-marca">não precisa existir.</span>
+                            Essa conversa <span className="text-marca">não precisa existir.</span>
                         </h2>
                     </Reveal>
                     <div className="mt-14 lg:ml-[38%]">
@@ -355,9 +359,10 @@ export default async function Home() {
                                 Com a sua marca em tudo.
                             </h3>
                             <p className="mt-5 leading-relaxed text-nevoa">
-                                Link personalizado com o seu nome, as cores da sua identidade e a
-                                sua logo na página. O cliente sente que está agendando com você —
-                                porque está. <span className="text-penumbra/75">(planos Plus e Pro)</span>
+                                Sua cor, sua logo e sua foto de capa na página — e o link
+                                personalizado com o seu nome. O cliente sente que está agendando com
+                                você — porque está.{' '}
+                                <span className="text-penumbra/75">(plano Pro)</span>
                             </p>
                         </Reveal>
                     </div>
@@ -403,7 +408,10 @@ export default async function Home() {
                                                 </p>
                                                 <p className="mt-2 font-mono text-2xl text-giz">
                                                     {brl(p.precoMensal)}
-                                                    <span className="text-xs text-penumbra"> /mês</span>
+                                                    <span className="text-xs text-penumbra">
+                                                        {' '}
+                                                        /mês
+                                                    </span>
                                                 </p>
                                                 <p className="mt-1 h-4 font-mono text-xs text-penumbra/75">
                                                     {PRECO_ORIGINAL[p.id] !== null ? (
@@ -440,7 +448,9 @@ export default async function Home() {
                                                         ) : v ? (
                                                             <Check />
                                                         ) : (
-                                                            <span className="text-penumbra/40">—</span>
+                                                            <span className="text-penumbra/40">
+                                                                —
+                                                            </span>
                                                         )}
                                                     </td>
                                                 )
@@ -452,26 +462,37 @@ export default async function Home() {
                                     <tr>
                                         <td className="pt-6" />
                                         {planos.map((p) => (
-                                            <td key={p.id} className={`px-4 pb-4 pt-6 ${destaque(p.id)}`}>
+                                            <td
+                                                key={p.id}
+                                                className={`px-4 pb-4 pt-6 ${destaque(p.id)}`}
+                                            >
                                                 {planoAtual === p.id ? (
                                                     <span className="block cursor-default rounded-full border border-marca/40 py-2.5 text-center font-mono text-xs uppercase tracking-widest text-marca">
                                                         plano atual
                                                     </span>
                                                 ) : (
                                                     <Link
-                                                        href={user ? '/dashboard/plano' : '/sign-up'}
-                                                        className={`block rounded-full py-2.5 text-center text-sm font-semibold transition-colors duration-200 ${(planoAtual ? ordem[p.id] > ordem[planoAtual] : p.id === 'pro')
-                                                            ? 'bg-gradient-to-br from-[#3DBAED] to-[#3961D5] text-white hover:brightness-110'
-                                                            : 'border border-fio-forte text-nevoa hover:border-penumbra hover:text-giz'
-                                                            }`}
+                                                        href={
+                                                            user ? '/dashboard/plano' : '/sign-up'
+                                                        }
+                                                        className={`block rounded-full py-2.5 text-center text-sm font-semibold transition-colors duration-200 ${
+                                                            (
+                                                                planoAtual
+                                                                    ? ordem[p.id] >
+                                                                      ordem[planoAtual]
+                                                                    : p.id === 'pro'
+                                                            )
+                                                                ? 'bg-gradient-to-br from-[#3DBAED] to-[#3961D5] text-white hover:brightness-110'
+                                                                : 'border border-fio-forte text-nevoa hover:border-penumbra hover:text-giz'
+                                                        }`}
                                                     >
                                                         {planoAtual
                                                             ? ordem[p.id] > ordem[planoAtual]
                                                                 ? `Assinar ${p.nome}`
                                                                 : `Voltar ao ${p.nome}`
                                                             : p.id === 'gratuito'
-                                                                ? 'Começar grátis'
-                                                                : `Assinar ${p.nome}`}
+                                                              ? 'Começar grátis'
+                                                              : `Assinar ${p.nome}`}
                                                     </Link>
                                                 )}
                                             </td>

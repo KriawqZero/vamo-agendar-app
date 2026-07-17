@@ -13,12 +13,20 @@ Este documento define a regra de negócio do sistema de planos (Gratuito / Plus 
 | Serviços ativos | até 2 | ilimitados | ilimitados |
 | Link de agendamento | ✓ (código aleatório) | ✓ | ✓ |
 | Link personalizado (slug) | ✕ | ✓ | ✓ |
-| Cor personalizada | ✕ | ✓ | ✓ |
+| Cor personalizada | ✕ | ✕ | ✓ |
 | Logo personalizado | ✕ | ✕ | ✓ |
+| Imagem de capa | ✕ | ✕ | ✓ |
 | WhatsApp (confirmação + lembretes) | ✕ | ✕ | ✓ |
 
 Os preços anuais de Plus e Pro exibem o selo visual **"-50%"** (equivalente a 2 meses
 grátis frente ao mensal × 12).
+
+> [!IMPORTANT]
+> **Toda customização visual (cor, logo, capa) é exclusiva do Pro** — decisão do owner
+> em 2026-07-17 (`corPersonalizada` saiu do Plus). O **Plus caminha para
+> descontinuação** e não deve ganhar recursos novos; a remoção completa será tratada
+> em conversa futura. Instagram e endereço do estabelecimento **não** são recursos de
+> plano: são infos básicas, livres para todos.
 
 > [!NOTE]
 > O limite de serviços do Gratuito conta apenas os serviços com `ativo = true`. Um
@@ -79,8 +87,9 @@ cancelar a linha atual antes de inserir a nova.
 - **`src/lib/planos.ts`** — objeto congelado `PLANOS` com os 3 planos: id, nome, preço
   mensal/anual, selo de desconto, `limiteServicosAtivos` (`2` no Gratuito, `null` =
   ilimitado) e as flags de recursos (`linkPersonalizado`, `corPersonalizada`,
-  `logoPersonalizado`, `whatsapp`). **UI e validações leem exclusivamente daqui** —
-  alterar preço ou limite é alterar este arquivo, nunca duplicar o valor em outro lugar.
+  `logoPersonalizado`, `capaPersonalizada`, `whatsapp`). **UI e validações leem
+  exclusivamente daqui** — alterar preço ou limite é alterar este arquivo, nunca
+  duplicar o valor em outro lugar.
 - **`src/lib/assinaturas.ts`** — resolve o plano vigente de um tenant a partir da tabela
   `assinaturas`:
   - `obterAssinaturaVigente(supabase, tenantId)` — para contextos autenticados (B2B).
@@ -102,11 +111,22 @@ cancelar a linha atual antes de inserir a nova.
   sem o recurso vale `slug_gratuito` — num downgrade, o link customizado **para de
   resolver imediatamente** em `/book/[slug]` (validação em `obterDadosBookingPublico`),
   mas fica **reservado** e volta a valer num re-upgrade. No Gratuito a action rejeita
-  alterações de slug; Plus/Pro editam livremente. Salvar `cor_marca` exige Plus ou
-  superior. O **logo não é input do usuário**: para tenants Pro com a preferência
-  `exibir_logo` ligada (toggle na agenda, exclusivo do Pro), `salvarPerfilEmpresa`
-  sincroniza em `logo_url` o logo da organização configurado no Clerk
-  (`organization.imageUrl`, apenas se `hasImage`); caso contrário, `logo_url` fica nulo.
+  alterações de slug; Plus/Pro editam livremente. Alterar `cor_marca` exige **Pro**
+  (validação de formato `#rrggbb` na action + CHECK no banco). Instagram e endereço
+  são livres (Instagram normalizado: sem `@`, minúsculo).
+- **`src/app/actions/imagens-perfil.ts`** — logo e capa por **upload próprio** no
+  bucket público `imagens-perfis` (Supabase Storage): `enviarImagemPerfil` valida
+  sessão + gating (`logoPersonalizado`/`capaPersonalizada`, ambos Pro), MIME
+  (jpeg/png/webp) e tamanho (logo ≤2MB, capa ≤5MB), deriva o path do `orgId`
+  (`<org_id>/logo|capa-<epoch>.<ext>`) e grava via `createAdminClient()` — o bucket é
+  default-deny para anon/authenticated, toda escrita passa pela action.
+  `removerImagemPerfil` não tem gating de plano (remover é sempre permitido, inclusive
+  pós-downgrade). O antigo sync do logo via Clerk e a coluna `exibir_logo` foram
+  removidos em 2026-07-17.
+- **Consumo público sanitizado** — `obterDadosBookingPublico` devolve
+  `personalizacao {corMarca, logoUrl, capaUrl}` filtrada pelo plano vigente: downgrade
+  não zera as colunas, mas a página pública **ignora** os valores sem o recurso (mesmo
+  padrão do slug efetivo).
 - **`src/app/actions/whatsapp.ts`** — todas as actions de conexão/configuração exigem
   Pro (`PLANOS[plano].recursos.whatsapp`).
 
@@ -172,12 +192,10 @@ passa a escrever automaticamente na mesma tabela que hoje é editada via SQL man
 
 ## 🔒 Recursos preparados mas não implementados
 
-- **`cor_marca`** e **`logo_url`** já existem como colunas em `perfis_empresas` e na UI
-  do dashboard (cor como campo bloqueado por cadeado — Plus+; logo como preview do logo
-  da organização no Clerk, sincronizado no save para tenants Pro). **A página pública de
-  booking (`/book/[slug]`) ainda não consome esses valores** — aplicar a cor
-  personalizada e o logo no booking público
-  está fora do escopo desta etapa.
+- ~~**`cor_marca`** e **`logo_url`** sem consumo na página pública~~ — **implementado
+  em 2026-07-17** (P0.12b): cor, logo e capa do tenant Pro aplicados em
+  `/book/[slug]` como acento/identidade, com upload próprio no Storage e sanitização
+  pelo plano vigente. Ver "Enforcement nas Server Actions" acima.
 - O **link personalizado (slug editável)** já é gated corretamente nas Server Actions,
   mas a experiência de "reivindicar" um slug amigável na UI segue simples (campo de
   texto com validação), sem sugestões automáticas ou verificação de disponibilidade em

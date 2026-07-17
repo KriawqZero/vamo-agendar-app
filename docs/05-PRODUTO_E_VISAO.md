@@ -32,11 +32,22 @@ flowchart LR
 3. **Seleção de Profissional** *(pós-MVP — ainda não implementado)*: quando a empresa tiver múltiplos profissionais, o cliente escolherá com quem quer ser atendido ou "Qualquer um". **Não** serão contas/membros separados: a própria conta do tenant cadastra seus profissionais, cada um com horários e/ou serviços próprios (ver `docs/PENDENCIAS.md`).
 4. **Seleção de Data e Horário:** O cliente vê os dias e horários livres calculados em tempo real.
 5. **Preenchimento de Contato:** O cliente preenche apenas:
-   * Nome Completo
-   * WhatsApp (opcional para lembretes)
-   * E-mail (opcional para lembretes)
-   ** Ou é email ou whatspp, algum dos dois tem que ser
-6. **Confirmação:** O cliente clica em "Confirmar Agendamento" e visualiza a tela de sucesso com os detalhes do agendamento. Um lembrete é agendado no Upstash QStash para envio de mensagem via WhatsApp.
+   * Nome
+   * WhatsApp (obrigatório — é por ele que o estabelecimento confirma o horário)
+
+   > Regra vigente desde 2026-07-17: **WhatsApp obrigatório**; o campo de e-mail saiu
+   > da UI pública enquanto não existir envio por e-mail (a promessa era falsa).
+   > Regra-alvo registrada no P1.8 do `docs/PENDENCIAS.md`: quando o envio por e-mail
+   > existir, volta a valer "pelo menos um dos dois" (e-mail OU WhatsApp).
+6. **Confirmação:** O cliente confirma no CTA da barra inferior e visualiza a tela de sucesso com os detalhes do agendamento (incluindo endereço com link de mapa e Instagram do estabelecimento, quando cadastrados). Um lembrete é agendado no Upstash QStash para envio de mensagem via WhatsApp.
+
+**Layout (desde 2026-07-17, P0.12c):** o fluxo é de **etapas em tela cheia**
+mobile-first (sensação de app, não card flutuante): cabeçalho com a identidade do
+estabelecimento (capa/logo/cor para tenants Pro; bio, Instagram e endereço para
+todos) que colapsa numa barra compacta com progresso, e **barra-resumo fixa** no
+rodapé que se preenche com as escolhas (serviço · preço · duração · data · hora) com
+o CTA sempre visível. Base visual = identidade oficial do VamoAgendar; o acento do
+tenant Pro entra por cima com contraste garantido.
 
 ---
 

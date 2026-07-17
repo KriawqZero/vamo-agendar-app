@@ -75,6 +75,16 @@ Prefira a opção A no dia a dia: mesmo efeito prático (dados zerados) sem risc
 
 Para o banco **local** (Docker), o equivalente é simplesmente `npx supabase db reset`.
 
+**Storage (opcional):** as imagens de logo/capa dos tenants ficam no bucket
+`imagens-perfis` e não são atingidas pelo TRUNCATE. Para limpar junto:
+
+```sql
+DELETE FROM storage.objects WHERE bucket_id = 'imagens-perfis';
+```
+
+(O bucket em si pode ficar — a migration `20260717173148_storage_imagens_perfis.sql`
+recria com `on conflict do nothing`.)
+
 ## 4. QStash — cancelar lembretes pendentes
 
 ```bash

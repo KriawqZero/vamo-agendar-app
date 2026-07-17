@@ -94,6 +94,11 @@
   animation: aparecer 1s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Variante curta para trocas de etapa (booking público) */
+.aparecer-rapido {
+  animation: aparecer 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 @keyframes aparecer {
   from {
     opacity: 0;
@@ -120,7 +125,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .mascara > *,
-  .aparecer {
+  .aparecer,
+  .aparecer-rapido {
     animation: none;
   }
   .reveal {

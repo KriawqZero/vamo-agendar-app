@@ -5,6 +5,7 @@ import { auth, clerkClient } from '@clerk/nextjs/server'
 import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
 import { obterAssinaturaVigente } from '@/lib/assinaturas'
 import { ehTimezoneValida, TIMEZONE_PADRAO } from '@/lib/timezone'
+import { ehHexValida } from '@/lib/cores'
 
 interface PerfilEmpresaInput {
     slug: string
@@ -12,7 +13,8 @@ interface PerfilEmpresaInput {
     descricao?: string
     telefoneContato?: string
     corMarca?: string | null
-    exibirLogo?: boolean
+    instagram?: string | null
+    endereco?: string | null
     timezone?: string
     antecedenciaMinimaMinutos?: number
     horizonteMaximoDias?: number
@@ -125,7 +127,7 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
     const { data: perfilAtual, error: perfilError } = await supabase
         .from('perfis_empresas')
         .select(
-            'slug, slug_gratuito, cor_marca, logo_url, exibir_logo, timezone, antecedencia_minima_minutos, horizonte_maximo_dias',
+            'slug, slug_gratuito, cor_marca, timezone, antecedencia_minima_minutos, horizonte_maximo_dias',
         )
         .eq('tenant_id', orgId)
         .maybeSingle()
@@ -161,18 +163,23 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
     }
 
     // Gating de personalização visual
-    const corMarcaNova = input.corMarca?.trim() || null
+    const corMarcaNova = input.corMarca?.trim().toLowerCase() || null
 
     if (corMarcaNova !== (perfilAtual?.cor_marca ?? null) && !recursos.corPersonalizada) {
         throw new Error(
-            'Cor personalizada é um recurso do plano Plus. Faça upgrade em Plano no menu.',
+            'Cor personalizada é um recurso do plano Pro. Faça upgrade em Plano no menu.',
         )
     }
+    // Espelha o CHECK do banco (perfis_empresas_cor_marca_check) com mensagem amigável
+    if (corMarcaNova !== null && !ehHexValida(corMarcaNova)) {
+        throw new Error('Cor inválida. Use o formato #rrggbb.')
+    }
 
-    // Exibição do logo é preferência do tenant, mas alterá-la exige o plano Pro
-    const exibirLogoNovo = input.exibirLogo ?? perfilAtual?.exibir_logo ?? true
-    if (exibirLogoNovo !== (perfilAtual?.exibir_logo ?? true) && !recursos.logoPersonalizado) {
-        throw new Error('Exibir o logo é um recurso do plano Pro. Faça upgrade em Plano no menu.')
+    // Infos básicas do negócio — sem gating de plano
+    const instagramNovo = normalizarInstagram(input.instagram)
+    const enderecoNovo = input.endereco?.trim() || null
+    if (enderecoNovo && enderecoNovo.length > 200) {
+        throw new Error('Endereço muito longo. Use no máximo 200 caracteres.')
     }
 
     // Fuso horário do estabelecimento (sem gating de plano). Validado contra a
@@ -218,16 +225,8 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
         horizonteFinal = input.horizonteMaximoDias
     }
 
-    // Logo não é input do usuário: para tenants Pro com exibição ligada,
-    // sincronizamos o logo da organização configurado no Clerk (evita URLs
-    // arbitrárias e bucket próprio). Caso contrário, o logo fica nulo.
-    let logoUrlNovo: string | null = null
-    if (recursos.logoPersonalizado && exibirLogoNovo) {
-        const clerk = await clerkClient()
-        const organizacao = await clerk.organizations.getOrganization({ organizationId: orgId })
-        logoUrlNovo = organizacao.hasImage ? organizacao.imageUrl : null
-    }
-
+    // logo_url e capa_url NÃO passam por aqui: são geridos exclusivamente pelas
+    // actions de upload (src/app/actions/imagens-perfil.ts) — o upsert omite as colunas.
     const payload = {
         tenant_id: orgId,
         slug: slugFinal,
@@ -236,8 +235,8 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
         descricao: input.descricao?.trim() || null,
         telefone_contato: input.telefoneContato?.replace(/\D/g, '') || null,
         cor_marca: corMarcaNova,
-        logo_url: logoUrlNovo,
-        exibir_logo: exibirLogoNovo,
+        instagram: instagramNovo,
+        endereco: enderecoNovo,
         timezone: timezoneFinal,
         antecedencia_minima_minutos: antecedenciaFinal,
         horizonte_maximo_dias: horizonteFinal,
@@ -261,6 +260,19 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
 
     // Devolve o slug efetivo do plano vigente (o formulário exibe este valor)
     return { ...data, slug: obterSlugEfetivo(data, plano) }
+}
+
+// Handle do Instagram normalizado: sem @, minúsculo. Vazio vira null; formato
+// inválido lança (espelha o CHECK perfis_empresas_instagram_check com mensagem amigável).
+function normalizarInstagram(valor: string | null | undefined): string | null {
+    const handle = valor?.trim().replace(/^@+/, '').toLowerCase() ?? ''
+    if (!handle) {
+        return null
+    }
+    if (!/^[a-z0-9._]{1,30}$/.test(handle)) {
+        throw new Error('Instagram inválido. Use apenas letras, números, ponto e underline.')
+    }
+    return handle
 }
 
 // 8 caracteres base36 — link opaco do plano Gratuito (ex.: /book/x7k2m9qa)

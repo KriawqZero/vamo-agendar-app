@@ -2,8 +2,8 @@
 
 import React, { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { useOrganization } from '@clerk/nextjs'
 import { salvarPerfilEmpresa } from '@/app/actions/perfis-empresas'
+import UploadImagemPerfil from './UploadImagemPerfil'
 import {
     salvarHorariosFuncionamento,
     salvarExcecaoAgenda,
@@ -21,7 +21,9 @@ interface PerfilEmpresa {
     telefone_contato: string | null
     cor_marca: string | null
     logo_url: string | null
-    exibir_logo: boolean
+    capa_url: string | null
+    instagram: string | null
+    endereco: string | null
     timezone: string
     antecedencia_minima_minutos: number
     horizonte_maximo_dias: number
@@ -48,6 +50,7 @@ interface RecursosPlano {
     linkPersonalizado: boolean
     corPersonalizada: boolean
     logoPersonalizado: boolean
+    capaPersonalizada: boolean
 }
 
 interface AgendaClientProps {
@@ -137,13 +140,12 @@ export default function AgendaClient({
     const [descricao, setDescricao] = useState(perfilEmpresa?.descricao || '')
     const [telefoneContato, setTelefoneContato] = useState(perfilEmpresa?.telefone_contato || '')
     const [corMarca, setCorMarca] = useState<string | null>(perfilEmpresa?.cor_marca ?? null)
-    const [exibirLogo, setExibirLogo] = useState<boolean>(perfilEmpresa?.exibir_logo ?? true)
+    const [instagram, setInstagram] = useState(perfilEmpresa?.instagram || '')
+    const [endereco, setEndereco] = useState(perfilEmpresa?.endereco || '')
     const [timezone, setTimezone] = useState<string>(perfilEmpresa?.timezone || TIMEZONE_PADRAO)
     const [msgPerfil, setMsgPerfil] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(
         null,
     )
-    // Logo é o da organização no Clerk (sincronizado pelo servidor ao salvar) — aqui só exibimos o preview
-    const { organization } = useOrganization()
 
     // Estado dos Horários Comerciais
     // Modelo por dia: { ativo, janelas[] } — a lista chata de N linhas por dia
@@ -306,7 +308,8 @@ export default function AgendaClient({
                     descricao,
                     telefoneContato,
                     corMarca,
-                    exibirLogo,
+                    instagram,
+                    endereco,
                     timezone,
                 })
                 setMsgPerfil({ tipo: 'sucesso', texto: 'Perfil salvo com sucesso!' })
@@ -359,7 +362,8 @@ export default function AgendaClient({
                         descricao: perfilEmpresa?.descricao || '',
                         telefoneContato: perfilEmpresa?.telefone_contato || '',
                         corMarca: perfilEmpresa?.cor_marca ?? null,
-                        exibirLogo: perfilEmpresa?.exibir_logo ?? true,
+                        instagram: perfilEmpresa?.instagram ?? null,
+                        endereco: perfilEmpresa?.endereco ?? null,
                         timezone: perfilEmpresa?.timezone || TIMEZONE_PADRAO,
                         antecedenciaMinimaMinutos,
                         horizonteMaximoDias,
@@ -559,17 +563,17 @@ export default function AgendaClient({
                             <div>
                                 <label className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
                                     Cor da marca{' '}
-                                    {!recursosPlano.corPersonalizada && <SeloPlano plano="Plus" />}
+                                    {!recursosPlano.corPersonalizada && <SeloPlano plano="Pro" />}
                                 </label>
                                 <input
                                     type="color"
-                                    value={corMarca || '#18181b'}
+                                    value={corMarca || '#3961d5'}
                                     onChange={(e) => setCorMarca(e.target.value)}
                                     disabled={!recursosPlano.corPersonalizada}
                                     className="h-10 w-20 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 disabled:opacity-60 disabled:cursor-not-allowed"
                                 />
                                 <p className="text-xs text-zinc-500 mt-1">
-                                    Cor de destaque da sua página pública (em breve).
+                                    Cor de destaque da sua página de agendamento.
                                 </p>
                             </div>
 
@@ -578,37 +582,67 @@ export default function AgendaClient({
                                     Logo{' '}
                                     {!recursosPlano.logoPersonalizado && <SeloPlano plano="Pro" />}
                                 </label>
-                                <div className="flex items-center gap-3">
-                                    {organization?.hasImage ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img
-                                            src={organization.imageUrl}
-                                            alt="Logo da organização"
-                                            className={`h-10 w-10 rounded-lg border border-zinc-200 dark:border-zinc-700 object-cover ${!recursosPlano.logoPersonalizado ? 'opacity-50 grayscale' : ''}`}
-                                        />
-                                    ) : (
-                                        <div className="h-10 w-10 shrink-0 rounded-lg border border-dashed border-zinc-300 dark:border-zinc-700 flex items-center justify-center text-zinc-400 text-lg">
-                                            ?
-                                        </div>
-                                    )}
-                                    <p className="text-xs text-zinc-500">
-                                        {recursosPlano.logoPersonalizado
-                                            ? 'Usamos o logo da sua organização (ajuste no seletor da barra lateral). Ele aparecerá na sua página pública (em breve).'
-                                            : 'Exiba o logo da sua organização na página pública com o plano Pro.'}
-                                    </p>
-                                </div>
-                                <label
-                                    className={`mt-2 flex items-center gap-2 text-xs font-medium ${recursosPlano.logoPersonalizado ? 'text-zinc-700 dark:text-zinc-300 cursor-pointer' : 'text-zinc-400 dark:text-zinc-600 cursor-not-allowed'}`}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={exibirLogo}
-                                        onChange={(e) => setExibirLogo(e.target.checked)}
-                                        disabled={!recursosPlano.logoPersonalizado}
-                                        className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-700 accent-zinc-900 dark:accent-zinc-100 disabled:cursor-not-allowed"
-                                    />
-                                    Exibir o logo na página pública
+                                <UploadImagemPerfil
+                                    tipo="logo"
+                                    urlAtual={perfilEmpresa?.logo_url ?? null}
+                                    liberado={recursosPlano.logoPersonalizado}
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="flex items-center gap-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
+                                Imagem de capa{' '}
+                                {!recursosPlano.capaPersonalizada && <SeloPlano plano="Pro" />}
+                            </label>
+                            <UploadImagemPerfil
+                                tipo="capa"
+                                urlAtual={perfilEmpresa?.capa_url ?? null}
+                                liberado={recursosPlano.capaPersonalizada}
+                            />
+                            <p className="text-xs text-zinc-500 mt-1">
+                                Aparece no topo da sua página de agendamento. Prefira uma foto
+                                horizontal do seu espaço ou trabalho.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold uppercase text-zinc-400 block">
+                                    Instagram
                                 </label>
+                                <div className="flex rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 overflow-hidden text-sm">
+                                    <span className="bg-zinc-100 dark:bg-zinc-800 px-3 py-2 text-zinc-500 font-mono text-xs flex items-center border-r border-zinc-200 dark:border-zinc-800">
+                                        @
+                                    </span>
+                                    <input
+                                        type="text"
+                                        value={instagram}
+                                        onChange={(e) => setInstagram(e.target.value)}
+                                        placeholder="seu.perfil"
+                                        className="w-full px-3.5 py-2 bg-transparent outline-hidden text-zinc-900 dark:text-zinc-50 text-sm"
+                                    />
+                                </div>
+                                <p className="text-xs text-zinc-500 mt-1">
+                                    Vira um link na sua página de agendamento.
+                                </p>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold uppercase text-zinc-400 block">
+                                    Endereço
+                                </label>
+                                <input
+                                    type="text"
+                                    value={endereco}
+                                    onChange={(e) => setEndereco(e.target.value)}
+                                    placeholder="Rua, número e bairro"
+                                    maxLength={200}
+                                    className="w-full px-3.5 py-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm bg-zinc-50 dark:bg-zinc-900 outline-hidden text-zinc-900 dark:text-zinc-50"
+                                />
+                                <p className="text-xs text-zinc-500 mt-1">
+                                    Aparece na sua página com link para o Google Maps.
+                                </p>
                             </div>
                         </div>
 

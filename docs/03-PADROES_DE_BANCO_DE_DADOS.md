@@ -86,3 +86,29 @@ COMMENT ON POLICY "Permitir SELECT para membros da org autenticados" ON agendame
 IS 'Permite que usuários logados leiam os agendamentos pertencentes apenas à sua própria organização ativa.';
 ```
 *Dica de SQL: Use aspas simples duplas (`''`) caso precise escapar strings dentro dos comentários.*
+
+---
+
+## 🗂️ Supabase Storage (bucket `imagens-perfis`)
+
+Único bucket do projeto (criado em 2026-07-17, P0.12b), para o logo e a capa da
+página pública de booking:
+
+- **Público** (leitura via CDN — a página de booking é pública), 5MB de limite duro,
+  MIME restrito a `image/jpeg`/`image/png`/`image/webp` (**sem SVG** — superfície de
+  XSS desnecessária).
+- **Paths por tenant**: `<org_id>/logo-<epoch>.<ext>` e `<org_id>/capa-<epoch>.<ext>`.
+  O timestamp no nome é cache-busting; a action remove os arquivos antigos do prefixo
+  na troca.
+- **Sem políticas RLS em `storage.objects`** — e isso é deliberado: neste projeto
+  (Supabase atual), `storage.objects` pertence a `supabase_storage_admin` e a role
+  `postgres` (SQL/MCP) **não pode** criar políticas ali (`must be owner of relation
+  objects`). Consequência: a API do Storage é default-deny para `anon`/`authenticated`
+  e **toda escrita passa pelas Server Actions** `enviarImagemPerfil`/
+  `removerImagemPerfil` (`src/app/actions/imagens-perfil.ts`), que validam `auth()`,
+  gating de plano, MIME/tamanho e derivam o path do `orgId` antes de gravar com
+  `createAdminClient()`.
+- **Migrations de Storage são manuais** (exceção do fluxo declarativo — DML em
+  `storage.buckets` não é capturado pelo `db diff`; ver
+  `SUPABASE_DECLARATIVE-DATABASE-SCHEMA.md`). Referência:
+  `supabase/migrations/20260717173148_storage_imagens_perfis.sql`.
