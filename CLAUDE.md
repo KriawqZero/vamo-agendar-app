@@ -3,7 +3,7 @@
 
 ## O produto
 
-**VamoAgendar**: SaaS B2B2C de agendamento online para profissionais independentes e pequenas empresas no Brasil. Regra de ouro (**Fricção Zero**): o cliente final (B2C) **nunca** faz login, cadastro ou validação de e-mail/OTP para agendar — acessa `/book/[slug]`, escolhe serviço → data/hora → informa nome + WhatsApp (e/ou e-mail) → confirma. O profissional (B2B) autentica via Clerk e gerencia tudo em `/dashboard`. Monetização: assinatura do profissional via Asaas — o VamoAgendar **não** processa o pagamento do serviço prestado ao cliente final.
+**VamoAgendar**: SaaS B2B2C de agendamento online para profissionais independentes e pequenas empresas no Brasil. Regra de ouro (**Fricção Zero**): o cliente final (B2C) **nunca** faz login, cadastro ou validação de e-mail/OTP para agendar — acessa `/book/[slug]`, escolhe serviço → data/hora → informa nome + WhatsApp → confirma. O profissional (B2B) autentica via Clerk e gerencia tudo em `/dashboard`. Monetização: assinatura do profissional via Asaas — o VamoAgendar **não** processa o pagamento do serviço prestado ao cliente final.
 
 ## Comandos
 
@@ -11,16 +11,17 @@
 pnpm dev          # servidor de desenvolvimento
 pnpm build        # build de produção
 pnpm lint         # eslint
+pnpm test         # testes unitários (vitest)
 supabase stop && supabase db diff -f <nome_da_migracao>   # gerar migration a partir dos schemas declarativos
 ```
 
-Gerenciador de pacotes: **pnpm**. Não há framework de testes configurado.
+Gerenciador de pacotes: **pnpm**.
 
 ## Definition of Done
 
 Uma tarefa só está concluída quando:
 
-1. `pnpm lint` e `pnpm build` passam (sem testes automatizados, o build é o gate obrigatório — rode e mostre a saída).
+1. `pnpm lint`, `pnpm test` e `pnpm build` passam — rode os três e mostre a saída real.
 2. Mudança de schema: arquivo em `supabase/schemas/` + migration gerada via `supabase db diff` (nunca escrita à mão) + RLS granular por ação + `COMMENT ON` nas tabelas/políticas novas.
 3. Mutações novas: Server Action com `const { orgId } = await auth()` validado (B2B) ou revalidação rigorosa na action (B2C).
 4. UI nova: mobile-first verificado e domínio de negócio nomeado em português.

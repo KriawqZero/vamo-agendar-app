@@ -1,8 +1,12 @@
+import { cache } from 'react'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { auth } from '@clerk/nextjs/server'
 
-export async function createClient() {
+// Memoizado por request via `cache()`: várias chamadas a createClient() no
+// mesmo request (ex.: layout + page do dashboard) reaproveitam a mesma
+// instância em vez de re-executar cookies()/auth()/getToken() a cada uma.
+export const createClient = cache(async () => {
     const cookieStore = await cookies()
     const { getToken } = await auth()
 
@@ -22,10 +26,10 @@ export async function createClient() {
                 setAll(cookiesToSet) {
                     try {
                         cookiesToSet.forEach(({ name, value, options }) =>
-                            cookieStore.set(name, value, options)
+                            cookieStore.set(name, value, options),
                         )
                     } catch {
-                        // O Proxy e o Next.js gerenciam a escrita. 
+                        // O Proxy e o Next.js gerenciam a escrita.
                         // Em Server Components puros, ignoramos o erro conforme a doc instrui.
                     }
                 },
@@ -39,6 +43,6 @@ export async function createClient() {
                     },
                 },
             }),
-        }
+        },
     )
-}
+})

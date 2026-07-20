@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 /**
  * Demonstração interativa do fluxo de agendamento na landing page.
  * Estabelecimento e disponibilidade são fictícios — nada aqui toca o banco.
- * A estética espelha o BookingWizard real para que a demo seja uma prévia honesta.
+ * A estética espelha o booking público real (`BookingApp`) para que a demo seja uma prévia honesta.
  * As landings verticais (/para/[nicho]) parametrizam serviços e estabelecimento
  * via props; os defaults preservam a landing principal como sempre foi.
  */
@@ -62,6 +62,7 @@ export default function DemoAgendamento({
                 indice: i,
             })
         }
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- datas geradas client-only para não divergir do HTML estático (SSG)
         setDias(proximos)
         setDiaSelecionado(proximos[0])
     }, [])
@@ -98,7 +99,9 @@ export default function DemoAgendamento({
             <div className="min-h-[22rem] p-5">
                 {etapa === 'servico' && (
                     <div className="demo-in">
-                        <p className="font-mono text-xs text-zinc-500">1 de 3 — escolha o serviço</p>
+                        <p className="font-mono text-xs text-zinc-500">
+                            1 de 3 — escolha o serviço
+                        </p>
                         <ul className="mt-3">
                             {servicos.map((s) => (
                                 <li key={s.nome} className="border-b border-zinc-100 last:border-0">
@@ -129,7 +132,9 @@ export default function DemoAgendamento({
                 {etapa === 'horario' && servico && (
                     <div className="demo-in">
                         <div className="flex items-center justify-between">
-                            <p className="font-mono text-xs text-zinc-500">2 de 3 — escolha o horário</p>
+                            <p className="font-mono text-xs text-zinc-500">
+                                2 de 3 — escolha o horário
+                            </p>
                             <button
                                 type="button"
                                 onClick={() => setEtapa('servico')}
@@ -206,7 +211,9 @@ export default function DemoAgendamento({
                         <dl className="mt-3 space-y-2 rounded-xl bg-zinc-50 p-4 text-sm">
                             <div className="flex justify-between gap-4">
                                 <dt className="text-zinc-500">Serviço</dt>
-                                <dd className="text-right font-medium text-zinc-900">{servico.nome}</dd>
+                                <dd className="text-right font-medium text-zinc-900">
+                                    {servico.nome}
+                                </dd>
                             </div>
                             <div className="flex justify-between gap-4">
                                 <dt className="text-zinc-500">Quando</dt>
@@ -216,12 +223,16 @@ export default function DemoAgendamento({
                             </div>
                             <div className="flex justify-between gap-4">
                                 <dt className="text-zinc-500">Valor</dt>
-                                <dd className="text-right font-mono text-zinc-900">{servico.preco}</dd>
+                                <dd className="text-right font-mono text-zinc-900">
+                                    {servico.preco}
+                                </dd>
                             </div>
                         </dl>
 
                         <label className="mt-4 block">
-                            <span className="text-xs text-zinc-500">Seu nome (só para a demonstração)</span>
+                            <span className="text-xs text-zinc-500">
+                                Seu nome (só para a demonstração)
+                            </span>
                             <input
                                 type="text"
                                 value={nome}
@@ -239,7 +250,8 @@ export default function DemoAgendamento({
                             Confirmar agendamento
                         </button>
                         <p className="mt-3 text-xs text-zinc-400">
-                            No fluxo real, seu cliente informa nome e WhatsApp — e mais nada. Sem cadastro, sem senha.
+                            No fluxo real, seu cliente informa nome e WhatsApp — e mais nada. Sem
+                            cadastro, sem senha.
                         </p>
                     </div>
                 )}
@@ -247,11 +259,23 @@ export default function DemoAgendamento({
                 {etapa === 'sucesso' && servico && diaSelecionado && horario && (
                     <div className="demo-in">
                         <div className="demo-pop flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
-                            <svg viewBox="0 0 16 16" className="h-5 w-5 text-emerald-700" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M3 8.5l3.5 3.5L13 5" strokeLinecap="round" strokeLinejoin="round" />
+                            <svg
+                                viewBox="0 0 16 16"
+                                className="h-5 w-5 text-emerald-700"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                            >
+                                <path
+                                    d="M3 8.5l3.5 3.5L13 5"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                />
                             </svg>
                         </div>
-                        <h3 className="mt-3 text-sm font-semibold text-zinc-900">Horário confirmado</h3>
+                        <h3 className="mt-3 text-sm font-semibold text-zinc-900">
+                            Horário confirmado
+                        </h3>
                         <p className="mt-1 text-xs text-zinc-500">
                             E isto chega no WhatsApp do cliente, sem você digitar nada:
                         </p>
@@ -268,7 +292,8 @@ export default function DemoAgendamento({
                         </div>
 
                         <p className="mt-3 text-xs text-zinc-400">
-                            Confirmação e lembrete automáticos por WhatsApp fazem parte do plano Pro.
+                            Confirmação e lembrete automáticos por WhatsApp fazem parte do plano
+                            Pro.
                         </p>
                         <button
                             type="button"

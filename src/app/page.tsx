@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { auth, currentUser } from '@clerk/nextjs/server'
 import { createClient } from '@/lib/supabase/server'
 import { obterAssinaturaVigente } from '@/lib/assinaturas'
-import { PLANOS, type PlanoId } from '@/lib/planos'
+import { PLANOS, PRECO_ORIGINAL, type PlanoId } from '@/lib/planos'
 import DemoAgendamento from './DemoAgendamento'
 import Reveal from './Reveal'
 import LuzAmbiente from './LuzAmbiente'
@@ -21,14 +21,6 @@ import CapturaEvento from '@/components/analytics/CapturaEvento'
  * de manhã são 06:47 (você ainda nem abriu). Em ambas, o WhatsApp estaria
  * mudo — e o link, trabalhando. Textos que dependem da hora usam DiaNoite.
  */
-
-// Preço cheio pós-lançamento (o selo -50% de PLANOS referencia estes valores;
-// regra em docs/07-PLANOS_E_MONETIZACAO.md)
-const PRECO_ORIGINAL: Record<PlanoId, number | null> = {
-    gratuito: null,
-    plus: 19.9,
-    pro: 29.9,
-}
 
 const brl = (n: number) => `R$ ${n.toFixed(2).replace('.', ',')}`
 

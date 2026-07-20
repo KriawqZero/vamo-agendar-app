@@ -66,7 +66,7 @@ assinaturas
 - **RLS**: SELECT para `authenticated` do próprio tenant
   (`tenant_id = (SELECT auth.jwt() ->> 'org_id')`). **Nenhuma** política de escrita para
   `authenticated`/`anon` — escreve apenas o dono do banco (SQL manual agora, webhook
-  Asaas com `service_role` depois). Plano infraudável pelo cliente.
+  Asaas com `service_role` depois). Plano impossível de fraudar pelo cliente.
 - Exceção descoberta no planejamento: o fluxo público de booking (role `anon`) precisa
   **ler** a assinatura do tenant para a defesa em profundidade do WhatsApp (não enviar
   confirmação para tenant rebaixado). Há, portanto, uma política de SELECT `TO anon`

@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Artefatos auxiliares fora do código-fonte:
+    ".agents/**",
+    ".obsidian/**",
   ]),
 ]);
 

@@ -50,8 +50,8 @@ seja apenas "preencher a tabela via webhook" — sem retrabalho de lógica de ga
 
 A tabela `assinaturas` não possui política de escrita para `authenticated`/`anon` —
 apenas o dono do banco (via SQL manual agora, via webhook do Asaas com `service_role`
-no futuro) pode alterar o plano de um tenant. Isso torna o plano **infraudável** pelo
-cliente através da API.
+no futuro) pode alterar o plano de um tenant. Isso torna o plano **impossível de
+fraudar** pelo cliente através da API.
 
 ```sql
 -- Ativar Pro mensal para um tenant
@@ -96,7 +96,8 @@ cancelar a linha atual antes de inserir a nova.
     Retorna `{ plano, inadimplente, urlFaturaPendente }`.
   - `obterPlanoVigentePublico(supabase, tenantId)` — variante enxuta para o fluxo
     público (role `anon`), que só consegue ler `tenant_id`/`plano`/`status` por causa do
-    GRANT por coluna (ver seção seguinte). Retorna apenas o `PlanoId`.
+    GRANT por coluna (ver `docs/02-SUPABASE_CLERK_INTEGRATION.md`). Retorna apenas o
+    `PlanoId`.
 
 ### Enforcement nas Server Actions (única camada de escrita)
 

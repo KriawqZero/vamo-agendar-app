@@ -28,12 +28,18 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             <div className="flex flex-col items-center justify-center min-h-[60vh] text-center p-6 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl shadow-xs max-w-xl mx-auto my-12">
                 <div className="w-16 h-16 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-4 text-zinc-400">
                     <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                        <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                        />
                     </svg>
                 </div>
                 <h2 className="text-xl font-bold tracking-tight mb-2">Selecione uma Organização</h2>
                 <p className="text-zinc-500 dark:text-zinc-400 text-sm max-w-sm mb-6">
-                    Para visualizar o painel do profissional, você precisa selecionar ou criar uma organização no menu lateral.
+                    Para visualizar o painel do profissional, você precisa selecionar ou criar uma
+                    organização no menu lateral.
                 </p>
             </div>
         )
@@ -64,39 +70,71 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             id: ag.id,
             data_hora: ag.data_hora,
             status: ag.status,
-            clientes: clienteRaw ? {
-                id: clienteRaw.id,
-                nome: clienteRaw.nome,
-                telefone: clienteRaw.telefone,
-                email: clienteRaw.email || null
-            } : null,
-            servicos: servicoRaw ? {
-                id: servicoRaw.id,
-                nome: servicoRaw.nome,
-                preco: Number(servicoRaw.preco),
-                duracao_minutos: Number(servicoRaw.duracao_minutos)
-            } : null
+            clientes: clienteRaw
+                ? {
+                      id: clienteRaw.id,
+                      nome: clienteRaw.nome,
+                      telefone: clienteRaw.telefone,
+                      email: clienteRaw.email || null,
+                  }
+                : null,
+            servicos: servicoRaw
+                ? {
+                      id: servicoRaw.id,
+                      nome: servicoRaw.nome,
+                      preco: Number(servicoRaw.preco),
+                      duracao_minutos: Number(servicoRaw.duracao_minutos),
+                  }
+                : null,
         }
     })
 
-    // 4. Buscar status de conexão do WhatsApp
+    // 4. Buscas independentes entre si (nenhuma depende do resultado das
+    // outras): resolvidas em paralelo num único Promise.all.
     const supabase = await createClient()
-    const { data: whatsappConfig } = await supabase
-        .from('whatsapp_configs')
-        .select('status')
-        .eq('tenant_id', orgId)
-        .maybeSingle()
+
+    const [
+        { data: whatsappConfig, error: whatsappConfigError },
+        { data: servicosAtivos, error: servicosError },
+        { plano },
+        { count: countHorarios, error: countHorariosError },
+    ] = await Promise.all([
+        // Status de conexão do WhatsApp.
+        supabase.from('whatsapp_configs').select('status').eq('tenant_id', orgId).maybeSingle(),
+        // Serviços ativos: alimentam o checklist de onboarding e o modal de
+        // agendamento manual.
+        supabase
+            .from('servicos')
+            .select('id, nome, preco, duracao_minutos')
+            .eq('tenant_id', orgId)
+            .eq('ativo', true)
+            .order('nome', { ascending: true }),
+        // Plano vigente: o envio opcional de WhatsApp no agendamento manual só
+        // aparece com o recurso no plano E a instância conectada.
+        obterAssinaturaVigente(supabase, orgId),
+        // Count de horários configurados: alimenta o checklist de onboarding.
+        supabase
+            .from('horarios_funcionamento')
+            .select('id', { count: 'exact', head: true })
+            .eq('tenant_id', orgId),
+    ])
+
+    if (whatsappConfigError) {
+        console.error('Erro ao buscar configuração do WhatsApp:', whatsappConfigError.message)
+        throw new Error('Não foi possível carregar o status do WhatsApp.')
+    }
+
+    if (servicosError) {
+        console.error('Erro ao buscar serviços ativos:', servicosError.message)
+        throw new Error('Não foi possível carregar os serviços.')
+    }
+
+    if (countHorariosError) {
+        console.error('Erro ao buscar horários de funcionamento:', countHorariosError.message)
+        throw new Error('Não foi possível carregar os horários de funcionamento.')
+    }
 
     const whatsappStatus = whatsappConfig?.status || 'desconectado'
-
-    // 5. Serviços ativos: alimentam o checklist de onboarding e o modal de
-    // agendamento manual.
-    const { data: servicosAtivos } = await supabase
-        .from('servicos')
-        .select('id, nome, preco, duracao_minutos')
-        .eq('tenant_id', orgId)
-        .eq('ativo', true)
-        .order('nome', { ascending: true })
 
     const servicos = (servicosAtivos || []).map((s) => ({
         id: s.id,
@@ -107,16 +145,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
     const temServicoAtivo = servicos.length > 0
 
-    // 6. Plano vigente: o envio opcional de WhatsApp no agendamento manual só
-    // aparece com o recurso no plano E a instância conectada.
-    const { plano } = await obterAssinaturaVigente(supabase, orgId)
     const podeEnviarWhatsapp = PLANOS[plano].recursos.whatsapp && whatsappStatus === 'conectado'
 
-    const { count: countHorarios } = await supabase
-        .from('horarios_funcionamento')
-        .select('id', { count: 'exact', head: true })
-        .eq('tenant_id', orgId)
-        
     const temHorariosConfigurados = (countHorarios ?? 0) > 0
 
     return (

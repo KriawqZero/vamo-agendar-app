@@ -63,7 +63,7 @@ um disparo específico, e nunca "conserte" divergências alterando o log.
 | `first_service_created` | `src/app/actions/servicos.ts` (`salvarServico`), só quando o INSERT é o primeiro serviço do tenant | — |
 | `schedule_configured` | `src/app/actions/agenda.ts` (`salvarHorariosFuncionamento`), só na primeira configuração | — |
 | `booking_link_copied` | `src/app/dashboard/DashboardClient.tsx` (`copiarLink`) | — |
-| `booking_started` | `src/app/book/[slug]/BookingWizard.tsx`, primeira seleção de serviço da visita | `tenant` (hash) |
+| `booking_started` | `src/app/book/[slug]/BookingApp.tsx` (`selecionarServico`), primeira seleção de serviço da visita | `tenant` (hash) |
 | `booking_completed` | `src/app/actions/public-booking.ts`, após INSERT com sucesso | `servico_duracao_minutos` |
 | `booking_failed` | mesma action, no throw de slot indisponível ou no erro de INSERT | `motivo: 'slot_indisponivel' \| 'erro_interno'` |
 | `plans_viewed` | `src/app/dashboard/plano/page.tsx` (mount) | `plano_atual` |

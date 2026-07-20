@@ -8,42 +8,42 @@ import { capturarEvento } from '@/lib/analytics/client'
 import NovoAgendamentoModal, { type DadosRemarcacao } from './NovoAgendamentoModal'
 
 interface Cliente {
-    id: string;
-    nome: string;
-    telefone: string;
-    email: string | null;
+    id: string
+    nome: string
+    telefone: string
+    email: string | null
 }
 
 interface Servico {
-    id: string;
-    nome: string;
-    preco: number;
-    duracao_minutos: number;
+    id: string
+    nome: string
+    preco: number
+    duracao_minutos: number
 }
 
 interface Agendamento {
-    id: string;
-    data_hora: string;
-    status: string;
-    clientes: Cliente | null;
-    servicos: Servico | null;
+    id: string
+    data_hora: string
+    status: string
+    clientes: Cliente | null
+    servicos: Servico | null
 }
 
 interface DashboardClientProps {
     /** Agendamentos da janela de duas semanas (régua + próximos dias) */
-    agendamentosPeriodo: Agendamento[];
-    perfilEmpresa: { slug: string; nome_estabelecimento: string } | null;
-    whatsappStatus: string;
-    dataSelecionada: string; // YYYY-MM-DD
-    inicioSemana: string; // segunda-feira da semana exibida na régua
-    hoje: string; // YYYY-MM-DD no fuso do estabelecimento
-    timezone: string; // Fuso IANA do estabelecimento
-    temServicoAtivo: boolean;
-    temHorariosConfigurados: boolean;
+    agendamentosPeriodo: Agendamento[]
+    perfilEmpresa: { slug: string; nome_estabelecimento: string } | null
+    whatsappStatus: string
+    dataSelecionada: string // YYYY-MM-DD
+    inicioSemana: string // segunda-feira da semana exibida na régua
+    hoje: string // YYYY-MM-DD no fuso do estabelecimento
+    timezone: string // Fuso IANA do estabelecimento
+    temServicoAtivo: boolean
+    temHorariosConfigurados: boolean
     /** Serviços ativos para o modal de agendamento manual */
-    servicos: Servico[];
+    servicos: Servico[]
     /** Plano com WhatsApp + instância conectada (habilita o envio opcional) */
-    podeEnviarWhatsapp: boolean;
+    podeEnviarWhatsapp: boolean
 }
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -95,7 +95,7 @@ export default function DashboardClient({
     temServicoAtivo,
     temHorariosConfigurados,
     servicos,
-    podeEnviarWhatsapp
+    podeEnviarWhatsapp,
 }: DashboardClientProps) {
     const router = useRouter()
 
@@ -108,12 +108,13 @@ export default function DashboardClient({
     const [proximosVisivel, setProximosVisivel] = useState(true)
 
     // Modal de agendamento manual: null = fechado; remarcacao preenchida = modo remarcar.
-    const [modalAgendamento, setModalAgendamento] = useState<
-        { remarcacao: DadosRemarcacao | null } | null
-    >(null)
+    const [modalAgendamento, setModalAgendamento] = useState<{
+        remarcacao: DadosRemarcacao | null
+    } | null>(null)
 
     useEffect(() => {
         const salvo = localStorage.getItem(CHAVE_PROXIMOS_VISIVEL)
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- restaura preferência salva no localStorage após montar; ler localStorage durante o render causaria mismatch de hydration
         if (salvo !== null) setProximosVisivel(salvo === '1')
     }, [])
 
@@ -150,9 +151,9 @@ export default function DashboardClient({
     const totalProximos = diasProximos.reduce((s, d) => s + proximosPorDia.get(d)!.length, 0)
 
     // Estatísticas do dia em uma frase (não em caixas)
-    const ativos = agendamentos.filter(ag => ag.status !== 'cancelado')
+    const ativos = agendamentos.filter((ag) => ag.status !== 'cancelado')
     const faturamentoEstimado = agendamentos
-        .filter(ag => ag.status === 'confirmado' || ag.status === 'concluido')
+        .filter((ag) => ag.status === 'confirmado' || ag.status === 'concluido')
         .reduce((sum, ag) => sum + Number(ag.servicos?.preco || 0), 0)
 
     // Régua: os 7 dias da semana exibida
@@ -185,6 +186,7 @@ export default function DashboardClient({
 
     useEffect(() => {
         if (caminhoBooking) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect -- window só existe no client; completar o domínio após montar evita mismatch com o path relativo renderizado no servidor
             setLinkPublico(`${window.location.origin}${caminhoBooking}`)
         }
     }, [caminhoBooking])
@@ -197,7 +199,10 @@ export default function DashboardClient({
         setTimeout(() => setCopiado(false), 2000)
     }
 
-    const alterarStatus = async (id: string, novoStatus: 'confirmado' | 'concluido' | 'cancelado') => {
+    const alterarStatus = async (
+        id: string,
+        novoStatus: 'confirmado' | 'concluido' | 'cancelado',
+    ) => {
         setStatusUpdating(id)
         try {
             await atualizarStatusAgendamento(id, novoStatus)
@@ -321,8 +326,8 @@ export default function DashboardClient({
                                         qtd === 0
                                             ? 'text-penumbra/60'
                                             : selecionado
-                                                ? 'text-marca'
-                                                : 'text-nevoa'
+                                              ? 'text-marca'
+                                              : 'text-nevoa'
                                     }`}
                                 >
                                     {qtd === 0 ? '·' : qtd}
@@ -376,7 +381,8 @@ export default function DashboardClient({
                                 numero: '01',
                                 feito: temServicoAtivo,
                                 titulo: 'Cadastre seus serviços',
-                                descricao: 'Crie pelo menos um serviço para seus clientes agendarem.',
+                                descricao:
+                                    'Crie pelo menos um serviço para seus clientes agendarem.',
                                 acao: 'Configurar serviços',
                                 href: '/dashboard/servicos',
                             },
@@ -392,7 +398,8 @@ export default function DashboardClient({
                                 numero: '03',
                                 feito: false,
                                 titulo: 'Compartilhe seu link de agendamento',
-                                descricao: 'Disponível assim que as etapas acima estiverem completas.',
+                                descricao:
+                                    'Disponível assim que as etapas acima estiverem completas.',
                                 acao: null,
                                 href: null,
                             },
@@ -413,7 +420,9 @@ export default function DashboardClient({
                                     </p>
                                     {!passo.feito && (
                                         <>
-                                            <p className="mt-1 text-sm text-nevoa">{passo.descricao}</p>
+                                            <p className="mt-1 text-sm text-nevoa">
+                                                {passo.descricao}
+                                            </p>
                                             {passo.acao && passo.href && (
                                                 <button
                                                     onClick={() => router.push(passo.href!)}
@@ -466,7 +475,9 @@ export default function DashboardClient({
 
                 {agendamentos.length === 0 ? (
                     <div className="mt-6 py-14 text-center">
-                        <p className="font-mono text-sm text-penumbra">Nenhum atendimento neste dia.</p>
+                        <p className="font-mono text-sm text-penumbra">
+                            Nenhum atendimento neste dia.
+                        </p>
                         {setupCompleto && (
                             <p className="mt-2 text-sm text-nevoa">
                                 Compartilhe seu link para preencher a agenda.
@@ -508,20 +519,24 @@ export default function DashboardClient({
                                             concluido
                                                 ? 'bg-marca'
                                                 : cancelado
-                                                    ? 'bg-red-500/70 dark:bg-red-400/70'
-                                                    : ag.status === 'pendente'
-                                                        ? 'bg-amber-500 dark:bg-amber-400'
-                                                        : 'bg-fio-forte'
+                                                  ? 'bg-red-500/70 dark:bg-red-400/70'
+                                                  : ag.status === 'pendente'
+                                                    ? 'bg-amber-500 dark:bg-amber-400'
+                                                    : 'bg-fio-forte'
                                         }`}
                                     />
                                     <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
                                         <span className="font-mono text-lg text-giz">{hora}</span>
-                                        <span className={`font-medium text-giz ${cancelado ? 'line-through' : ''}`}>
+                                        <span
+                                            className={`font-medium text-giz ${cancelado ? 'line-through' : ''}`}
+                                        >
                                             {ag.clientes?.nome || 'Cliente'}
                                         </span>
                                         <span className="text-sm text-nevoa">
                                             {ag.servicos?.nome}
-                                            {ag.servicos ? ` · ${ag.servicos.duracao_minutos} min` : ''}
+                                            {ag.servicos
+                                                ? ` · ${ag.servicos.duracao_minutos} min`
+                                                : ''}
                                         </span>
                                         <span className="ml-auto font-mono text-sm text-nevoa">
                                             {brl(Number(ag.servicos?.preco || 0))}
@@ -533,10 +548,10 @@ export default function DashboardClient({
                                                 concluido
                                                     ? 'text-marca'
                                                     : cancelado
-                                                        ? 'text-red-700/80 dark:text-red-300/80'
-                                                        : ag.status === 'pendente'
-                                                            ? 'text-amber-700 dark:text-amber-300'
-                                                            : 'text-penumbra'
+                                                      ? 'text-red-700/80 dark:text-red-300/80'
+                                                      : ag.status === 'pendente'
+                                                        ? 'text-amber-700 dark:text-amber-300'
+                                                        : 'text-penumbra'
                                             }`}
                                         >
                                             {ag.status}
@@ -554,7 +569,9 @@ export default function DashboardClient({
                                         {!cancelado && !concluido && (
                                             <span className="flex items-center gap-3">
                                                 <button
-                                                    onClick={() => alterarStatus(ag.id, 'concluido')}
+                                                    onClick={() =>
+                                                        alterarStatus(ag.id, 'concluido')
+                                                    }
                                                     disabled={statusUpdating === ag.id}
                                                     className="-my-2 py-2 font-mono text-xs uppercase tracking-widest text-marca transition-colors hover:text-marca-suave disabled:opacity-50"
                                                 >
@@ -570,7 +587,11 @@ export default function DashboardClient({
                                                 <button
                                                     onClick={() => {
                                                         // Destrutivo sem desfazer na UI — confirmação obrigatória.
-                                                        if (window.confirm(`Cancelar o atendimento de ${ag.clientes?.nome || 'cliente'} às ${hora}?`)) {
+                                                        if (
+                                                            window.confirm(
+                                                                `Cancelar o atendimento de ${ag.clientes?.nome || 'cliente'} às ${hora}?`,
+                                                            )
+                                                        ) {
                                                             alterarStatus(ag.id, 'cancelado')
                                                         }
                                                     }}
@@ -603,7 +624,9 @@ export default function DashboardClient({
                     >
                         <span>próximos dias</span>
                         <span className="text-marca">{totalProximos}</span>
-                        <span className="text-[10px]">{proximosVisivel ? 'ocultar' : 'mostrar'}</span>
+                        <span className="text-[10px]">
+                            {proximosVisivel ? 'ocultar' : 'mostrar'}
+                        </span>
                     </button>
 
                     {proximosVisivel && (
@@ -624,7 +647,9 @@ export default function DashboardClient({
                                         </button>
                                         <ul className="mt-3 space-y-2">
                                             {doDia
-                                                .sort((a, b) => a.data_hora.localeCompare(b.data_hora))
+                                                .sort((a, b) =>
+                                                    a.data_hora.localeCompare(b.data_hora),
+                                                )
                                                 .map((ag) => (
                                                     <li
                                                         key={ag.id}
@@ -636,7 +661,9 @@ export default function DashboardClient({
                                                         <span className="text-giz">
                                                             {ag.clientes?.nome || 'Cliente'}
                                                         </span>
-                                                        <span className="text-nevoa">{ag.servicos?.nome}</span>
+                                                        <span className="text-nevoa">
+                                                            {ag.servicos?.nome}
+                                                        </span>
                                                         <span className="ml-auto font-mono text-xs text-penumbra">
                                                             {brl(Number(ag.servicos?.preco || 0))}
                                                         </span>

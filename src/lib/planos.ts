@@ -78,6 +78,17 @@ export const PLANOS: Record<PlanoId, DefinicaoPlano> = Object.freeze({
 } satisfies Record<PlanoId, DefinicaoPlano>)
 
 /**
+ * Preço cheio pós-lançamento, riscado ao lado do preço vigente para compor o
+ * selo de desconto de lançamento (-50%) exibido nas landings. null = plano
+ * sem preço cheio (Gratuito).
+ */
+export const PRECO_ORIGINAL: Record<PlanoId, number | null> = Object.freeze({
+    gratuito: null,
+    plus: 19.9,
+    pro: 29.9,
+} satisfies Record<PlanoId, number | null>)
+
+/**
  * Slug efetivo do perfil conforme o plano: com link personalizado vale o slug
  * escolhido; sem o recurso, vale o slug aleatório do provisionamento
  * (o customizado fica reservado e volta a valer num re-upgrade).

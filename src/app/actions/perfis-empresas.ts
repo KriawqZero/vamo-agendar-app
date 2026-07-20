@@ -20,6 +20,11 @@ interface PerfilEmpresaInput {
     horizonteMaximoDias?: number
 }
 
+interface ConfiguracoesAgendamentoInput {
+    antecedenciaMinimaMinutos: number
+    horizonteMaximoDias: number
+}
+
 /**
  * Recupera o perfil do estabelecimento pertencente ao tenant ativo (Clerk orgId).
  */
@@ -193,35 +198,17 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
     }
 
     // Regras de acesso do fluxo público (antecedência mínima e horizonte
-    // máximo de agendamento). Ausentes = não altera. Espelha/aperta os CHECKs
-    // do banco (perfis_empresas_antecedencia_minima_minutos_check e
-    // perfis_empresas_horizonte_maximo_dias_check) — validação server-side,
-    // não confia apenas no CHECK.
+    // máximo de agendamento). Ausentes = não altera. Validação delegada aos
+    // helpers abaixo (compartilhados com salvarConfiguracoesAgendamento).
     let antecedenciaFinal = perfilAtual?.antecedencia_minima_minutos ?? 15
     if (input.antecedenciaMinimaMinutos !== undefined) {
-        if (
-            !Number.isFinite(input.antecedenciaMinimaMinutos) ||
-            !Number.isInteger(input.antecedenciaMinimaMinutos) ||
-            input.antecedenciaMinimaMinutos < 0 ||
-            input.antecedenciaMinimaMinutos > 10080
-        ) {
-            throw new Error(
-                'Antecedência mínima inválida. Use um valor entre 0 e 10080 minutos (1 semana).',
-            )
-        }
+        validarAntecedencia(input.antecedenciaMinimaMinutos)
         antecedenciaFinal = input.antecedenciaMinimaMinutos
     }
 
     let horizonteFinal = perfilAtual?.horizonte_maximo_dias ?? 14
     if (input.horizonteMaximoDias !== undefined) {
-        if (
-            !Number.isFinite(input.horizonteMaximoDias) ||
-            !Number.isInteger(input.horizonteMaximoDias) ||
-            input.horizonteMaximoDias < 1 ||
-            input.horizonteMaximoDias > 365
-        ) {
-            throw new Error('Horizonte máximo inválido. Use um valor entre 1 e 365 dias.')
-        }
+        validarHorizonte(input.horizonteMaximoDias)
         horizonteFinal = input.horizonteMaximoDias
     }
 
@@ -262,6 +249,48 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
     return { ...data, slug: obterSlugEfetivo(data, plano) }
 }
 
+/**
+ * Atualiza somente as regras de agendamento do booking público (antecedência
+ * mínima e horizonte máximo) do tenant ativo. Existe para a aba Horários da
+ * agenda não depender de reenviar o perfil inteiro via salvarPerfilEmpresa:
+ * fazer isso com os valores da prop perfilEmpresa cria uma corrida — se o
+ * profissional salvasse a aba Perfil e, antes do router.refresh() propagar a
+ * prop atualizada, submetesse Horários, o perfil era regravado com valores
+ * pré-refresh. Sem gating de plano: disponível em todos os planos.
+ */
+export async function salvarConfiguracoesAgendamento(input: ConfiguracoesAgendamentoInput) {
+    const { orgId } = await auth()
+    if (!orgId) {
+        throw new Error('Não autorizado. Nenhuma organização ativa.')
+    }
+
+    validarAntecedencia(input.antecedenciaMinimaMinutos)
+    validarHorizonte(input.horizonteMaximoDias)
+
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+        .from('perfis_empresas')
+        .update({
+            antecedencia_minima_minutos: input.antecedenciaMinimaMinutos,
+            horizonte_maximo_dias: input.horizonteMaximoDias,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('tenant_id', orgId)
+        .select('tenant_id')
+        .single()
+
+    if (error) {
+        // Inclui o caso de 0 linhas afetadas (perfil inexistente): não deveria
+        // acontecer, já que todo tenant tem perfil via auto-provisionamento,
+        // mas cai aqui com mensagem amigável em vez de vazar o erro do banco.
+        console.error('Erro ao salvar configurações de agendamento:', error.message)
+        throw new Error('Erro ao salvar as regras de agendamento.')
+    }
+
+    return data
+}
+
 // Handle do Instagram normalizado: sem @, minúsculo. Vazio vira null; formato
 // inválido lança (espelha o CHECK perfis_empresas_instagram_check com mensagem amigável).
 function normalizarInstagram(valor: string | null | undefined): string | null {
@@ -280,4 +309,22 @@ function gerarSlugAleatorio(): string {
     return Array.from(crypto.getRandomValues(new Uint8Array(8)))
         .map((b) => (b % 36).toString(36))
         .join('')
+}
+
+// Espelha o CHECK do banco (perfis_empresas_antecedencia_minima_minutos_check)
+// com mensagem amigável — validação server-side, não confia apenas no CHECK.
+function validarAntecedencia(valor: number): void {
+    if (!Number.isFinite(valor) || !Number.isInteger(valor) || valor < 0 || valor > 10080) {
+        throw new Error(
+            'Antecedência mínima inválida. Use um valor entre 0 e 10080 minutos (1 semana).',
+        )
+    }
+}
+
+// Espelha o CHECK do banco (perfis_empresas_horizonte_maximo_dias_check)
+// com mensagem amigável — validação server-side, não confia apenas no CHECK.
+function validarHorizonte(valor: number): void {
+    if (!Number.isFinite(valor) || !Number.isInteger(valor) || valor < 1 || valor > 365) {
+        throw new Error('Horizonte máximo inválido. Use um valor entre 1 e 365 dias.')
+    }
 }

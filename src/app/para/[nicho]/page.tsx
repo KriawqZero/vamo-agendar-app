@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { NICHOS } from '@/lib/nichos'
-import { PLANOS, type PlanoId } from '@/lib/planos'
+import { PLANOS, PRECO_ORIGINAL, type PlanoId } from '@/lib/planos'
 import DemoAgendamento from '../../DemoAgendamento'
 import Reveal from '../../Reveal'
 import LuzAmbiente from '../../LuzAmbiente'
@@ -60,13 +60,6 @@ export async function generateMetadata({
             description: dados.seo.description,
         },
     }
-}
-
-// Mesmos preços cheios da landing principal (regra em docs/07-PLANOS_E_MONETIZACAO.md)
-const PRECO_ORIGINAL: Record<PlanoId, number | null> = {
-    gratuito: null,
-    plus: 19.9,
-    pro: 29.9,
 }
 
 const brl = (n: number) => `R$ ${n.toFixed(2).replace('.', ',')}`

@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useMemo, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { salvarPerfilEmpresa } from '@/app/actions/perfis-empresas'
+import { salvarPerfilEmpresa, salvarConfiguracoesAgendamento } from '@/app/actions/perfis-empresas'
 import UploadImagemPerfil from './UploadImagemPerfil'
 import {
     salvarHorariosFuncionamento,
@@ -266,6 +267,9 @@ export default function AgendaClient({
             prev.map((d, i) => {
                 if (i !== diaIndex || d.janelas.length >= MAX_JANELAS_POR_DIA) return d
                 const ultima = d.janelas[d.janelas.length - 1]
+                // Última janela do dia já termina 23:59: somarMinutos satura e
+                // criaria uma janela nova 23:59–23:59, inválida — não sugere.
+                if (ultima && ultima.hora_fim >= '23:59') return d
                 const novaJanela = ultima
                     ? { hora_inicio: ultima.hora_fim, hora_fim: somarMinutos(ultima.hora_fim, 60) }
                     : { hora_inicio: '08:00', hora_fim: '18:00' }
@@ -331,8 +335,8 @@ export default function AgendaClient({
             return
         }
 
-        // As configs de agendamento vivem na action de perfil — só chamamos se
-        // o profissional realmente mudou algum dos dois valores nesta sessão.
+        // As configs de agendamento vivem em action própria (salvarConfiguracoesAgendamento)
+        // — só chamamos se o profissional realmente mudou algum dos dois valores nesta sessão.
         const antecedenciaAtual = perfilEmpresa?.antecedencia_minima_minutos ?? 15
         const horizonteAtual = perfilEmpresa?.horizonte_maximo_dias ?? 14
         const configsAlteradas =
@@ -352,19 +356,13 @@ export default function AgendaClient({
 
             if (configsAlteradas) {
                 try {
-                    // Campos que não pertencem a esta aba vêm do perfil PERSISTIDO
-                    // (prop), nunca do estado local da aba Perfil — senão, editar
-                    // Perfil sem salvar e depois só mexer nas regras de agendamento
-                    // aqui publicaria essas edições em aberto silenciosamente.
-                    await salvarPerfilEmpresa({
-                        slug: perfilEmpresa?.slug || '',
-                        nomeEstabelecimento: perfilEmpresa?.nome_estabelecimento || '',
-                        descricao: perfilEmpresa?.descricao || '',
-                        telefoneContato: perfilEmpresa?.telefone_contato || '',
-                        corMarca: perfilEmpresa?.cor_marca ?? null,
-                        instagram: perfilEmpresa?.instagram ?? null,
-                        endereco: perfilEmpresa?.endereco ?? null,
-                        timezone: perfilEmpresa?.timezone || TIMEZONE_PADRAO,
+                    // Action dedicada: grava só as 2 configs de agendamento, sem
+                    // depender de nenhum outro campo do perfil. Reenviar o perfil
+                    // inteiro com valores da prop criava uma corrida — se a aba
+                    // Perfil fosse salva e, antes do router.refresh() propagar a
+                    // prop atualizada, Horários fosse submetido, o perfil era
+                    // regravado com valores pré-refresh.
+                    await salvarConfiguracoesAgendamento({
                         antecedenciaMinimaMinutos,
                         horizonteMaximoDias,
                     })
@@ -548,12 +546,12 @@ export default function AgendaClient({
                                 {!recursosPlano.linkPersonalizado && (
                                     <p className="text-xs text-zinc-500 mt-1">
                                         Personalize seu link no plano Plus.{' '}
-                                        <a
+                                        <Link
                                             href="/dashboard/plano"
                                             className="font-bold underline underline-offset-2"
                                         >
                                             Ver planos
-                                        </a>
+                                        </Link>
                                     </p>
                                 )}
                             </div>
@@ -807,15 +805,18 @@ export default function AgendaClient({
                                                     )}
                                                 </div>
                                             ))}
-                                            {dia.janelas.length < MAX_JANELAS_POR_DIA && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => adicionarJanela(index)}
-                                                    className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 self-start cursor-pointer transition-colors"
-                                                >
-                                                    + adicionar janela
-                                                </button>
-                                            )}
+                                            {dia.janelas.length < MAX_JANELAS_POR_DIA &&
+                                                (dia.janelas.length === 0 ||
+                                                    dia.janelas[dia.janelas.length - 1].hora_fim <
+                                                        '23:59') && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => adicionarJanela(index)}
+                                                        className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 self-start cursor-pointer transition-colors"
+                                                    >
+                                                        + adicionar janela
+                                                    </button>
+                                                )}
                                         </div>
                                     ) : (
                                         <span className="text-xs text-zinc-400 font-medium italic">

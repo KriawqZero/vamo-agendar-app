@@ -8,37 +8,41 @@ import {
     desconectarWhatsApp,
     reiniciarConexaoWhatsApp,
     enviarMensagemTesteWhatsApp,
-    salvarTemplatesMensagem
+    salvarTemplatesMensagem,
 } from '@/app/actions/whatsapp'
 import { capturarEvento } from '@/lib/analytics/client'
 
 // Nunca incluir instance_token aqui: esta interface descreve a prop serializada
 // até o browser — o token é segredo e fica restrito ao servidor.
 interface WhatsappConfig {
-    id: string;
-    instance_name: string;
-    status: string;
-    ultima_verificacao_em: string | null;
-    mensagem_confirmacao: string;
-    mensagem_lembrete: string;
-    tempo_lembrete_minutos: number;
+    id: string
+    instance_name: string
+    status: string
+    ultima_verificacao_em: string | null
+    mensagem_confirmacao: string
+    mensagem_lembrete: string
+    tempo_lembrete_minutos: number
 }
 
-interface DisparoClienteRel { nome: string | null }
-interface DisparoAgendamentoRel { clientes: DisparoClienteRel | DisparoClienteRel[] | null }
+interface DisparoClienteRel {
+    nome: string | null
+}
+interface DisparoAgendamentoRel {
+    clientes: DisparoClienteRel | DisparoClienteRel[] | null
+}
 
 interface Disparo {
-    id: string;
-    tipo: 'confirmacao' | 'lembrete' | 'teste';
-    status: string;
-    motivo: string | null;
-    created_at: string;
-    agendamentos: DisparoAgendamentoRel | DisparoAgendamentoRel[] | null;
+    id: string
+    tipo: 'confirmacao' | 'lembrete' | 'teste'
+    status: string
+    motivo: string | null
+    created_at: string
+    agendamentos: DisparoAgendamentoRel | DisparoAgendamentoRel[] | null
 }
 
 interface WhatsappClientProps {
-    config: WhatsappConfig | null;
-    disparos: Disparo[];
+    config: WhatsappConfig | null
+    disparos: Disparo[]
 }
 
 // Limite de tentativas de polling do QR Code antes de exibir erro.
@@ -85,14 +89,14 @@ function corBadge(status: string): string {
     switch (status) {
         case 'enviado':
         case 'executado':
-            return 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900'
+            return 'border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300'
         case 'agendado':
         case 'ignorado':
-            return 'bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900'
+            return 'border-amber-500/30 bg-amber-500/[0.08] text-amber-800 dark:text-amber-200'
         case 'falha':
-            return 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900'
+            return 'border-red-500/30 bg-red-500/[0.08] text-red-700 dark:text-red-300'
         default:
-            return 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700'
+            return 'bg-veu text-nevoa border-fio'
     }
 }
 
@@ -113,7 +117,7 @@ function formatarQuando(iso: string): string {
         month: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
-        hour12: false
+        hour12: false,
     })
 }
 
@@ -133,7 +137,10 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
     const statusConfig = config?.status ?? null
     const instanceName = config?.instance_name ?? null
     const [qrcode, setQrcode] = useState<string | null>(null)
-    const [msgTemplates, setMsgTemplates] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null)
+    const [msgTemplates, setMsgTemplates] = useState<{
+        tipo: 'sucesso' | 'erro'
+        texto: string
+    } | null>(null)
     const [carregandoQrCode, setCarregandoQrCode] = useState(statusConfig === 'aguardando_qrcode')
     const [erroPareamento, setErroPareamento] = useState<'falhas' | 'expirado' | null>(null)
 
@@ -154,13 +161,15 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
 
     // Estado dos templates
     const [mensagemConfirmacao, setMensagemConfirmacao] = useState(
-        config?.mensagem_confirmacao || 'Olá {{cliente}}, seu agendamento em {{empresa}} para {{data_hora}} está confirmado!'
+        config?.mensagem_confirmacao ||
+            'Olá {{cliente}}, seu agendamento em {{empresa}} para {{data_hora}} está confirmado!',
     )
     const [mensagemLembrete, setMensagemLembrete] = useState(
-        config?.mensagem_lembrete || 'Olá {{cliente}}, passando para lembrar do seu agendamento em {{empresa}} no dia {{data}} às {{hora}}.'
+        config?.mensagem_lembrete ||
+            'Olá {{cliente}}, passando para lembrar do seu agendamento em {{empresa}} no dia {{data}} às {{hora}}.',
     )
     const [tempoLembreteMinutos, setTempoLembreteMinutos] = useState(
-        config ? String(config.tempo_lembrete_minutos) : '120'
+        config ? String(config.tempo_lembrete_minutos) : '120',
     )
 
     // Polling do QR Code/Status enquanto aguarda pareamento.
@@ -227,7 +236,10 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                 await criarInstanciaWhatsApp()
                 router.refresh()
             } catch (err) {
-                setMsgTemplates({ tipo: 'erro', texto: err instanceof Error ? err.message : 'Erro ao conectar' })
+                setMsgTemplates({
+                    tipo: 'erro',
+                    texto: err instanceof Error ? err.message : 'Erro ao conectar',
+                })
             }
         })
     }
@@ -239,7 +251,10 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                 await desconectarWhatsApp()
                 router.refresh()
             } catch (err) {
-                setMsgTemplates({ tipo: 'erro', texto: err instanceof Error ? err.message : 'Erro ao desconectar' })
+                setMsgTemplates({
+                    tipo: 'erro',
+                    texto: err instanceof Error ? err.message : 'Erro ao desconectar',
+                })
             }
         })
     }
@@ -250,7 +265,10 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                 await reiniciarConexaoWhatsApp()
                 router.refresh()
             } catch (err) {
-                setMsgTemplates({ tipo: 'erro', texto: err instanceof Error ? err.message : 'Erro ao reiniciar a conexão' })
+                setMsgTemplates({
+                    tipo: 'erro',
+                    texto: err instanceof Error ? err.message : 'Erro ao reiniciar a conexão',
+                })
             }
         })
     }
@@ -292,18 +310,26 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
             try {
                 const res = await enviarMensagemTesteWhatsApp(telefoneTeste)
                 if (res.ok) {
-                    setFeedbackTeste({ ok: true, texto: 'Mensagem de teste enviada! Confira o WhatsApp informado.' })
+                    setFeedbackTeste({
+                        ok: true,
+                        texto: 'Mensagem de teste enviada! Confira o WhatsApp informado.',
+                    })
                 } else {
                     setFeedbackTeste({
                         ok: false,
-                        texto: traduzirMotivo(res.motivo) || 'Não foi possível enviar a mensagem de teste.'
+                        texto:
+                            traduzirMotivo(res.motivo) ||
+                            'Não foi possível enviar a mensagem de teste.',
                     })
                 }
                 router.refresh()
             } catch (err) {
                 setFeedbackTeste({
                     ok: false,
-                    texto: err instanceof Error ? err.message : 'Não foi possível enviar a mensagem de teste.'
+                    texto:
+                        err instanceof Error
+                            ? err.message
+                            : 'Não foi possível enviar a mensagem de teste.',
                 })
             }
         })
@@ -325,7 +351,10 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                 setMsgTemplates({ tipo: 'sucesso', texto: 'Templates salvos com sucesso!' })
                 router.refresh()
             } catch (err) {
-                setMsgTemplates({ tipo: 'erro', texto: err instanceof Error ? err.message : 'Erro ao salvar templates' })
+                setMsgTemplates({
+                    tipo: 'erro',
+                    texto: err instanceof Error ? err.message : 'Erro ao salvar templates',
+                })
             }
         })
     }
@@ -337,31 +366,32 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
             {/* Header */}
             <div>
                 <h1 className="text-2xl font-bold tracking-tight">Configurações do WhatsApp</h1>
-                <p className="text-zinc-500 dark:text-zinc-400 text-sm">
-                    Conecte sua conta do WhatsApp para enviar confirmações e lembretes automáticos para seus clientes.
+                <p className="text-nevoa text-sm">
+                    Conecte sua conta do WhatsApp para enviar confirmações e lembretes automáticos
+                    para seus clientes.
                 </p>
             </div>
 
             {/* Layout em Duas Colunas */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
                 {/* Coluna 1: Status de Conexão */}
-                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-xs h-fit lg:col-span-1 space-y-4">
+                <div className="bg-bastidor border border-fio rounded-xl p-6 h-fit lg:col-span-1 space-y-4">
                     <h2 className="text-base font-bold">Status da Conexão</h2>
 
                     {status === 'desconectado' && (
                         <div className="space-y-4">
                             <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-zinc-400" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-penumbra" />
                                 <span className="text-sm font-semibold">Desconectado</span>
                             </div>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                                Seu estabelecimento está sem integração. Os clientes não receberão mensagens automáticas de confirmação ou lembretes.
+                            <p className="text-xs text-nevoa leading-relaxed">
+                                Seu estabelecimento está sem integração. Os clientes não receberão
+                                mensagens automáticas de confirmação ou lembretes.
                             </p>
                             <button
                                 onClick={handleConectar}
                                 disabled={isPending}
-                                className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 font-bold rounded-lg text-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
+                                className="w-full py-2.5 bg-marca hover:bg-marca-forte text-white dark:text-zinc-950 font-bold rounded-xl text-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
                             >
                                 {isPending ? 'Carregando...' : 'Conectar WhatsApp'}
                             </button>
@@ -371,17 +401,17 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                     {status === 'conectando' && (
                         <div className="space-y-4">
                             <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 dark:bg-amber-400 animate-pulse" />
                                 <span className="text-sm font-semibold">Conectando...</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-                                <span className="w-4 h-4 border-2 border-zinc-300 dark:border-zinc-700 border-t-amber-500 rounded-full animate-spin" />
+                            <div className="flex items-center gap-2 text-xs text-nevoa">
+                                <span className="w-4 h-4 border-2 border-fio-forte border-t-amber-500 dark:border-t-amber-400 rounded-full animate-spin" />
                                 Estabelecendo a sessão com o WhatsApp.
                             </div>
                             <button
                                 onClick={handleVerificarNovamente}
                                 disabled={isPending}
-                                className="w-full py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer disabled:opacity-60"
+                                className="w-full py-2 border border-fio text-nevoa hover:bg-veu hover:text-giz text-xs font-semibold rounded-xl transition-all duration-200 cursor-pointer disabled:opacity-60"
                             >
                                 Verificar novamente
                             </button>
@@ -391,13 +421,13 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                     {status === 'aguardando_qrcode' && (
                         <div className="space-y-4 flex flex-col items-center text-center">
                             <div className="flex items-center gap-2 self-start">
-                                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 dark:bg-amber-400 animate-pulse" />
                                 <span className="text-sm font-semibold">Aguardando pareamento</span>
                             </div>
 
                             {erroPareamento ? (
                                 <div className="w-full space-y-3">
-                                    <div className="w-full bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-xl p-4 text-xs text-red-700 dark:text-red-400 leading-relaxed">
+                                    <div className="w-full bg-red-500/[0.08] border border-red-500/30 rounded-xl p-4 text-xs text-red-700 dark:text-red-300 leading-relaxed">
                                         {erroPareamento === 'expirado'
                                             ? 'O QR Code expirou antes do pareamento. Gere um novo código para continuar.'
                                             : 'Não conseguimos atualizar o QR Code agora. Gere um novo código e tente de novo.'}
@@ -405,39 +435,52 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                                     <button
                                         onClick={handleRegenerarQr}
                                         disabled={isPending || carregandoQrCode}
-                                        className="w-full py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 text-xs font-bold rounded-lg transition-all duration-200 cursor-pointer disabled:opacity-60"
+                                        className="w-full py-2 bg-marca hover:bg-marca-forte text-white dark:text-zinc-950 text-xs font-bold rounded-xl transition-all duration-200 cursor-pointer disabled:opacity-60"
                                     >
                                         Gerar novo QR Code
                                     </button>
                                 </div>
                             ) : carregandoQrCode && !qrcode ? (
-                                <div className="w-48 h-48 bg-zinc-50 dark:bg-zinc-800 rounded-xl flex items-center justify-center border border-dashed border-zinc-200 dark:border-zinc-700">
-                                    <span className="text-xs text-zinc-400 animate-pulse">Gerando QR Code...</span>
+                                <div className="w-48 h-48 bg-veu rounded-xl flex items-center justify-center border border-dashed border-fio-forte">
+                                    <span className="text-xs text-nevoa animate-pulse">
+                                        Gerando QR Code...
+                                    </span>
                                 </div>
                             ) : qrcode ? (
-                                <div className="bg-white p-3 rounded-xl border border-zinc-200 shadow-sm">
+                                <div className="bg-white p-3 rounded-xl border border-fio">
+                                    {/* eslint-disable-next-line @next/next/no-img-element -- QR base64 do gateway; next/image não otimiza data URI */}
                                     <img
-                                        src={qrcode.startsWith('data:') ? qrcode : `data:image/png;base64,${qrcode}`}
+                                        src={
+                                            qrcode.startsWith('data:')
+                                                ? qrcode
+                                                : `data:image/png;base64,${qrcode}`
+                                        }
                                         alt="QR Code de pareamento do WhatsApp"
                                         className="w-44 h-44 select-none"
                                     />
                                 </div>
                             ) : (
-                                <div className="w-48 h-48 bg-zinc-50 dark:bg-zinc-800 rounded-xl flex items-center justify-center">
-                                    <span className="text-xs text-zinc-400">QR Code indisponível.</span>
+                                <div className="w-48 h-48 bg-veu rounded-xl flex items-center justify-center">
+                                    <span className="text-xs text-nevoa">
+                                        QR Code indisponível.
+                                    </span>
                                 </div>
                             )}
 
                             {!erroPareamento && (
-                                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 text-left leading-relaxed">
-                                    Use <strong>outro aparelho</strong> para ler o código: abra o WhatsApp no celular, vá em <strong>Dispositivos Conectados</strong> &rarr; <strong>Conectar Dispositivo</strong> e aponte a câmera para o QR Code acima.
+                                <p className="text-[11px] text-nevoa text-left leading-relaxed">
+                                    Use <strong>outro aparelho</strong> para ler o código: abra o
+                                    WhatsApp no celular, vá em{' '}
+                                    <strong>Dispositivos Conectados</strong> &rarr;{' '}
+                                    <strong>Conectar Dispositivo</strong> e aponte a câmera para o
+                                    QR Code acima.
                                 </p>
                             )}
 
                             <button
                                 onClick={handleDesconectar}
                                 disabled={isPending}
-                                className="w-full py-2 bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/20 dark:hover:bg-red-900/30 dark:text-red-400 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer disabled:opacity-60"
+                                className="w-full py-2 border border-red-500/30 bg-red-500/[0.08] text-red-700 hover:bg-red-500/[0.14] dark:text-red-300 text-xs font-semibold rounded-xl transition-all duration-200 cursor-pointer disabled:opacity-60"
                             >
                                 Cancelar conexão
                             </button>
@@ -447,22 +490,31 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                     {status === 'conectado' && (
                         <div className="space-y-4">
                             <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                                <span className="text-sm font-semibold">Integrado com sucesso</span>
+                                <span className="w-2.5 h-2.5 rounded-full bg-marca" />
+                                <span className="text-sm font-semibold text-marca">
+                                    Integrado com sucesso
+                                </span>
                             </div>
-                            <div className="bg-zinc-50 dark:bg-zinc-800 p-3 rounded-lg text-xs space-y-1 text-zinc-600 dark:text-zinc-400">
-                                <div><span className="font-semibold">Instância:</span> {config?.instance_name}</div>
+                            <div className="bg-camarim p-3 rounded-xl text-xs space-y-1 text-nevoa">
+                                <div>
+                                    <span className="font-semibold">Instância:</span>{' '}
+                                    {config?.instance_name}
+                                </div>
                                 {config?.ultima_verificacao_em && (
-                                    <div><span className="font-semibold">Verificado:</span> {tempoDesde(config.ultima_verificacao_em)}</div>
+                                    <div>
+                                        <span className="font-semibold">Verificado:</span>{' '}
+                                        {tempoDesde(config.ultima_verificacao_em)}
+                                    </div>
                                 )}
                             </div>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                                Mensagens de confirmação e lembretes automáticos estão ativos e serão disparados para seus clientes.
+                            <p className="text-xs text-nevoa leading-relaxed">
+                                Mensagens de confirmação e lembretes automáticos estão ativos e
+                                serão disparados para seus clientes.
                             </p>
                             <button
                                 onClick={handleDesconectar}
                                 disabled={isPending}
-                                className="w-full py-2.5 bg-red-50 hover:bg-red-100 text-red-700 dark:bg-red-950/20 dark:hover:bg-red-900/30 dark:text-red-400 font-bold rounded-lg text-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
+                                className="w-full py-2.5 border border-red-500/30 bg-red-500/[0.08] text-red-700 hover:bg-red-500/[0.14] dark:text-red-300 font-bold rounded-xl text-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
                             >
                                 {isPending ? 'Desconectando...' : 'Desconectar dispositivo'}
                             </button>
@@ -472,23 +524,24 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                     {status === 'instavel' && (
                         <div className="space-y-4">
                             <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 dark:bg-amber-400" />
                                 <span className="text-sm font-semibold">Conexão instável</span>
                             </div>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                                Não conseguimos confirmar com o WhatsApp agora. Sua conexão pode ainda estar ativa — verifique novamente em instantes.
+                            <p className="text-xs text-nevoa leading-relaxed">
+                                Não conseguimos confirmar com o WhatsApp agora. Sua conexão pode
+                                ainda estar ativa — verifique novamente em instantes.
                             </p>
                             <button
                                 onClick={handleVerificarNovamente}
                                 disabled={isPending}
-                                className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 font-bold rounded-lg text-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
+                                className="w-full py-2.5 bg-marca hover:bg-marca-forte text-white dark:text-zinc-950 font-bold rounded-xl text-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
                             >
                                 {isPending ? 'Verificando...' : 'Verificar novamente'}
                             </button>
                             <button
                                 onClick={handleReiniciar}
                                 disabled={isPending}
-                                className="w-full py-2 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 text-xs font-semibold rounded-lg transition-all duration-200 cursor-pointer disabled:opacity-60"
+                                className="w-full py-2 border border-fio text-nevoa hover:bg-veu hover:text-giz text-xs font-semibold rounded-xl transition-all duration-200 cursor-pointer disabled:opacity-60"
                             >
                                 Reiniciar conexão
                             </button>
@@ -498,16 +551,19 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                     {status === 'falha' && (
                         <div className="space-y-4">
                             <div className="flex items-center gap-2">
-                                <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                                <span className="text-sm font-semibold">Conexão perdida</span>
+                                <span className="w-2.5 h-2.5 rounded-full bg-red-500/70 dark:bg-red-400/70" />
+                                <span className="text-sm font-semibold text-red-700 dark:text-red-300">
+                                    Conexão perdida
+                                </span>
                             </div>
-                            <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
-                                A conexão com o WhatsApp foi perdida e precisa ser refeita. Reinicie para gerar um novo QR Code e parear novamente.
+                            <p className="text-xs text-nevoa leading-relaxed">
+                                A conexão com o WhatsApp foi perdida e precisa ser refeita. Reinicie
+                                para gerar um novo QR Code e parear novamente.
                             </p>
                             <button
                                 onClick={handleReiniciar}
                                 disabled={isPending}
-                                className="w-full py-2.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 font-bold rounded-lg text-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
+                                className="w-full py-2.5 bg-marca hover:bg-marca-forte text-white dark:text-zinc-950 font-bold rounded-xl text-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
                             >
                                 {isPending ? 'Reiniciando...' : 'Tentar novamente'}
                             </button>
@@ -516,30 +572,37 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
 
                     {/* Mensagem de teste — apenas quando conectado */}
                     {status === 'conectado' && (
-                        <form onSubmit={handleEnviarTeste} className="pt-4 border-t border-zinc-200 dark:border-zinc-800 space-y-2">
-                            <label className="text-xs font-bold uppercase text-zinc-400 block">Enviar mensagem de teste</label>
+                        <form
+                            onSubmit={handleEnviarTeste}
+                            className="pt-4 border-t border-fio space-y-2"
+                        >
+                            <label className="font-mono text-xs font-bold uppercase tracking-widest text-penumbra block">
+                                Enviar mensagem de teste
+                            </label>
                             <input
                                 type="tel"
                                 inputMode="numeric"
                                 value={telefoneTeste}
                                 onChange={(e) => setTelefoneTeste(e.target.value)}
                                 placeholder="DDD + número"
-                                className="w-full px-3.5 py-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm bg-zinc-50 dark:bg-zinc-900 outline-hidden text-zinc-900 dark:text-zinc-50"
+                                className="w-full px-3.5 py-2 border border-fio rounded-xl text-sm bg-camarim outline-hidden text-giz placeholder:text-penumbra focus:border-marca/50"
                                 required
                             />
                             <button
                                 type="submit"
                                 disabled={isTestando}
-                                className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all duration-200 cursor-pointer disabled:opacity-60"
+                                className="w-full py-2 bg-marca hover:bg-marca-forte text-white dark:text-zinc-950 text-xs font-bold rounded-xl transition-all duration-200 cursor-pointer disabled:opacity-60"
                             >
                                 {isTestando ? 'Enviando...' : 'Enviar teste'}
                             </button>
                             {feedbackTeste && (
-                                <div className={`p-2.5 text-xs font-semibold border rounded-lg ${
-                                    feedbackTeste.ok
-                                        ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900'
-                                        : 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900'
-                                }`}>
+                                <div
+                                    className={`p-2.5 text-xs font-semibold border rounded-xl ${
+                                        feedbackTeste.ok
+                                            ? 'border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300'
+                                            : 'border-red-500/30 bg-red-500/[0.08] text-red-700 dark:text-red-300'
+                                    }`}
+                                >
                                     {feedbackTeste.texto}
                                 </div>
                             )}
@@ -548,16 +611,18 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                 </div>
 
                 {/* Coluna 2: Templates de Notificações */}
-                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-xs lg:col-span-2">
-                    <h2 className="text-base font-bold mb-4 font-sans">Templates das Mensagens</h2>
+                <div className="bg-bastidor border border-fio rounded-xl p-6 lg:col-span-2">
+                    <h2 className="text-base font-bold mb-4">Templates das Mensagens</h2>
 
                     <form onSubmit={handleSalvarTemplates} className="space-y-4">
                         {msgTemplates && (
-                            <div className={`p-3 text-xs font-semibold border rounded-lg ${
-                                msgTemplates.tipo === 'sucesso'
-                                    ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900'
-                                    : 'bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-900'
-                            }`}>
+                            <div
+                                className={`p-3 text-xs font-semibold border rounded-xl ${
+                                    msgTemplates.tipo === 'sucesso'
+                                        ? 'border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-700 dark:text-emerald-300'
+                                        : 'border-red-500/30 bg-red-500/[0.08] text-red-700 dark:text-red-300'
+                                }`}
+                            >
                                 {msgTemplates.texto}
                             </div>
                         )}
@@ -565,14 +630,18 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                         {/* Mensagem Confirmação */}
                         <div className="space-y-1.5">
                             <div className="flex items-center justify-between">
-                                <label className="text-xs font-bold uppercase text-zinc-400 block">Mensagem de confirmação imediata</label>
-                                <span className="text-[10px] text-zinc-400 font-medium">Tags: `{"{{cliente}}"}` `{"{{empresa}}"}` `{"{{data_hora}}"}`</span>
+                                <label className="font-mono text-xs font-bold uppercase tracking-widest text-penumbra block">
+                                    Mensagem de confirmação imediata
+                                </label>
+                                <span className="text-[10px] text-penumbra font-medium">
+                                    Tags: `{'{{cliente}}'}` `{'{{empresa}}'}` `{'{{data_hora}}'}`
+                                </span>
                             </div>
                             <textarea
                                 value={mensagemConfirmacao}
                                 onChange={(e) => setMensagemConfirmacao(e.target.value)}
                                 rows={3}
-                                className="w-full px-3.5 py-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm bg-zinc-50 dark:bg-zinc-900 outline-hidden text-zinc-900 dark:text-zinc-50 resize-none font-sans"
+                                className="w-full px-3.5 py-2 border border-fio rounded-xl text-sm bg-camarim outline-hidden text-giz focus:border-marca/50 resize-none font-sans"
                                 required
                             />
                         </div>
@@ -580,43 +649,52 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
                         {/* Mensagem Lembrete */}
                         <div className="space-y-1.5">
                             <div className="flex items-center justify-between">
-                                <label className="text-xs font-bold uppercase text-zinc-400 block">Mensagem de lembrete</label>
-                                <span className="text-[10px] text-zinc-400 font-medium">Tags: `{"{{cliente}}"}` `{"{{empresa}}"}` `{"{{data}}"}` `{"{{hora}}"}`</span>
+                                <label className="font-mono text-xs font-bold uppercase tracking-widest text-penumbra block">
+                                    Mensagem de lembrete
+                                </label>
+                                <span className="text-[10px] text-penumbra font-medium">
+                                    Tags: `{'{{cliente}}'}` `{'{{empresa}}'}` `{'{{data}}'}` `
+                                    {'{{hora}}'}`
+                                </span>
                             </div>
                             <textarea
                                 value={mensagemLembrete}
                                 onChange={(e) => setMensagemLembrete(e.target.value)}
                                 rows={3}
-                                className="w-full px-3.5 py-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm bg-zinc-50 dark:bg-zinc-900 outline-hidden text-zinc-900 dark:text-zinc-50 resize-none font-sans"
+                                className="w-full px-3.5 py-2 border border-fio rounded-xl text-sm bg-camarim outline-hidden text-giz focus:border-marca/50 resize-none font-sans"
                                 required
                             />
                         </div>
 
                         {/* Tempo Lembrete */}
                         <div className="space-y-1 max-w-xs">
-                            <label className="text-xs font-bold uppercase text-zinc-400 block">Enviar Lembrete quanto tempo antes?</label>
-                            <div className="flex rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 overflow-hidden text-sm">
+                            <label className="font-mono text-xs font-bold uppercase tracking-widest text-penumbra block">
+                                Enviar Lembrete quanto tempo antes?
+                            </label>
+                            <div className="flex rounded-xl border border-fio bg-camarim overflow-hidden text-sm">
                                 <input
                                     type="number"
                                     min="15"
                                     step="1"
                                     value={tempoLembreteMinutos}
                                     onChange={(e) => setTempoLembreteMinutos(e.target.value)}
-                                    className="w-full px-3.5 py-2 bg-transparent outline-hidden text-zinc-900 dark:text-zinc-50 font-mono text-sm"
+                                    className="w-full px-3.5 py-2 bg-transparent outline-hidden text-giz font-mono text-sm"
                                     required
                                 />
-                                <span className="bg-zinc-100 dark:bg-zinc-800 px-3 py-2 text-zinc-500 font-semibold text-xs flex items-center border-l border-zinc-200 dark:border-zinc-800 shrink-0">
+                                <span className="bg-camarim px-3 py-2 text-nevoa font-semibold text-xs flex items-center border-l border-fio shrink-0">
                                     minutos
                                 </span>
                             </div>
-                            <p className="text-[10px] text-zinc-400 mt-1">Ex: 120 minutos = 2 horas antes do início marcado.</p>
+                            <p className="text-[10px] text-penumbra mt-1">
+                                Ex: 120 minutos = 2 horas antes do início marcado.
+                            </p>
                         </div>
 
-                        <div className="pt-2 border-t border-zinc-200 dark:border-zinc-800 flex justify-end">
+                        <div className="pt-2 border-t border-fio flex justify-end">
                             <button
                                 type="submit"
                                 disabled={isPending}
-                                className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-50 dark:hover:bg-zinc-200 text-white dark:text-zinc-950 font-semibold rounded-lg text-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
+                                className="px-4 py-2 bg-marca hover:bg-marca-forte text-white dark:text-zinc-950 font-semibold rounded-xl text-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
                             >
                                 {isPending ? 'Salvando...' : 'Salvar templates'}
                             </button>
@@ -626,37 +704,43 @@ export default function WhatsappClient({ config, disparos }: WhatsappClientProps
             </div>
 
             {/* Painel: Últimos disparos */}
-            <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-6 shadow-xs">
+            <div className="bg-bastidor border border-fio rounded-xl p-6">
                 <h2 className="text-base font-bold mb-4">Últimos disparos</h2>
 
                 {disparos.length === 0 ? (
-                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                        Nenhum disparo registrado ainda. Confirmações, lembretes e testes aparecerão aqui.
+                    <p className="text-xs text-nevoa">
+                        Nenhum disparo registrado ainda. Confirmações, lembretes e testes aparecerão
+                        aqui.
                     </p>
                 ) : (
-                    <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                    <ul className="divide-y divide-fio">
                         {disparos.map((d) => {
                             const cliente = nomeClienteDoDisparo(d)
                             const motivo = traduzirMotivo(d.motivo)
                             return (
-                                <li key={d.id} className="py-3 flex items-start justify-between gap-3">
+                                <li
+                                    key={d.id}
+                                    className="py-3 flex items-start justify-between gap-3"
+                                >
                                     <div className="min-w-0 space-y-0.5">
                                         <div className="flex items-center gap-2 flex-wrap">
-                                            <span className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
+                                            <span className="text-sm font-semibold text-giz">
                                                 {TIPO_LABEL[d.tipo] ?? d.tipo}
                                             </span>
                                             {cliente && (
-                                                <span className="text-xs text-zinc-500 dark:text-zinc-400 truncate">
+                                                <span className="text-xs text-nevoa truncate">
                                                     · {cliente}
                                                 </span>
                                             )}
                                         </div>
-                                        {motivo && (
-                                            <p className="text-xs text-zinc-500 dark:text-zinc-400">{motivo}</p>
-                                        )}
-                                        <p className="text-[11px] text-zinc-400">{formatarQuando(d.created_at)}</p>
+                                        {motivo && <p className="text-xs text-nevoa">{motivo}</p>}
+                                        <p className="text-[11px] text-penumbra">
+                                            {formatarQuando(d.created_at)}
+                                        </p>
                                     </div>
-                                    <span className={`shrink-0 px-2 py-0.5 text-[11px] font-bold border rounded-full ${corBadge(d.status)}`}>
+                                    <span
+                                        className={`shrink-0 px-2 py-0.5 text-[11px] font-bold border rounded-full ${corBadge(d.status)}`}
+                                    >
                                         {STATUS_LABEL[d.status] ?? d.status}
                                     </span>
                                 </li>
