@@ -5,10 +5,10 @@ milestone_name: Lançamento público
 current_phase: 1
 current_phase_name: Hardening da superfície pública
 status: planning
-stopped_at: Phase 1 context gathered — pronto para /gsd-plan-phase 1
-last_updated: "2026-07-21T16:40:22.781Z"
+stopped_at: Quick task 260721-jif entregue no código; Gate 1 e Gate 2 aguardam o owner (projetos Sentry/PostHog, secrets no Railway, validação visual)
+last_updated: "2026-07-21T19:05:00.000Z"
 last_activity: 2026-07-21
-last_activity_desc: contexto da Phase 1 capturado; superfície anon medida contra a Data API real
+last_activity_desc: etapa preparatória "Fundação operacional" executada (Sentry, PostHog, Resend); 5 blockers de PII/secret da revisão corrigidos
 progress:
   total_phases: 12
   completed_phases: 0
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 1 de 12 (Hardening da superfície pública)
+Phase: 1 de 12 (Hardening da superfície pública) — **bloqueada** até os gates da etapa preparatória fecharem
 Plan: — (nenhum plano criado ainda)
-Status: Ready to plan
-Last activity: 2026-07-21 — fase de backup removida do roadmap; 56/56 requisitos v1 mapeados em 12 fases
+Status: Ready to plan (a Phase 1 depende da etapa preparatória "Fundação operacional")
+Last activity: 2026-07-21 — etapa preparatória executada; Gate 1 e Gate 2 aguardam o owner
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -81,6 +81,22 @@ Nenhum ainda.
 - **Decisão pendente do owner** (Phase 3): Upstash Redis vs. RPC atômica no Postgres para o rate limit; o Redis do Railway não serve (TCP, pertence à Evolution API)
 - **Revisão jurídica humana** dos termos e da política antes de publicar (Phase 10) — menor confiança de toda a pesquisa
 - **Precedência de lookup** quando telefone e e-mail batem em clientes diferentes: decidir na Phase 5, não descobrir em produção
+- 🚨 **Janela de crash-loop aberta agora (quick task 260721-jif).** A lista de treze variáveis obrigatórias em produção já está valendo no `master`. Deploy de produção **antes** de provisionar `ANALYTICS_TENANT_SALT`, `NEXT_PUBLIC_SENTRY_DSN` e `RESEND_API_KEY` no Railway derruba o boot de propósito. É o comportamento pedido (OPE-02 e SEG-05 dependem dele), mas o intervalo entre merge e configuração é risco real. Duas saídas escritas em `docs/PENDENCIAS.md`: provisionar antes, ou remover as quatro da lista no mesmo commit do deploy
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 260721-jif | Fundação operacional — Sentry, PostHog e Resend (etapa preparatória, pré-requisito da Phase 1) | 2026-07-21 | b80c408 | Needs Review | [260721-jif-fundacao-operacional-sentry-posthog-e-re](./quick/260721-jif-fundacao-operacional-sentry-posthog-e-re/) |
+
+**Status `Needs Review`**: as 4 tarefas de código fecharam e foram verificadas (0 gaps,
+`pnpm lint`/`test`/`build` verdes, 164 testes). Os dois checkpoints dependem do owner:
+
+- **Gate 1** — criar projeto no Sentry e no PostHog Cloud, colar o bloco de
+  `260721-jif-ENV-BLOCO.md` no `.env.example`, provisionar as treze obrigatórias no Railway.
+  Retomar informando: se colou o bloco, a região do PostHog e os slugs de org/projeto do Sentry
+- **Gate 2** — validar visualmente que evento chega no PostHog, erro chega no Sentry (e a issue
+  não carrega PII) e o e-mail de smoke test chega na caixa, anotando a aba (insumo da Phase 4)
 
 ## Deferred Items
 
