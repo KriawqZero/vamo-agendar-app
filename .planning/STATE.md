@@ -1,12 +1,19 @@
 ---
-gsd_state_version: '1.0'
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: Lançamento público
+current_phase: 1
+current_phase_name: Hardening da superfície pública
 status: planning
+stopped_at: Phase 1 context gathered — pronto para /gsd-plan-phase 1
+last_updated: "2026-07-21T16:40:22.781Z"
+last_activity: 2026-07-21
+last_activity_desc: contexto da Phase 1 capturado; superfície anon medida contra a Data API real
 progress:
   total_phases: 12
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
-  percent: 0
 ---
 
 # Project State
@@ -30,6 +37,7 @@ Progress: [░░░░░░░░░░] 0%
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: —
 - Total execution time: —
@@ -41,6 +49,7 @@ Progress: [░░░░░░░░░░] 0%
 | - | - | - | - |
 
 **Recent Trend:**
+
 - Last 5 plans: —
 - Trend: —
 
@@ -80,6 +89,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-21
-Stopped at: fase de backup removida do roadmap (banco atual é descartável); 12 fases renumeradas e artefatos de planejamento realinhados. Pronto para planejar a Phase 1 (Hardening da superfície pública)
-Resume file: None
+Last session: 2026-07-21T16:40:22.774Z
+Stopped at: Phase 1 context gathered — pronto para /gsd-plan-phase 1
+Resume file: .planning/phases/01-hardening-da-superf-cie-p-blica/01-CONTEXT.md
