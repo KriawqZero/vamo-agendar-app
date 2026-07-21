@@ -696,12 +696,18 @@ Cada um com o **gatilho** que o traz de volta — nenhum é "esquecido", todos s
   exige **excluir** a rota do matcher, e o projeto só tem `isPublicRoute` em
   `src/proxy.ts` — mexer ali arrisca o gate do Clerk por um ganho de fração de
   eventos. Exige teste manual com ad blocker ligado.
-- **Source maps do Sentry.** *Gatilho:* primeiro erro de client cujo stack
-  minificado não permitir diagnóstico. Custo: `SENTRY_AUTH_TOKEN` no ambiente de
-  build, um passo de build a mais e um modo de falha novo (build quebra se o
-  upload falhar). Stack de **servidor** já chega legível sem isso. Ao ligar,
-  lembrar de permitir o build do `@sentry/cli` em `pnpm-workspace.yaml`, hoje
-  marcado como `false`.
+- ~~**Source maps do Sentry.**~~ **RESOLVIDO em 2026-07-21** — deixou de ser
+  diferido. O owner rodou o wizard do Sentry, que trouxe org e projeto reais
+  (`kriawq-tests` / `javascript-nextjs`); a mesclagem manteve o upload de source
+  map e descartou o resto do que o wizard propôs. Configurado em `next.config.ts`
+  com `sourcemaps.deleteSourcemapsAfterUpload: true` — sem essa opção os `.map`
+  ficariam servidos em `/_next/` e o código-fonte do produto seria reconstruível
+  a partir do bundle. **Pendências do owner:** `SENTRY_AUTH_TOKEN` no ambiente de
+  build do Railway (sem ele o plugin apenas avisa e o build segue — não quebra), e
+  permitir o build do `@sentry/cli` em `pnpm-workspace.yaml`, hoje `false`.
+  Motivo de ter mudado de ideia: a decisão de manter o Sentry no client existe
+  para pegar erro de JS e de hidratação em `/book/[slug]`, e stack minificado
+  esvazia exatamente esse ganho.
 - **Custo do Sentry no bundle de `/book/[slug]`: +73 KB gzip** (168,8 → 241,8 KB),
   medido no build, bem acima dos 20–30 KB que a pesquisa estimou — sob Turbopack
   o `treeshake` do `withSentryConfig` é no-op, então não há configuração que
