@@ -6,11 +6,11 @@ current_phase: 1
 current_phase_name: Hardening da superfície pública
 status: planning
 stopped_at: Quick task 260721-jif entregue no código; Gate 1 e Gate 2 aguardam o owner (projetos Sentry/PostHog, secrets no Railway, validação visual)
-last_updated: "2026-07-21T19:05:00.000Z"
+last_updated: "2026-07-21T22:43:11.935Z"
 last_activity: 2026-07-21
-last_activity_desc: etapa preparatória "Fundação operacional" executada (Sentry, PostHog, Resend); 5 blockers de PII/secret da revisão corrigidos
+last_activity_desc: etapa preparatória executada; Gate 1 e Gate 2 aguardam o owner
 progress:
-  total_phases: 12
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -88,6 +88,7 @@ Nenhum ainda.
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
 | 260721-jif | Fundação operacional — Sentry, PostHog e Resend (etapa preparatória, pré-requisito da Phase 1) | 2026-07-21 | b80c408 | Needs Review | [260721-jif-fundacao-operacional-sentry-posthog-e-re](./quick/260721-jif-fundacao-operacional-sentry-posthog-e-re/) |
+| 2 | Adiciona "type": "http" ao servidor Sentry em .mcp.json (elimina warning do /mcp) | 2026-07-21 | ddcda54 | — | — |
 
 **Status `Needs Review`**: as 4 tarefas de código fecharam e foram verificadas (0 gaps,
 `pnpm lint`/`test`/`build` verdes, 164 testes). Os dois checkpoints dependem do owner:
@@ -95,6 +96,7 @@ Nenhum ainda.
 - **Gate 1** — criar projeto no Sentry e no PostHog Cloud, colar o bloco de
   `260721-jif-ENV-BLOCO.md` no `.env.example`, provisionar as treze obrigatórias no Railway.
   Retomar informando: se colou o bloco, a região do PostHog e os slugs de org/projeto do Sentry
+
 - **Gate 2** — validar visualmente que evento chega no PostHog, erro chega no Sentry (e a issue
   não carrega PII) e o e-mail de smoke test chega na caixa, anotando a aba (insumo da Phase 4)
 

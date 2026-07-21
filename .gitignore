@@ -52,3 +52,7 @@ supabase/.branches/
 
 # Sentry Config File
 .env.sentry-build-plugin
+docs/.obsidian/workspace.json
+.obsidian/graph.json
+docs/.obsidian/workspace.json
+docs/.obsidian/workspace.json
