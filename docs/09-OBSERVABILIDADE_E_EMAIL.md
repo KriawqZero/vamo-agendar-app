@@ -9,14 +9,42 @@ herdaria a dívida de trocar depois.
 
 ---
 
-## ⛔ Nunca rode os wizards
+## Wizard é fonte de diff, não de verdade
 
-`npx @sentry/wizard` e `npx @posthog/wizard` **não devem ser executados neste projeto**.
-Ambas as integrações já existem, e os defaults dos wizards são exatamente o que foi
-desligado de propósito aqui.
+`npx @sentry/wizard` e `npx @posthog/wizard` **podem ser rodados**. O que não pode é
+aceitar o que eles geram sem reendurecer.
 
-O wizard do Sentry foi rodado em 2026-07-21 e o que ele gerou teve de ser mesclado à mão
-(`924dc51`). O que ele quis fazer:
+A regra tem duas metades, e ignorar qualquer uma delas dá errado:
+
+**Adote a arquitetura deles.** Os dois wizards trouxeram decisões melhores que as nossas.
+O do PostHog em particular: init em `instrumentation-client.ts` (antes da hidratação, e não
+num `useEffect` que só roda depois) e `posthog-node` no servidor no lugar de um `fetch`
+artesanal para `/i/v0/e/`. Eles conhecem o SDK melhor do que a gente vai conhecer lendo a
+doc por uma tarde, e nós tínhamos escrito as duas coisas do jeito pior sem saber.
+
+**Reaplique as travas por cima, sempre.** O wizard não tem como saber que `/book/[slug]` é
+público e sem login, e que quem digita nome e telefone ali é um desconhecido que nunca
+criou conta. Ele configura para o caso normal — um app onde todo usuário é cadastrado. O
+que reendurecer, toda vez:
+
+| Trava | Onde |
+|---|---|
+| `capture_pageview: false`, `person_profiles: 'identified_only'`, `autocapture: false`, `disable_session_recording: true`, `disable_surveys: true` | `src/lib/analytics/opcoes-posthog.ts` |
+| `capture_exceptions: false` (client) e `enableExceptionAutocapture: false` (server) | idem — error tracking é do Sentry, e o caminho do PostHog não passa por `sanitizarEventoSentry` nem pelo `beforeSend` |
+| `$process_person_profile: false` nos eventos de servidor | `src/lib/analytics/server.ts` |
+| Nome das variáveis: `NEXT_PUBLIC_POSTHOG_KEY`, host **opcional** com default US | `opcoes-posthog.ts`, `src/lib/env.ts` |
+| Fallback fire-and-forget quando `after()` lança fora de contexto de request | `src/lib/analytics/server.ts` |
+
+**O que faz a regra funcionar não é este documento — é teste.** Documento não impede
+nada: as cinco flags já estavam documentadas quando o wizard as apagou, duas vezes.
+`src/lib/__tests__/opcoes-posthog.test.ts` e `opcoes-sentry.test.ts` afirmam sobre o objeto
+de opções versionado e sobre o conteúdo dos arquivos de init. O próximo wizard vai apagar
+as travas de novo; agora o CI fica vermelho quando ele apagar.
+
+Corolário prático: **rode o wizard num working tree limpo e trate o `git diff` dele como
+proposta**, nunca como commit. É o diff que mostra o que ele sabe e a gente não.
+
+### O que o wizard do Sentry propôs (2026-07-21, mesclado em `924dc51`)
 
 | O que traz | Por que não serve |
 |---|---|
@@ -26,24 +54,38 @@ O wizard do Sentry foi rodado em 2026-07-21 e o que ele gerou teve de ser mescla
 | bloco `webpack` | No-op sob Turbopack, com aviso de deprecação |
 | `enableLogs: true`, `tracesSampleRate: 1` | Não foram decisões nossas; 100% de tracing queima o tier gratuito |
 
-O wizard do **PostHog** (v2.46.0) foi rodado em 2026-07-21 e **teve de ser revertido por
-inteiro**. Não é previsão — é o registro do que ele fez, em 13 arquivos:
+Dele foi adotado o upload de source map, com org e projeto reais. O resto foi descartado.
 
-| O que fez | Efeito |
+### O que o wizard do PostHog propôs (v2.46.0, 2026-07-21, mesclado em `5df0671` + este reendurecimento)
+
+Rodado duas vezes no mesmo dia. Na primeira, revertido por inteiro — **erro nosso**: a
+arquitetura dele era melhor que a nossa e jogamos fora junto com os defaults ruins. Na
+segunda, commitado cru (`5df0671`) e reendurecido por cima, que é o fluxo certo.
+
+**Adotado (o que ele sabia e a gente não):**
+
+| O que trouxe | Por que ficou |
 |---|---|
-| **Apagou `inicializarAnalytics()` de `src/lib/analytics/client.ts`** | Sumiram de uma vez `autocapture: false`, `disable_session_recording: true`, `person_profiles: 'identified_only'`, `capture_pageview: false` e `disable_surveys: true`. Session recording voltou a depender do **toggle do painel** — exatamente o que o comentário daquele arquivo manda não fazer |
-| Inicializou o PostHog **dentro de `src/instrumentation-client.ts`** | O arquivo do Sentry, onde vivem as travas anti-PII |
-| `capture_exceptions: true` no client e `enableExceptionAutocapture: true` no server | Segundo caminho de captura de exceção, que **não passa** por `sanitizarEventoSentry` nem por `beforeSend` |
-| Renomeou `NEXT_PUBLIC_POSTHOG_KEY` → `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` | Quebra `docs/08`, o `.env.example`, o Railway e a lista de `src/lib/env.ts` |
-| Removeu `$process_person_profile: false` dos eventos de servidor | Evento server-side passaria a criar perfil de pessoa, contrariando decisão documentada em `analytics/server.ts` |
-| Trocou o `fetch` direto por `posthog-node` | Dependência nova e um cliente instanciado por evento |
-| Pôs `NEXT_PUBLIC_POSTHOG_HOST` como obrigatória em produção | Sem critério — a região é US, onde ela é opcional por ter default |
+| Init em `src/instrumentation-client.ts` | Roda **antes da hidratação**. A nossa init estava num `useEffect` de provider, ou seja, depois — e o intervalo entre o HTML pintar e o React hidratar é onde o cliente de celular lento começa a mexer no wizard de agendamento |
+| `posthog-node` no servidor | Substitui um `fetch` artesanal para `/i/v0/e/`. Endpoint não documentado que a gente teria de manter sozinho |
+| `flushAt: 1` + `flushInterval: 0` + `await shutdown()` | Route handler e Server Action do Next morrem por invocação. Evento enfileirado sem flush é evento perdido **em silêncio** |
+| Seis eventos de funil do dashboard | Nomes bons, propriedades sem PII. O lado B2B do funil não existia |
 
-Nada foi commitado, então `git checkout -- src/ package.json pnpm-lock.yaml` + `pnpm install`
-restaurou tudo. **Se acontecer de novo, é esse o procedimento.**
+**Reendurecido por cima (o que ele não tinha como saber):**
 
-O que ele propôs de bom foram seis nomes de evento, sem PII nas propriedades. Estão guardados
-em `docs/PENDENCIAS.md` para entrarem por decisão, não por wizard.
+| O que ele fez | O que passou a valer |
+|---|---|
+| Apagou `inicializarAnalytics()` e com ela as cinco flags de PII | Voltaram, agora em `src/lib/analytics/opcoes-posthog.ts`, **travadas por teste**. Foi a segunda vez que ele apagou exatamente essas cinco linhas |
+| `capture_exceptions: true` / `enableExceptionAutocapture: true` | `false` nos dois. Segundo caminho de exceção que não passa por `sanitizarEventoSentry` nem por `beforeSend` — stack de Server Action pública tem `nome` e `telefone` como variáveis locais |
+| `if (posthogKey && posthogHost)` | Host voltou a ser **opcional** com default US. Tratar host ausente como "desligado" transforma um env faltando no pior modo de falha do PostHog: nenhum erro, nenhum log, zero evento |
+| `after()` cru, sem `try/catch` | Fallback fire-and-forget restaurado. `after()` **lança** fora de contexto de request, e o webhook do lembrete é esse caso |
+| `defaults: '2026-01-30'` | Removido. Snapshot datado flipa opções que ninguém avaliou, e justo esse não inclui `disable_capture_url_hashes` — cada opção agora é nomeada e explícita |
+| `capture_heatmaps` / `capture_dead_clicks` / `rageclick` implícitos | `false` explícito. `undefined` nessas três significa **o painel decide** (remote config) — mesmo furo que `disable_session_recording` fecha |
+| Deixou `AnalyticsProvider` como stub vazio | Removido. Com a init em `instrumentation-client.ts` ele não tem função, e stub sem importador é código morto que a próxima sessão tenta entender |
+
+Ele **não** renomeou `NEXT_PUBLIC_POSTHOG_KEY` na segunda rodada (na primeira, sim, para
+`NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`) e **preservou** `$process_person_profile: false`. As
+duas coisas continuam cobertas por teste, porque "não fez desta vez" não é garantia.
 
 **Do painel, copie à mão apenas o que é credencial ou identificador.** Nada mais.
 
@@ -204,14 +246,21 @@ Teto do Free: 100 e-mails/dia, 3.000/mês, 1 domínio. Ao estourar, a API devolv
 
 ## PostHog
 
-O código **já existia e está correto** — esta etapa não reescreveu nenhuma linha de
-`src/lib/analytics/`. Contrato de eventos em `docs/08-ANALYTICS_E_FUNIL.md`.
+Contrato de eventos e arquitetura em `docs/08-ANALYTICS_E_FUNIL.md`. As travas de PII
+vivem em `src/lib/analytics/opcoes-posthog.ts` e são asseguradas por
+`src/lib/__tests__/opcoes-posthog.test.ts` — mesma estrutura do par
+`opcoes-sentry.ts` / `opcoes-sentry.test.ts`, e pelo mesmo motivo: trava que mora dentro
+da função de init some quando alguém reescreve a init.
 
-O que mudou: `NEXT_PUBLIC_POSTHOG_KEY` e `ANALYTICS_TENANT_SALT` passaram de opcionais a
-obrigatórias em produção (mudança de contrato declarada em `docs/08`).
+`NEXT_PUBLIC_POSTHOG_KEY` e `ANALYTICS_TENANT_SALT` são obrigatórias em produção
+(`src/lib/env.ts`). `NEXT_PUBLIC_POSTHOG_HOST` **não entra nessa lista**: é opcional por
+ter default (`https://us.i.posthog.com`, região do projeto).
 
-⚠️ Se o projeto for da região **EU**, `NEXT_PUBLIC_POSTHOG_HOST` deixa de ser opcional —
-errar isso faz nenhum evento aparecer, **sem nenhuma mensagem de erro**.
+⚠️ Se o projeto migrar para a região **EU**, `NEXT_PUBLIC_POSTHOG_HOST` passa a ser
+obrigatória de fato — errar isso faz nenhum evento aparecer, **sem nenhuma mensagem de
+erro**. É o mesmo motivo pelo qual host ausente **não** desliga o SDK: falha silenciosa é
+o pior modo de falha possível numa ferramenta cujo sintoma de erro é "o número ficou
+menor".
 
 ⚠️ `ANALYTICS_TENANT_SALT` **nunca pode ser trocada** depois de definida: trocar desconecta os
 `distinct_id` históricos.

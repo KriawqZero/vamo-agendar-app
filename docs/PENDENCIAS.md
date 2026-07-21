@@ -690,20 +690,13 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
 Cada um com o **gatilho** que o traz de volta — nenhum é "esquecido", todos são
 "decididos e adiados".
 
-- **Seis eventos de funil do dashboard (B2B), propostos pelo wizard do PostHog.**
-  *Gatilho:* quando a Phase 11 for medir uso real do dashboard, ou antes se o
-  funil B2C já estiver instrumentado e faltar o lado do profissional. O wizard
-  foi revertido inteiro (ver `docs/09-OBSERVABILIDADE_E_EMAIL.md`), mas os nomes
-  e as propriedades que ele sugeriu são bons e **não carregam PII** — vale
-  aproveitar a ideia por decisão, com o contrato de `docs/08` respeitado:
-  `manual_booking_created` e `booking_rescheduled` (`agendamentos.ts`),
-  `service_updated` e `service_deleted` (`servicos.ts`),
-  `schedule_exception_saved` e `schedule_exception_deleted` (`agenda.ts`).
-  Propriedades propostas, todas seguras: `service_duration_minutes`,
-  `whatsapp_requested`, `customer_record: 'existing' | 'new_or_matched'`.
-  Custo: nomear em inglês contraria a convenção pt-BR do projeto — decidir a
-  grafia antes de instrumentar, porque nome de evento não se renomeia depois sem
-  quebrar histórico.
+- ~~**Seis eventos de funil do dashboard (B2B), propostos pelo wizard do
+  PostHog.**~~ **RESOLVIDO em 2026-07-21** — deixou de ser diferido. O wizard
+  foi rodado de novo, commitado cru (`5df0671`) e **reendurecido por cima**, no
+  mesmo fluxo do wizard do Sentry. Entraram sete eventos (os seis previstos mais
+  `booking_status_changed`, único que mede taxa de cancelamento). Grafia
+  decidida: **nome em inglês, propriedade em pt-BR**, consistente com os 20+
+  eventos que já existiam — contrato completo em `docs/08-ANALYTICS_E_FUNIL.md`.
 - **`tunnelRoute` do Sentry.** *Gatilho:* constatar perda relevante de evento de
   client por ad blocker. Ad blockers barram requisição para `*.sentry.io`, e
   `/book/[slug]` é público e recebe tráfego de campanha. Custo: a doc do Sentry
