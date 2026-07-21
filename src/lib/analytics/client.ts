@@ -5,9 +5,11 @@ import posthog from 'posthog-js'
 /**
  * Captura de eventos de funil no browser (posthog-js).
  *
- * Sem `NEXT_PUBLIC_POSTHOG_KEY` tudo é no-op. A inicialização acontece em
- * instrumentation-client.ts antes da hidratação. Nenhuma captura bloqueia a
- * UI e nenhum erro escapa. NUNCA passar PII em propriedades.
+ * Sem `NEXT_PUBLIC_POSTHOG_KEY` tudo é no-op. A inicialização NÃO acontece
+ * aqui: roda em `src/instrumentation-client.ts`, antes da hidratação, com as
+ * opções de `src/lib/analytics/opcoes-posthog.ts`. Este módulo é só a API de
+ * captura. Nenhuma captura bloqueia a UI e nenhum erro escapa. NUNCA passar
+ * PII em propriedades.
  *
  * UTM: o posthog-js persiste os parâmetros de campanha iniciais
  * (utm_source etc.) e os anexa aos eventos/pessoa automaticamente — não há
@@ -21,7 +23,7 @@ function chave(): string | undefined {
 /** Captura um evento nomeado. No-op sem key; nunca lança. */
 export function capturarEvento(
     evento: string,
-    props?: Record<string, string | number | boolean | null>
+    props?: Record<string, string | number | boolean | null>,
 ): void {
     if (!chave()) return
     try {

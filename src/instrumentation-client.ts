@@ -1,33 +1,51 @@
 import * as Sentry from '@sentry/nextjs'
 import posthog from 'posthog-js'
 
+import { hostPostHog, opcoesInitPostHog } from './lib/analytics/opcoes-posthog'
 import { opcoesBaseSentry } from './lib/observabilidade/opcoes-sentry'
 import { sanitizarBreadcrumb, sanitizarEventoSentry } from './lib/observabilidade/sanitizacao'
 
 /**
- * Sentry no browser. Este arquivo roda depois do HTML carregar e antes da
- * hidratação, inclusive em `/book/[slug]` — a superfície pública onde o
- * cliente final digita nome e telefone.
+ * Sentry e PostHog no browser. Este arquivo roda depois do HTML carregar e
+ * ANTES da hidratação, inclusive em `/book/[slug]` — a superfície pública onde
+ * o cliente final digita nome e telefone.
  *
  * ⚠️ Session Replay NÃO é instalado. A integração de replay do SDK não é
  * importada nem adicionada em `integrations`, de modo que não existe toggle de
- * painel capaz de ligá-la. É a mesma regra que `analytics/client.ts:35` já
- * aplica ao PostHog: trava no código versionado, não em configuração remota.
+ * painel capaz de ligá-la. É a mesma regra que
+ * `lib/analytics/opcoes-posthog.ts` aplica ao PostHog: trava no código
+ * versionado, não em configuração remota.
  *
  * Nota para a próxima sessão: o corpo da requisição NÃO vaza por padrão — o
  * SDK só manda o tamanho inferido do `content-length`, não o conteúdo. A
  * sanitização é defesa em profundidade, não a barreira única.
  */
-const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_KEY
-const posthogHost = process.env.NEXT_PUBLIC_POSTHOG_HOST
 
-if (posthogKey && posthogHost) {
-    posthog.init(posthogKey, {
-        api_host: posthogHost,
-        defaults: '2026-01-30',
-        capture_exceptions: true,
-        debug: process.env.NODE_ENV === 'development',
-    })
+/**
+ * PostHog antes da hidratação: a init morava num `useEffect` de provider, ou
+ * seja, DEPOIS da hidratação — e o intervalo entre o HTML pintar e o React
+ * hidratar é justamente onde o cliente final de celular lento começa a mexer
+ * no wizard de agendamento. Evento perdido ali é abandono contado como se
+ * nunca tivesse existido.
+ *
+ * O `try/catch` não é decorativo: sem ele, uma exceção do init do PostHog
+ * derrubaria o módulo inteiro e o Sentry logo abaixo nunca inicializaria —
+ * analytics não pode levar a observabilidade junto.
+ *
+ * As opções vêm de `opcoes-posthog.ts` por spread, NUNCA como literal aqui.
+ * Ver o teste `src/lib/__tests__/opcoes-posthog.test.ts`.
+ */
+const posthogKey = process.env.NEXT_PUBLIC_POSTHOG_KEY
+
+if (posthogKey) {
+    try {
+        posthog.init(posthogKey, {
+            api_host: hostPostHog(),
+            ...opcoesInitPostHog,
+        })
+    } catch (err) {
+        console.error('[analytics] falha ao inicializar posthog-js (ignorada):', err)
+    }
 }
 
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN
