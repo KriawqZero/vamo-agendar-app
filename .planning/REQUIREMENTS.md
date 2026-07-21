@@ -236,4 +236,4 @@ na Phase 4.
 
 ---
 *Requirements defined: 2026-07-20*
-*Last updated: 2026-07-20 after roadmap creation*
+*Last updated: 2026-07-21 — rede de proteção do banco (BKP-01 a BKP-03) removida do v1; 12 fases*

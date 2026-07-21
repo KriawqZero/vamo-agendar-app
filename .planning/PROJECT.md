@@ -89,6 +89,12 @@ cair na agenda do profissional sem que nada quebre no caminho.
 - [ ] Booking público aceita **e-mail OU WhatsApp** (pelo menos um dos dois)
 - [ ] Cliente e profissional têm um canal de suporte visível (`contato@vamoagendar.com.br`)
 
+**Autonomia do cliente final**
+
+- [ ] Cliente final cancela ou remarca o próprio agendamento por link assinado enviado na
+      confirmação e no lembrete — sem login, sem cadastro, sem código, com antecedência
+      mínima configurável pelo profissional
+
 **Obrigações de lançamento**
 
 - [ ] Termos de uso e política de privacidade publicados e cobrindo o fluxo real
@@ -123,9 +129,10 @@ cair na agenda do profissional sem que nada quebre no caminho.
   reestruturar e rodar migration destrutiva sem cerimônia. Os requisitos BKP-01 a BKP-03 e
   a fase dedicada foram removidos do v1. **Volta a ser obrigatório quando existir dado de
   terceiro no banco** — ver Key Decisions
-- **Multi-profissional, multi-filial, cancelamento autônomo pelo cliente, app nativo,
-  migração para WhatsApp Cloud API** — todos em "Depois de evidência" no
-  `docs/PENDENCIAS.md`, cada um com gatilho observável
+- **Multi-profissional, multi-filial, app nativo, migração para WhatsApp Cloud API** —
+  todos em "Depois de evidência" no `docs/PENDENCIAS.md`, cada um com gatilho observável.
+  *Corrigido em 2026-07-21:* "cancelamento autônomo pelo cliente" saiu desta lista — foi
+  promovido de v2 para v1 na sessão de planejamento e é a Phase 8 inteira (AUT-01 a AUT-09)
 - **Tráfego pago** — divulgação orgânica e direta primeiro; mídia paga só depois que o
   funil mostrar conversão
 
@@ -220,4 +227,4 @@ This document evolves at phase transitions and milestone boundaries.
 5. Update Context with current state (users, feedback, metrics)
 
 ---
-*Last updated: 2026-07-20 after initialization*
+*Last updated: 2026-07-21 — rede de proteção do banco removida do v1; roadmap com 12 fases*
