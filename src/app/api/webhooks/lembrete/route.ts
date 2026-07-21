@@ -9,7 +9,7 @@ import { formatarDataHora, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { PLANOS } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 import { capturarEventoTenant } from '@/lib/analytics/server'
-import { reportarExcecao } from '@/lib/observabilidade/reportar'
+import { reportarExcecaoAguardando } from '@/lib/observabilidade/reportar'
 
 export async function POST(req: NextRequest) {
     try {
@@ -193,10 +193,14 @@ export async function POST(req: NextRequest) {
         // Devolve 500 ao QStash e o erro morre no console do Railway. Sem este
         // reporte, um lembrete que para de sair não tem detector — o cliente
         // final não reclama de mensagem que não chegou.
-        reportarExcecao(err, { fluxo: 'webhook_lembrete' })
-        return NextResponse.json(
-            { error: err instanceof Error && err.message ? err.message : 'Erro interno.' },
-            { status: 500 },
-        )
+        //
+        // AGUARDADO de propósito: a resposta vai embora na linha seguinte, e
+        // reporte fire-and-forget se perde em runtime que congela após a
+        // resposta. `flush` tem teto de 2s.
+        await reportarExcecaoAguardando(err, { fluxo: 'webhook_lembrete' })
+        // A mensagem interna (inclusive de erro do Supabase) NÃO volta ao
+        // chamador: é a regra do projeto, e agora que o Sentry recebe o erro
+        // não há mais nada que ela resolva aqui.
+        return NextResponse.json({ error: 'Erro interno.' }, { status: 500 })
     }
 }
