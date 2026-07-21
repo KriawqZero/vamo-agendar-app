@@ -1,10 +1,12 @@
 import * as Sentry from '@sentry/nextjs'
 
+import { dsnDoSentry } from './lib/observabilidade/dsn'
 import { opcoesBaseSentry, semIntegracaoDeConsole } from './lib/observabilidade/opcoes-sentry'
 import { sanitizarBreadcrumb, sanitizarEventoSentry } from './lib/observabilidade/sanitizacao'
 
-// Mesmo guard e mesmas opções do runtime de servidor: sem DSN, não inicializa.
-const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN
+// Mesmo guard, mesma leitura dinâmica e mesmas opções do runtime de servidor:
+// sem DSN, não inicializa.
+const dsn = dsnDoSentry()
 
 if (dsn) {
     Sentry.init({

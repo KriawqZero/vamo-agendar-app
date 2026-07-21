@@ -15,26 +15,9 @@
  * import de topo.
  */
 
-type ContextoObservabilidade = Record<string, string | number | boolean | null>
+import { dsnDoSentry as dsn } from './dsn'
 
-/**
- * DSN lido em RUNTIME, e o acesso dinâmico não é estilo.
- *
- * `process.env.NEXT_PUBLIC_SENTRY_DSN` escrito literalmente é substituído pelo
- * VALOR em tempo de build. Num ambiente onde build e runtime têm envs
- * diferentes (Dockerfile multi-stage, cache de build, CI separado do deploy),
- * o literal viraria `undefined` no bundle e TODO `reportarExcecao` seria no-op
- * em silêncio — com o fail-fast de `env.ts` reportando tudo verde, porque ele
- * lê `process.env` dinamicamente e encontra a variável. Sentry morto sem
- * sintoma é exatamente o que OPE-02 não pode ser.
- *
- * O literal fica de fallback: no bundle do browser `process.env` não existe em
- * runtime, e ali só o valor congelado no build funciona.
- */
-function dsn(): string | undefined {
-    const ambiente = process.env as Record<string, string | undefined>
-    return ambiente.NEXT_PUBLIC_SENTRY_DSN?.trim() || process.env.NEXT_PUBLIC_SENTRY_DSN?.trim()
-}
+type ContextoObservabilidade = Record<string, string | number | boolean | null>
 
 /** Reporta uma exceção ao Sentry. No-op sem DSN; nunca lança. */
 export function reportarExcecao(erro: unknown, contexto?: ContextoObservabilidade): void {

@@ -1,12 +1,17 @@
 import * as Sentry from '@sentry/nextjs'
 
+import { dsnDoSentry } from './lib/observabilidade/dsn'
 import { opcoesBaseSentry, semIntegracaoDeConsole } from './lib/observabilidade/opcoes-sentry'
 import { sanitizarBreadcrumb, sanitizarEventoSentry } from './lib/observabilidade/sanitizacao'
 
 // Sem DSN NÃO chamamos `Sentry.init` — a doc é explícita que `enabled: false`
 // não evita todo o overhead da instrumentação; não inicializar é o
 // desligamento de verdade. É o mesmo guard que `analytics/client.ts:25` usa.
-const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN
+//
+// A leitura é dinâmica (ver `dsn.ts`): acesso literal a `NEXT_PUBLIC_*` é
+// congelado no build, e num ambiente com build e runtime separados este init
+// nunca rodaria enquanto o fail-fast de env.ts reportava tudo verde.
+const dsn = dsnDoSentry()
 
 if (dsn) {
     Sentry.init({

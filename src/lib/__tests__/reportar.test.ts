@@ -10,6 +10,7 @@ vi.mock('@sentry/nextjs', () => ({
     flush: (timeout?: number) => flushMock(timeout),
 }))
 
+import { dsnDoSentry } from '../observabilidade/dsn'
 import { reportarExcecao, reportarExcecaoAguardando } from '../observabilidade/reportar'
 
 beforeEach(() => {
@@ -19,6 +20,21 @@ beforeEach(() => {
 
 afterEach(() => {
     vi.unstubAllEnvs()
+})
+
+describe('dsnDoSentry', () => {
+    it('reflete o process.env do RUNTIME a cada chamada', () => {
+        vi.stubEnv('NEXT_PUBLIC_SENTRY_DSN', '')
+        expect(dsnDoSentry()).toBeFalsy()
+
+        vi.stubEnv('NEXT_PUBLIC_SENTRY_DSN', 'https://chave@sentry.local/1')
+        expect(dsnDoSentry()).toBe('https://chave@sentry.local/1')
+    })
+
+    it('trata DSN só com espaço como ausente', () => {
+        vi.stubEnv('NEXT_PUBLIC_SENTRY_DSN', '   ')
+        expect(dsnDoSentry()).toBeFalsy()
+    })
 })
 
 describe('reportarExcecao', () => {
