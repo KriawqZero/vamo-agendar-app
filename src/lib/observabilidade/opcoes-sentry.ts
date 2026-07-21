@@ -57,10 +57,22 @@ export const opcoesBaseSentry = {
         // `urlQueryParams` substitui o `queryParams` deprecado. A querystring de
         // `/book/[slug]` é o vetor de PII mais provável da página pública.
         urlQueryParams: false,
+        // ⚠️ ALLOWLIST, e o motivo é estrutural: definir `dataCollection`
+        // troca a BASE de defaults do SDK — `resolveDataCollectionOptions.js:18`
+        // passa a usar o conjunto permissivo em vez do conjunto de
+        // `sendDefaultPii: false`. Com isso, um `deny` nosso SUBSTITUI a
+        // PII_HEADER_SNIPPETS embutida (`['forwarded','-ip','remote-','via','-user']`)
+        // em vez de somar a ela — `x-real-ip` (que o Railway põe em toda
+        // requisição), `cf-connecting-ip`, `true-client-ip` e o header
+        // `Forwarded` voltariam a ser coletados. Com allowlist, header novo
+        // fica de fora por construção.
         httpHeaders: {
-            request: { deny: ['cookie', 'authorization', 'x-forwarded-for'] },
-            response: { deny: ['set-cookie'] },
+            request: { allow: ['content-type', 'accept-language', 'user-agent'] },
+            response: { allow: ['content-type'] },
         },
+        // Sem IA no projeto hoje. Vinha `true/true` do conjunto permissivo, ou
+        // seja: uma trava desligada sem ninguém ter decidido isso.
+        genAI: { inputs: false, outputs: false },
         // ⚠️ Os dois abaixo são `true` por padrão no SDK e NÃO estavam na
         // pesquisa — são vetores reais de PII neste projeto:
         // - variáveis locais de uma Server Action pública incluem `nome` e

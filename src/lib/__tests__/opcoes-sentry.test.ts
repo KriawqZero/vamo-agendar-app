@@ -31,11 +31,39 @@ describe('opcoesBaseSentry', () => {
         expect(opcoesBaseSentry.dataCollection.httpBodies).toEqual([])
     })
 
-    it('nega os headers que carregam sessão e IP do cliente final', () => {
-        const negados = opcoesBaseSentry.dataCollection.httpHeaders.request.deny
-        expect(negados).toContain('cookie')
-        expect(negados).toContain('authorization')
-        expect(negados).toContain('x-forwarded-for')
+    it('coleta headers por allowlist, nunca por denylist', () => {
+        // Denylist aqui é furo estrutural: definir `dataCollection` troca a base
+        // de defaults do SDK para o lado permissivo, e um `deny` nosso
+        // SUBSTITUI o filtro de PII embutido em vez de somar a ele.
+        const permitidos = opcoesBaseSentry.dataCollection.httpHeaders.request.allow
+        expect(permitidos).toEqual(['content-type', 'accept-language', 'user-agent'])
+        expect(opcoesBaseSentry.dataCollection.httpHeaders.response.allow).toEqual(['content-type'])
+    })
+
+    it('nenhum header de sessão ou de IP do cliente final é coletável', () => {
+        const permitidos = [
+            ...opcoesBaseSentry.dataCollection.httpHeaders.request.allow,
+            ...opcoesBaseSentry.dataCollection.httpHeaders.response.allow,
+        ]
+        for (const proibido of [
+            'cookie',
+            'set-cookie',
+            'authorization',
+            'x-forwarded-for',
+            'x-real-ip',
+            'cf-connecting-ip',
+            'true-client-ip',
+            'x-client-ip',
+            'forwarded',
+        ]) {
+            expect(permitidos).not.toContain(proibido)
+        }
+    })
+
+    it('não coleta entrada nem saída de IA', () => {
+        // `true/true` no conjunto permissivo do SDK. Inócuo hoje, trava mesmo
+        // assim: quem ligar IA neste projeto não vai lembrar deste arquivo.
+        expect(opcoesBaseSentry.dataCollection.genAI).toEqual({ inputs: false, outputs: false })
     })
 
     it('não captura variáveis locais do stack nem dados de query do banco', () => {
