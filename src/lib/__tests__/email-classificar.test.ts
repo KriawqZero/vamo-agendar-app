@@ -3,8 +3,12 @@ import { describe, it, expect } from 'vitest'
 import { classificarErroResend } from '../email/classificar'
 
 /**
- * A tabela veio da união fechada de literais do SDK (`RESEND_ERROR_CODE_KEY`),
- * então o mapeamento é exaustivo e conferível pelo compilador.
+ * A tabela é um `Record<ErrorResponse['name'], MotivoFalhaEmail>`, então a
+ * exaustividade é conferida pelo COMPILADOR: literal novo no SDK quebra o
+ * `tsc` por chave faltando. (Até WR-05 isto era um `switch (nome: string)` e a
+ * afirmação era falsa — o teste conferia 21 literais copiados à mão e mais
+ * nada.) O caso de runtime que o tipo não cobre — código novo publicado pelo
+ * Resend antes de atualizarmos o pacote — está no último teste.
  */
 describe('classificarErroResend', () => {
     it.each([
