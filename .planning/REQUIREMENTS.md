@@ -144,17 +144,102 @@ Reconhecidos e adiados. Não entram neste roadmap.
 
 ## Traceability
 
-Preenchida na criação do roadmap.
+Preenchida na criação do roadmap (2026-07-20). Cada requisito v1 mapeia para **exatamente
+uma** fase de `.planning/ROADMAP.md`.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (a mapear) | — | Pending |
+| BKP-01 | Phase 1 | Pending |
+| BKP-02 | Phase 1 | Pending |
+| BKP-03 | Phase 1 | Pending |
+| SEG-01 | Phase 2 | Pending |
+| SEG-02 | Phase 2 | Pending |
+| SEG-03 | Phase 2 | Pending |
+| SEG-04 | Phase 2 | Pending |
+| SEG-05 | Phase 2 | Pending |
+| AGE-01 | Phase 3 | Pending |
+| AGE-02 | Phase 3 | Pending |
+| AGE-03 | Phase 3 | Pending |
+| AGE-04 | Phase 3 | Pending |
+| AGE-05 | Phase 3 | Pending |
+| ABU-01 | Phase 4 | Pending |
+| ABU-02 | Phase 4 | Pending |
+| ABU-03 | Phase 4 | Pending |
+| DIF-01 | Phase 7 | Pending |
+| DIF-02 | Phase 7 | Pending |
+| PLA-01 | Phase 8 | Pending |
+| PLA-02 | Phase 8 | Pending |
+| PLA-03 | Phase 8 | Pending |
+| PLA-04 | Phase 8 | Pending |
+| COB-01 | Phase 10 | Pending |
+| COB-02 | Phase 10 | Pending |
+| COB-03 | Phase 10 | Pending |
+| COB-04 | Phase 10 | Pending |
+| COB-05 | Phase 10 | Pending |
+| COB-06 | Phase 10 | Pending |
+| COB-07 | Phase 10 | Pending |
+| COB-08 | Phase 10 | Pending |
+| EML-01 | Phase 5 | Pending |
+| EML-02 | Phase 10 | Pending |
+| EML-03 | Phase 6 | Pending |
+| EML-04 | Phase 5 | Pending |
+| EML-05 | Phase 5 | Pending |
+| EML-06 | Phase 5 | Pending |
+| BOO-01 | Phase 6 | Pending |
+| BOO-02 | Phase 6 | Pending |
+| BOO-03 | Phase 6 | Pending |
+| AUT-01 | Phase 9 | Pending |
+| AUT-02 | Phase 9 | Pending |
+| AUT-03 | Phase 9 | Pending |
+| AUT-04 | Phase 9 | Pending |
+| AUT-05 | Phase 9 | Pending |
+| AUT-06 | Phase 9 | Pending |
+| AUT-07 | Phase 9 | Pending |
+| AUT-08 | Phase 9 | Pending |
+| AUT-09 | Phase 9 | Pending |
+| JUR-01 | Phase 11 | Pending |
+| JUR-02 | Phase 11 | Pending |
+| JUR-03 | Phase 11 | Pending |
+| OPE-01 | Phase 12 | Pending |
+| OPE-02 | Phase 12 | Pending |
+| OPE-03 | Phase 12 | Pending |
+| OPE-04 | Phase 12 | Pending |
+| OPE-05 | Phase 12 | Pending |
+| ATI-01 | Phase 13 | Pending |
+| ATI-02 | Phase 13 | Pending |
+| ATI-03 | Phase 13 | Pending |
+
+### Por fase
+
+| Phase | Nome | Requisitos | Qtd |
+|-------|------|------------|-----|
+| 1 | Rede de proteção do banco | BKP-01, BKP-02, BKP-03 | 3 |
+| 2 | Hardening da superfície pública | SEG-01, SEG-02, SEG-03, SEG-04, SEG-05 | 5 |
+| 3 | Integridade da agenda | AGE-01, AGE-02, AGE-03, AGE-04, AGE-05 | 5 |
+| 4 | Anti-abuso no booking público | ABU-01, ABU-02, ABU-03 | 3 |
+| 5 | Canal de e-mail transacional | EML-01, EML-04, EML-05, EML-06 | 4 |
+| 6 | Contato flexível no booking | EML-03, BOO-01, BOO-02, BOO-03 | 4 |
+| 7 | Diferencial visível — agenda densa | DIF-01, DIF-02 | 2 |
+| 8 | Fim do Plus e preço correto | PLA-01, PLA-02, PLA-03, PLA-04 | 4 |
+| 9 | Autonomia do cliente final | AUT-01, AUT-02, AUT-03, AUT-04, AUT-05, AUT-06, AUT-07, AUT-08, AUT-09 | 9 |
+| 10 | Cobrança automática ponta a ponta | COB-01, COB-02, COB-03, COB-04, COB-05, COB-06, COB-07, COB-08, EML-02 | 9 |
+| 11 | Obrigações jurídicas e LGPD executável | JUR-01, JUR-02, JUR-03 | 3 |
+| 12 | Observabilidade e go-live | OPE-01, OPE-02, OPE-03, OPE-04, OPE-05 | 5 |
+| 13 | Ativação dos primeiros profissionais | ATI-01, ATI-02, ATI-03 | 3 |
 
 **Coverage:**
 - v1 requirements: 59 total
-- Mapped to phases: 0
-- Unmapped: 59 ⚠️
+- Mapped to phases: 59
+- Unmapped: 0 ✓
+
+**Nota sobre a categoria EML:** os seis requisitos de e-mail estão distribuídos em três
+fases porque só assim viram critério verificável. EML-03 (confirmação ao cliente final)
+depende do booking coletar e-mail, o que acontece na Phase 6 — hoje o campo não existe na
+UI pública. EML-02 (recibo da assinatura) dispara a partir do webhook de cobrança, na
+Phase 10, e a pesquisa é explícita que o recibo não pode viver no caminho síncrono do
+billing. Os demais (EML-01, EML-04, EML-05, EML-06) são a infraestrutura de envio e ficam
+na Phase 5.
 
 ---
 *Requirements defined: 2026-07-20*
-*Last updated: 2026-07-20 after initial definition*
+*Last updated: 2026-07-20 after roadmap creation*

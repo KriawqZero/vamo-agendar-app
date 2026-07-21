@@ -1,0 +1,419 @@
+# Roadmap: VamoAgendar — Lançamento Público
+
+## Overview
+
+O produto está construído e funcionando. Este milestone não constrói features novas por
+prazer: fecha buracos que já existem, cria a rede de proteção que hoje não existe, e só
+depois entrega o que falta para receber tráfego real. A sequência é organizada em camadas
+técnicas e ordenada por valor decrescente — banco protegido → superfície pública fechada →
+agenda íntegra → anti-abuso → canal de e-mail → contato flexível → diferencial visível →
+preço correto → autonomia do cliente → cobrança automática → obrigações legais →
+observabilidade → abertura ao público.
+
+A ordem não é preferência: as sete dependências duras abaixo foram verificadas contra o
+código real e violá-las produz trabalho que não funciona ou que precisa ser refeito.
+
+## Dependências duras
+
+| Precede | Depende | Por quê |
+|---|---|---|
+| Phase 1 (backup + keep-alive) | Toda fase que toca schema | Supabase Free tem retenção de backup **zero**. Sem PITR, o último `pg_dump` é a única recuperação possível |
+| Phase 2 (hardening da Data API) | Phase 4 (rate limit) | Enquanto o INSERT `anon` existir, o rate limit na Server Action é teatro — o atacante ignora a action e escreve direto no PostgREST |
+| Phase 2 (hardening da Data API) | Phase 10 (cobrança) | A partir do checkout, os dados de cobrança passam a ser reais; o custo de um vazamento muda de categoria |
+| Desnormalização da duração | Exclusion constraint | Ambas dentro da Phase 3, nesta ordem obrigatória: a constraint **não pode nem ser escrita** hoje, porque a duração vive em `servicos` e constraint só enxerga a própria linha |
+| Phase 5 (templates de e-mail) | Phase 6 ("e-mail OU WhatsApp") | O booking só pode aceitar e-mail quando existir algo que envie e-mail |
+| Phase 5 (e-mail funcionando) | Phase 13 (escalar convites) | O e-mail é o plano de continuidade caso o WhatsApp do profissional seja banido — e ban em Baileys costuma ser permanente |
+| Phase 3 (exclusion constraint) | Phase 9 (cancelamento/remarcação) | Remarcação pública precisa da mesma proteção contra sobreposição do agendamento normal |
+
+## Regra transversal de aceite
+
+**Toda migration que adiciona ou aperta constraint só é aplicada depois de uma query de
+pré-voo que conta as linhas violadoras em produção, com o resultado registrado no plano da
+fase.** Migrations declarativas geradas por `supabase db diff` produzem DDL correto para
+banco vazio — o diff não sabe nada dos dados que já estão lá. Vale para a exclusion
+constraint (Phase 3), o unique de `clientes` (Phase 3), o `CHECK` de contato (Phase 6), o
+`CHECK (plano = 'pro')` (Phase 8), o `ck_hora_fim_apos_inicio` já pendente, e qualquer
+constraint das Phases 9 a 11.
+
+Corolário da Phase 1: nenhuma migration destrutiva roda em produção sem um `pg_dump`
+imediatamente anterior.
+
+## Barra mínima para abrir ao público
+
+Não há data fixa de lançamento. O produto abre quando esta barra estiver satisfeita:
+
+**Obrigatórias — Phases 1, 2, 3, 4, 5, 6, 8, 11, 12, 13.**
+
+- 1 a 4 são o que protege o critério de sucesso "sem que nada quebre no caminho"
+- 5 e 6 entregam o canal de e-mail, que é o plano de continuidade do WhatsApp e portanto
+  pré-requisito de escalar convites (Phase 13)
+- 8 impede abrir vendendo um plano que vai morrer com um selo de desconto que mente
+- 11 é obrigação legal, não escolha
+- 12 é o que torna o critério de sucesso verificável — sem ela não há onde ver se
+  agendamentos reais estão acontecendo
+- 13 é a abertura em si
+
+**Adiáveis para depois da abertura, nesta ordem de preferência de corte:**
+
+1. **Phase 7 (diferencial visível)** — a mais barata das três; cortar aqui dói menos porque
+   custa pouco para retomar
+2. **Phase 9 (autonomia do cliente final)** — table stake, mas tem contorno: o canal de
+   suporte visível da Phase 11 absorve os pedidos de cancelamento até ela existir
+3. **Phase 10 (cobrança automática)** — o contorno é o de hoje: upgrade manual por SQL.
+   ⚠️ Cortar a Phase 10 também adia **ATI-02** (owner pagando o próprio produto), e a
+   abertura passa a acontecer sem cobrança automática — decisão que o owner precisa tomar
+   explicitamente, não descobrir
+
+Se as Phases 9 e 10 forem adiadas para depois da Phase 12, elas passam a rodar sob as
+regras de migration imutável (fase DEV encerrada) — o que é o comportamento correto, só
+precisa ser sabido antes.
+
+## Phases
+
+**Numeração:**
+- Fases inteiras (1, 2, 3): trabalho planejado do milestone
+- Fases decimais (2.1, 2.2): inserções urgentes depois do planejamento
+
+- [ ] **Phase 1: Rede de proteção do banco** - Dump próprio verificado e keep-alive antes de qualquer migration deste milestone
+- [ ] **Phase 2: Hardening da superfície pública** - A chave publicável deixa de servir a base de profissionais e a agenda de todos os tenants
+- [ ] **Phase 3: Integridade da agenda** - Duração gravada no agendamento e proteção atômica contra double-booking
+- [ ] **Phase 4: Anti-abuso no booking público** - Rate limit e honeypot sem nenhuma fricção visível ao cliente
+- [ ] **Phase 5: Canal de e-mail transacional** - Resend em domínio próprio, com remetente reconhecível e supressão de bounce
+- [ ] **Phase 6: Contato flexível no booking** - Cliente final agenda com e-mail OU WhatsApp e recebe a confirmação pelo que informou
+- [ ] **Phase 7: Diferencial visível — agenda densa** - Profissional enxerga o buraco de agenda que a grade anti-buraco evitou
+- [ ] **Phase 8: Fim do Plus e preço correto** - Um único plano pago, R$ 39,90 com fundador vitalício de R$ 29,90 e selo derivado
+- [ ] **Phase 9: Autonomia do cliente final** - Cancelamento e remarcação por link assinado, sem login, cadastro ou código
+- [ ] **Phase 10: Cobrança automática ponta a ponta** - Checkout Asaas em sandbox, webhook idempotente e regra de inadimplência com prazo
+- [ ] **Phase 11: Obrigações jurídicas e LGPD executável** - Termos, política, canal de suporte e exclusão por anonimização
+- [ ] **Phase 12: Observabilidade e go-live** - Painel do owner, error tracking, funil verificado e banco em modo produção
+- [ ] **Phase 13: Ativação dos primeiros profissionais** - Convites escalonados com acompanhamento até o primeiro agendamento real
+
+## Phase Details
+
+### Phase 1: Rede de proteção do banco
+**Goal**: O owner consegue desfazer um erro de migration, e o link público de todos os profissionais nunca cai por pausa de inatividade do Supabase
+**Depends on**: Nada (primeira fase)
+**Requirements**: BKP-01, BKP-02, BKP-03
+**Success Criteria** (o que precisa ser VERDADE):
+  1. O owner restaurou um dump em ambiente descartável ao menos uma vez e confirmou que os dados voltaram íntegros — a restauração foi feita, não presumida
+  2. Existe um dump com data recente disponível a qualquer momento, e gerar um novo antes de uma migration é um comando, não um procedimento
+  3. O projeto Supabase registra atividade de banco em todos os dias dos últimos 7 — nenhuma janela de 7 dias parados
+  4. A regra "nenhuma migration destrutiva sem dump imediatamente anterior" está escrita onde quem for aplicar a migration vai ler
+**Plans**: TBD
+
+**Notas de execução:**
+- Keep-alive por cron do QStash batendo em rota com `SELECT 1` — fornecedor já contratado, custo zero, elimina 100% do risco de pausa
+- A pausa preserva os dados (só é irrecuperável após 90 dias); o risco caro é a retenção de backup zero, e ele é **deste** milestone, não do futuro
+- **Tarefa do owner, em paralelo e começando agora:** DNS do subdomínio de e-mail (SPF + DKIM + MX + DMARC `p=none` com `rua` monitorado). Propagação de 24–48h bloqueia a Phase 5; começar no dia 1
+
+---
+
+### Phase 2: Hardening da superfície pública
+**Goal**: A chave publicável que vai no bundle deixa de dar acesso a qualquer coisa além do estritamente necessário para a página pública funcionar, e o webhook de lembrete só aceita quem o QStash assinou
+**Depends on**: Phase 1
+**Requirements**: SEG-01, SEG-02, SEG-03, SEG-04, SEG-05
+**Success Criteria** (o que precisa ser VERDADE):
+  1. `curl` anônimo em `/rest/v1/perfis_empresas` não devolve a lista de profissionais da plataforma — nem `telefone_contato`, nem o `org_id` do Clerk
+  2. POST anônimo em `/rest/v1/agendamentos` e `/rest/v1/clientes` é rejeitado, e o booking público continua funcionando exatamente como antes
+  3. `curl` anônimo em `agendamentos` e `excecoes_agenda` devolve só as colunas que a engine de disponibilidade consome — sem `cliente_id`, sem o texto livre de `motivo`
+  4. Uma tabela nova criada no schema `public` não aparece na Data API sem GRANT explícito
+  5. POST sem assinatura válida do QStash no webhook de lembrete é rejeitado, e a aplicação não sobe se as chaves de assinatura não estiverem configuradas
+**Plans**: TBD
+
+**Notas de execução:**
+- Fase de baixo risco e alto retorno: **nenhum componente do browser fala com o Supabase** (não existe `createBrowserClient` no projeto), então a superfície `anon` pode ser reduzida sem tocar em frontend
+- A escrita operacional já usa `createAdminClient()` pós-validação — as policies de INSERT `anon` são superfície sem função
+- Padrão a replicar: o `REVOKE SELECT` + `GRANT SELECT (colunas)` que `08_assinaturas.sql` já faz corretamente
+- `ALTER DEFAULT PRIVILEGES ... REVOKE` no schema `public` + a regra escrita no `docs/03`
+- SEG-05 fecha o `?secret=` com fallback `'secret-key'`, que hoje transforma env ausente em porta destrancada para disparar WhatsApp em nome de tenants
+
+---
+
+### Phase 3: Integridade da agenda
+**Goal**: Dois clientes nunca ocupam o mesmo horário do mesmo profissional, e o tamanho de um agendamento não muda depois que ele foi marcado
+**Depends on**: Phase 1, Phase 2
+**Requirements**: AGE-01, AGE-02, AGE-03, AGE-04, AGE-05
+**Success Criteria** (o que precisa ser VERDADE):
+  1. Editar a duração de um serviço não altera o horário de término de agendamentos já marcados
+  2. Serviço desativado continua ocupando na agenda exatamente o tempo que foi reservado — a engine não assume mais 30 minutos
+  3. Duas requisições simultâneas para o mesmo intervalo resultam em exatamente um agendamento ativo, tanto no fluxo público quanto no walk-in do dashboard
+  4. Quem perde a corrida vê "esse horário acabou de ser reservado, escolha outro" com os horários recarregados — nunca a mensagem do PostgreSQL, que carrega o `org_id` e o horário de terceiro
+  5. Agendar duas vezes com o mesmo telefone no mesmo tenant reaproveita o cliente existente, sem criar segunda linha nem duplicar disparo
+**Plans**: TBD
+
+**Ordem interna obrigatória** (não é sugestão — a etapa 3 não pode ser escrita antes da 1):
+1. `data_hora_fim timestamptz` em `agendamentos`, preenchida pela action no ato da reserva, backfill conferido, `NOT NULL` depois do backfill
+2. Query de pré-voo: sobreposições já existentes (self-join com `&&`) e duplicatas de `(tenant_id, telefone)` em `clientes` — resolvidas **antes** da migration
+3. `CREATE EXTENSION btree_gist` + coluna `periodo tstzrange` + `EXCLUDE USING gist (tenant_id WITH =, periodo WITH &&) WHERE (status <> 'cancelado')` + unique `(tenant_id, telefone)` convertendo o select-then-insert em upsert atômico
+
+**Notas de execução:**
+- `NOT VALID` **não existe** para exclusion constraint (só FK, CHECK e NOT NULL) — não há "aplica agora, valida depois"; os dados precisam estar limpos antes
+- `tenant_id WITH =` é obrigatório na constraint: sem ele, um visitante mapeia a agenda de qualquer profissional por tentativa-e-erro, porque checagem de integridade **bypassa RLS** por design
+- Sem o predicado `status <> 'cancelado'`, horário cancelado bloqueia o slot para sempre e o bug só aparece semanas depois como "sumiu horário da agenda"
+- Confiança MÉDIA-ALTA na imutabilidade do construtor `tstzrange` em coluna gerada; plano B definido é trigger `BEFORE INSERT OR UPDATE`
+
+---
+
+### Phase 4: Anti-abuso no booking público
+**Goal**: Um script repetindo requisições não consegue lotar a agenda de um profissional, e o cliente legítimo não percebe absolutamente nada
+**Depends on**: Phase 2, Phase 3
+**Requirements**: ABU-01, ABU-02, ABU-03
+**Success Criteria** (o que precisa ser VERDADE):
+  1. Script repetindo requisições para de conseguir criar agendamentos ao bater o teto — tanto pela Server Action quanto pela Data API
+  2. O cliente legítimo agenda sem nenhuma etapa nova: nenhum CAPTCHA, nenhum campo visível a mais, nenhum atraso perceptível
+  3. O owner consegue ver quantas requisições foram barradas e por qual chave (IP, telefone ou tenant), o suficiente para saber se o limite está pegando gente de verdade
+**Plans**: TBD
+
+**Notas de execução:**
+- Rate limit por IP puro falha nos dois sentidos no Brasil: CGNAT de operadora móvel faz clientes diferentes colidirem, e script com IP rotativo passa direto. Chave composta por camada: IP folgado, telefone normalizado apertado, `tenant_id` como teto horário
+- `slidingWindow`, nunca `fixedWindow` (que permite o dobro na virada da janela)
+- Honeypot com **sucesso falso**: bot que recebe erro tenta de novo; bot que recebe sucesso vai embora
+- **Decisão pendente do owner** (10 minutos, mas precisa ser tomada e não herdada): Upstash Redis (recomendação da pesquisa — fornecedor já contratado pelo QStash, não gasta write no Supabase Free) vs. RPC atômica no Postgres. O Redis do Railway não serve: pertence à Evolution API e fala TCP, incompatível com a lib, que é HTTP/REST. Escolher um e desprovisionar ou documentar o outro
+- Calibrar olhando dado real: um salão movimentado divulgando o link pode legitimamente receber vários agendamentos no mesmo minuto
+
+---
+
+### Phase 5: Canal de e-mail transacional
+**Goal**: O produto consegue falar por e-mail com o profissional sem queimar a reputação de um domínio que não tem histórico nenhum
+**Depends on**: Phase 1 (DNS iniciado no dia 1)
+**Requirements**: EML-01, EML-04, EML-05, EML-06
+**Success Criteria** (o que precisa ser VERDADE):
+  1. Profissional que acaba de criar a conta recebe um e-mail com o link `/book/[slug]` dele pronto para compartilhar
+  2. O e-mail chega identificado pelo estabelecimento (`"<Estabelecimento> via VamoAgendar"`) e responder vai para o profissional, não para o VamoAgendar
+  3. Sem `RESEND_API_KEY` configurada, o produto funciona igual e nenhum fluxo quebra — no-op silencioso, como o PostHog já faz
+  4. Endereço que deu hard bounce entra em supressão e não recebe novo envio
+  5. A entrega foi verificada em Gmail, Outlook e um domínio corporativo, com a aba de chegada registrada (Principal, Promoções ou Spam)
+**Plans**: TBD
+**UI hint**: yes
+
+**Notas de execução:**
+- **Dependência externa de maior alcance do milestone:** verificação SPF/DKIM do subdomínio é tarefa de DNS do owner com propagação de 24–48h. O código descola do DNS pelo guard de env
+- Subdomínio dedicado (`mail.vamoagendar.com.br`) isola a reputação do domínio raiz
+- DMARC em `p=none` com `rua` monitorado; endurecer para `quarantine` só depois de semanas de relatório limpo. Publicar `p=reject` de saída derruba o próprio e-mail sem sinal claro de causa
+- O SDK do Resend **não lança** em erro — devolve `{ data, error }`; o wrapper nunca pode lançar
+- Teto do Free: 100 e-mails/dia, 3.000/mês, 1 domínio. Sem observação da cota, o e-mail falha em silêncio no melhor dia do lançamento
+
+---
+
+### Phase 6: Contato flexível no booking
+**Goal**: O cliente final agenda com o contato que ele tiver e recebe a confirmação por ele — sem que a promessa de `docs/05` continue sendo falsa
+**Depends on**: Phase 3 (dedupe de clientes), Phase 5 (templates)
+**Requirements**: BOO-01, BOO-02, BOO-03, EML-03
+**Success Criteria** (o que precisa ser VERDADE):
+  1. Cliente final conclui um agendamento informando só e-mail, só WhatsApp ou os dois; deixar os dois vazios é recusado no formulário **e** na Server Action, com mensagem que explica por quê
+  2. Cliente que informou e-mail recebe a confirmação com o nome do estabelecimento no assunto, não "Bem-vindo ao VamoAgendar"
+  3. A tela de sucesso aparece assim que o agendamento é gravado, sem esperar o envio de WhatsApp nem de e-mail
+  4. Cliente que já agendou antes é reconhecido por qualquer um dos contatos e não vira segunda linha em `clientes`
+**Plans**: TBD
+**UI hint**: yes
+
+**Notas de execução:**
+- Muda contrato em cadeia: `clientes.telefone` vira nullable + `CHECK (telefone IS NOT NULL OR email IS NOT NULL)` — **query de pré-voo obrigatória** antes do CHECK
+- **Decidir antes de planejar, não descobrir em produção:** precedência do lookup quando telefone e e-mail batem em clientes diferentes
+- Notificações movidas para `after()` — ganho colateral: a Fricção Zero passa a ser medida em milissegundos, não no round-trip da Evolution API. `after()` **não é fila**: se o processo morrer, o e-mail se perde em silêncio
+- Mitigações anti-ban de baixo custo que cabem aqui: jitter assíncrono via QStash (nunca `sleep` no request), janela de silêncio no fuso do tenant, teto diário por instância
+- O `telefone` nullable desta fase é pré-requisito da anonimização da Phase 11
+
+---
+
+### Phase 7: Diferencial visível — agenda densa
+**Goal**: O profissional enxerga o buraco de agenda que não aconteceu — o único item em que o produto está sozinho na faixa de preço, e que é invisível por natureza
+**Depends on**: Phase 3
+**Requirements**: DIF-01, DIF-02
+**Success Criteria** (o que precisa ser VERDADE):
+  1. O profissional vê no dashboard quantos horários invendáveis a grade anti-buraco evitou na agenda dele no mês, com o número vindo da própria engine — contado, não estimado
+  2. O profissional consegue ligar "mostrar todos os horários" e a página pública dele passa a oferecer a grade completa, com o efeito da escolha explicado antes de confirmar
+  3. Desligar o escape hatch devolve a grade anti-buraco sem precisar reconfigurar nada
+**Plans**: TBD
+**UI hint**: yes
+
+**Notas de execução:**
+- A lógica já existe: `gerarSlotsAntiBuraco` só precisa contar quantos candidatos descartou e por quê. Melhor relação valor/custo do backlog inteiro
+- O escape hatch não é opcional: sem ele a regra também pode ser lida como bug ("eu sei que estou livre às 14h e o cliente não vê")
+- Antecipada à monetização por decisão do owner — coerente com "uso real vale mais que receita neste milestone"
+- Fixa o contrato final da grade antes da Phase 9, que reaproveita as `etapas/` do booking numa página pública nova
+
+---
+
+### Phase 8: Fim do Plus e preço correto
+**Goal**: Existe um único plano pago, com o preço certo e um selo de desconto que não mente — sem depender do checkout existir
+**Depends on**: Phase 1
+**Requirements**: PLA-01, PLA-02, PLA-03, PLA-04
+**Success Criteria** (o que precisa ser VERDADE):
+  1. "Plus" não aparece em nenhuma tela, em nenhum tipo do código e em nenhuma linha do banco
+  2. Pro é oferecido a R$ 39,90, e quem assina até 02/02/2027 tem R$ 29,90 travado
+  3. Um tenant fundador que cancela e reassina continua pagando R$ 29,90 — o preço travado é propriedade do tenant, não da linha de assinatura
+  4. O selo mostra -25%, calculado a partir dos dois preços reais, e não existe caminho para escrever o percentual à mão
+**Plans**: TBD
+**UI hint**: yes
+
+**Notas de execução:**
+- **Query de pré-voo obrigatória:** contar linhas com `plano = 'plus'` (incluindo `status = 'cancelada'`, que ninguém lembra que existem) antes de apertar para `CHECK (plano = 'pro')`. É o que transforma a crença "ninguém assina Plus" em fato
+- `precos.ts` puro, sem I/O: `resolverPrecoPro` e `calcularSeloDesconto` derivado — fecha para sempre a classe de bug do `-50%`, que existe porque o selo é string em `planos.ts`
+- `perfis_cobranca` com `preco_travado`/`fundador_em` nasce aqui, em tabela separada de `perfis_empresas` (que tem leitura pública) e com `ON DELETE RESTRICT`
+- Corte de emergência natural: entrega o preço correto sem depender da Phase 10
+
+---
+
+### Phase 9: Autonomia do cliente final
+**Goal**: O cliente final cancela ou remarca sozinho pelo link que recebeu, sem conta, sem senha, sem código — table stake que toda a concorrência entrega, resolvido sem violar a Fricção Zero
+**Depends on**: Phase 3 (exclusion constraint), Phase 5 (e-mail), Phase 6 (contato flexível), Phase 7 (contrato final da grade)
+**Requirements**: AUT-01, AUT-02, AUT-03, AUT-04, AUT-05, AUT-06, AUT-07, AUT-08, AUT-09
+**Success Criteria** (o que precisa ser VERDADE):
+  1. O cliente abre o próprio agendamento por um link recebido na confirmação e no lembrete, sem login, cadastro ou código; o link vale para um único agendamento, não é adivinhável e não dá acesso a nenhum outro dado
+  2. O cliente cancela pelo link e o horário volta a aparecer como livre na página pública imediatamente
+  3. O cliente remarca escolhendo um novo horário na mesma tela, e a remarcação passa pela mesma proteção contra sobreposição do agendamento normal
+  4. Passada a antecedência mínima definida pelo profissional, o link mostra o contato do estabelecimento em vez de permitir a ação
+  5. O profissional vê a mudança na agenda e recebe e-mail, e o lembrete já agendado no QStash é cancelado ou realinhado conforme a ação
+**Plans**: TBD
+**UI hint**: yes
+
+**Notas de execução:**
+- Maior fase do milestone e maior do que parece: reintroduz grade de horários e revalidação numa página pública **sem sessão**
+- Reaproveita as `etapas/` do booking público e a lógica de `remarcarAgendamento` já existente em `src/app/actions/agendamentos.ts`
+- Promovida de v2 para v1 por decisão do owner
+- A antecedência mínima para cancelar/remarcar é config nova por tenant — distinta da `antecedencia_minima_minutos` que já governa o agendamento
+- Toda escrita passa por `createAdminClient()` com `tenant_id` derivado do token assinado, nunca do corpo da requisição
+
+---
+
+### Phase 10: Cobrança automática ponta a ponta
+**Goal**: O profissional assina o Pro sozinho pelo dashboard e o acesso é liberado quando o dinheiro entra — sem o owner no meio, e sem nenhum caminho de auto-promoção
+**Depends on**: Phase 2 (hardening), Phase 5 (e-mail), Phase 8 (modelo de preço)
+**Requirements**: COB-01, COB-02, COB-03, COB-04, COB-05, COB-06, COB-07, COB-08, EML-02
+**Success Criteria** (o que precisa ser VERDADE):
+  1. O profissional informa CPF ou CNPJ válido, assina pelo dashboard e o Pro é liberado **só** depois do pagamento confirmado — nenhum caminho permite um tenant se auto-promover
+  2. Clicar duas vezes em "Assinar" produz uma única assinatura no painel do Asaas, e o mesmo evento entregue duas vezes não duplica efeito nenhum
+  3. Uma falha de e-mail ou de terceiro nunca derruba o processamento de cobrança, e o recibo do VamoAgendar chega ao profissional quando a assinatura é confirmada
+  4. Assinante inadimplente é rebaixado após 10 dias em degraus (banner → e-mail → downgrade), e recupera logo, capa e cor intactos ao voltar a pagar
+  5. O owner vira de sandbox para produção seguindo uma checklist escrita, sem risco de cobrar de verdade achando que é teste
+**Plans**: TBD
+**UI hint**: yes
+
+**Notas de execução — fase mais arriscada do milestone** (única que combina dependência externa, idempotência e ordem de eventos; merece `--research-phase`):
+- Padrão assimétrico central: **a Server Action inicia, o webhook decide**. A action tem `orgId` e cria customer/subscription; ela nunca concede o plano
+- `eventos_asaas` com PK = id do evento: idempotência e material de replay de uma vez. Persistir cru → responder 2xx → processar em `after()`. 2xx até para evento desconhecido
+- **15 respostas não-2xx consecutivas pausam a fila do Asaas em silêncio, e os eventos morrem em 14 dias.** Um `await enviarRecibo()` no caminho síncrono derruba o billing inteiro por um problema de e-mail
+- Webhook marcado como **envio sequencial**: `PAYMENT_CONFIRMED` chegando depois de `PAYMENT_OVERDUE` inverte o estado da assinatura
+- CPF/CNPJ **não existe hoje em lugar nenhum do projeto** e é validado de verdade em produção (só dígitos, 11 ou 14) — é campo novo em formulário já em uso, não detalhe de integração
+- Reusar sempre o `asaas_customer_id`; nunca criar customer novo a cada tentativa. `externalReference = tenant_id` para reconciliar
+- Guard no boot validando que o prefixo da `ASAAS_API_KEY` (`$aact_hmlg_` vs `$aact_prod_`) bate com a base URL: 5 linhas que impedem "cobrei de verdade achando que era teste"
+- Downgrade **não-destrutivo**: personalização permanece na tabela e só para de ser servida pela sanitização. Defesa também no ponto de disparo do QStash, para lembretes já agendados de tenant rebaixado
+- Sem SDK: `fetch` direto (os pacotes npm são não-oficiais e abandonados). Header é `access_token`, **não** `Authorization: Bearer`; `User-Agent` é obrigatório
+- Expurgo de eventos com mais de 90 dias — o payload tem PII
+- **Lacunas a resolver no primeiro request contra o sandbox:** `/v3/checkouts` aceita `customer` (`cus_…`) existente ou só `customerData` inline? Qual o nome exato dos eventos de assinatura vs. pagamento no payload real?
+
+---
+
+### Phase 11: Obrigações jurídicas e LGPD executável
+**Goal**: O produto pode ser aberto ao público sem promessa falsa sobre dados, e um pedido de exclusão é atendível sem destruir a agenda do profissional
+**Depends on**: Phase 6 (`telefone` nullable)
+**Requirements**: JUR-01, JUR-02, JUR-03
+**Success Criteria** (o que precisa ser VERDADE):
+  1. Termos de uso e política de privacidade publicados nomeando os subprocessadores reais (Clerk, Supabase, Railway, Asaas, Resend, Upstash, Evolution, PostHog), com base legal por finalidade e prazo de retenção declarado
+  2. O cliente final e o profissional encontram `contato@vamoagendar.com.br` sem procurar — visível no booking público e no dashboard
+  3. Um pedido de exclusão é atendido por anonimização: o cliente deixa de ser identificável e os agendamentos do profissional continuam na agenda dele, inclusive os futuros
+**Plans**: TBD
+**UI hint**: yes
+
+**Notas de execução:**
+- São **duas coisas, não uma**: documento publicado e mudança de comportamento no schema
+- `agendamentos.cliente_id` tem `ON DELETE CASCADE`: atender exclusão com `DELETE FROM clientes` destrói agendamentos futuros que o profissional ainda vai atender. A rotina é `nome = 'Cliente removido'` + contatos NULL, agendamento preservado
+- Varredura completa dos `ON DELETE CASCADE` com a pergunta "que dado de terceiro isso destrói?" — já há um caso conhecido (`assinaturas.tenant_id` deveria ser `RESTRICT`)
+- Consentimento **não** é a base legal certa para o agendamento: execução de contrato a pedido do titular. Usar consentimento cria obrigação de revogação que quebraria o serviço
+- ⚠️ Parte de menor confiança de toda a pesquisa (nenhuma fonte primária da ANPD localizada). **Revisão jurídica humana obrigatória antes de publicar** — não é mais pesquisa técnica que resolve
+
+---
+
+### Phase 12: Observabilidade e go-live
+**Goal**: O owner enxerga se o sistema está de pé sem abrir o SQL editor, e o banco sai da fase DEV livre
+**Depends on**: Phase 1 até Phase 11 (todo o trabalho de schema precisa ter acontecido antes das migrations virarem imutáveis)
+**Requirements**: OPE-01, OPE-02, OPE-03, OPE-04, OPE-05
+**Success Criteria** (o que precisa ser VERDADE):
+  1. Uma página visível só ao owner responde quatro perguntas num só lugar: instâncias de WhatsApp conectadas vs. total, disparos com erro nas últimas 24h, agendamentos criados hoje e último evento de cobrança recebido
+  2. Uma exceção não tratada em produção chega ao owner sem depender de alguém reclamar
+  3. Um evento real de funil aparece no painel do PostHog de produção — verificado, não configurado
+  4. O banco de produção não tem dados de teste, e o tenant do owner continua lá, claramente identificado
+  5. Uma migration já aplicada não pode mais ser editada — hook de imutabilidade **ativado**, não só existente
+**Plans**: TBD
+**UI hint**: yes
+
+**Notas de execução:**
+- Quatro modos de falha do sistema são silenciosos por construção (WhatsApp desconectado, fila do Asaas pausada, cota do Resend estourada, lembrete com env faltando). Sem essa página, o detector padrão vira "cliente reclama" — e o profissional autônomo ocupado não reclama, ele volta para o caderninho
+- Sem essa fase o critério de sucesso do milestone ("agendamentos reais acontecendo") não é verificável e o milestone não tem como ser declarado concluído
+- Limpeza de dados de teste: `SELECT` com o mesmo `WHERE` + conferência de contagem + `pg_dump` imediatamente antes. Sem PITR, um `DELETE` mal filtrado não tem desfazer
+- O hook já existe pronto em `.claude/hooks/migrations-prod.md` — a entrega é ativá-lo
+
+---
+
+### Phase 13: Ativação dos primeiros profissionais
+**Goal**: Os primeiros profissionais reais entram no produto em ritmo que não queima o WhatsApp deles nem a reputação do domínio de e-mail
+**Depends on**: Phase 5 (e-mail como plano de continuidade), Phase 10 (ATI-02 precisa de cobrança real), Phase 12
+**Requirements**: ATI-01, ATI-02, ATI-03
+**Success Criteria** (o que precisa ser VERDADE):
+  1. O owner assinou o próprio produto com pagamento real antes de mandar o primeiro convite
+  2. Os convites saem em ritmo escalonado — poucos tenants por semana, nunca vários números de WhatsApp novos disparando juntos — com o template do onboarding personalizado por tenant
+  3. Cada profissional convidado é acompanhado até o primeiro agendamento real de um cliente que nunca ouviu falar do VamoAgendar, com a taxa de erro da instância dele observada em `disparos_whatsapp`
+  4. O profissional tem um caminho dentro do produto para mandar feedback ao owner
+**Plans**: TBD
+
+**Notas de execução:**
+- Não é fase de código: é **regra de operação escrita como critério**. Ban em Baileys costuma ser permanente, e o ban não degrada o Pro — remove a proposta de valor dele
+- Texto idêntico saindo de números diferentes é assinatura de disparo em massa; personalizar o template no onboarding é medida técnica de proteção, não de marketing
+- O ramp-up de convites é também o warm-up do domínio de e-mail: com volume baixo, três reclamações em mil já estouram o limiar de 0,1% do Gmail
+- Se a Phase 10 for adiada, ATI-02 fica bloqueado pela aprovação da conta Asaas para produção — dependência externa sem prazo, fora do controle do owner
+- Esta fase encerra o milestone: o critério de sucesso é um agendamento real caindo na agenda de um profissional real sem nada quebrar no caminho
+
+## Progress
+
+**Ordem de execução:** as fases executam em ordem numérica (1 → 2 → ... → 13). Execução sequencial, sem paralelização.
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 1. Rede de proteção do banco | 0/TBD | Not started | - |
+| 2. Hardening da superfície pública | 0/TBD | Not started | - |
+| 3. Integridade da agenda | 0/TBD | Not started | - |
+| 4. Anti-abuso no booking público | 0/TBD | Not started | - |
+| 5. Canal de e-mail transacional | 0/TBD | Not started | - |
+| 6. Contato flexível no booking | 0/TBD | Not started | - |
+| 7. Diferencial visível — agenda densa | 0/TBD | Not started | - |
+| 8. Fim do Plus e preço correto | 0/TBD | Not started | - |
+| 9. Autonomia do cliente final | 0/TBD | Not started | - |
+| 10. Cobrança automática ponta a ponta | 0/TBD | Not started | - |
+| 11. Obrigações jurídicas e LGPD executável | 0/TBD | Not started | - |
+| 12. Observabilidade e go-live | 0/TBD | Not started | - |
+| 13. Ativação dos primeiros profissionais | 0/TBD | Not started | - |
+
+## Cobertura de requisitos
+
+59 de 59 requisitos v1 mapeados, cada um para exatamente uma fase. Nenhum órfão, nenhuma
+duplicata. Rastreabilidade completa em `.planning/REQUIREMENTS.md`.
+
+| Categoria | Requisitos | Fase |
+|---|---|---|
+| Rede de proteção do banco | BKP-01 a BKP-03 | 1 |
+| Superfície pública e integridade multi-tenant | SEG-01 a SEG-05 | 2 |
+| Correção da agenda | AGE-01 a AGE-05 | 3 |
+| Anti-abuso | ABU-01 a ABU-03 | 4 |
+| Comunicação por e-mail | EML-01, EML-04, EML-05, EML-06 | 5 |
+| Comunicação por e-mail | EML-03 | 6 |
+| Comunicação por e-mail | EML-02 | 10 |
+| Booking público | BOO-01 a BOO-03 | 6 |
+| Diferencial visível | DIF-01, DIF-02 | 7 |
+| Planos e preço | PLA-01 a PLA-04 | 8 |
+| Autonomia do cliente final | AUT-01 a AUT-09 | 9 |
+| Cobrança | COB-01 a COB-08 | 10 |
+| Obrigações de lançamento | JUR-01 a JUR-03 | 11 |
+| Operação e go-live | OPE-01 a OPE-05 | 12 |
+| Ativação dos primeiros usuários | ATI-01 a ATI-03 | 13 |
+
+**Por que EML está partido em três fases:** EML-03 (confirmação ao cliente final) só é
+verificável quando o booking coletar e-mail, o que acontece na Phase 6 — hoje o campo não
+existe na UI pública. EML-02 (recibo da assinatura) só dispara quando o webhook de
+cobrança existir, na Phase 10, e a pesquisa é explícita que o recibo não pode estar no
+caminho síncrono do billing. Deixar os três na Phase 5 criaria dois critérios de sucesso
+não verificáveis.
+
+---
+*Roadmap criado: 2026-07-20*
+*Granularidade: fine | Execução: sequencial | Modo: interativo*
