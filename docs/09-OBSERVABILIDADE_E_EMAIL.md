@@ -26,11 +26,24 @@ O wizard do Sentry foi rodado em 2026-07-21 e o que ele gerou teve de ser mescla
 | bloco `webpack` | No-op sob Turbopack, com aviso de deprecação |
 | `enableLogs: true`, `tracesSampleRate: 1` | Não foram decisões nossas; 100% de tracing queima o tier gratuito |
 
-O wizard do **PostHog** é pior, porque inicializaria em `instrumentation-client.ts` — que
-já existe e é do Sentry, com as travas de PII dentro. Sobrescrever apaga tudo em silêncio.
-E o PostHog já é inicializado pelo `AnalyticsProvider` (`src/app/layout.tsx`): um segundo
-`posthog.init()` não soma, conflita. Seus defaults (`autocapture` ligado, session recording,
-`person_profiles` padrão) são precisamente o que `src/lib/analytics/client.ts` desliga.
+O wizard do **PostHog** (v2.46.0) foi rodado em 2026-07-21 e **teve de ser revertido por
+inteiro**. Não é previsão — é o registro do que ele fez, em 13 arquivos:
+
+| O que fez | Efeito |
+|---|---|
+| **Apagou `inicializarAnalytics()` de `src/lib/analytics/client.ts`** | Sumiram de uma vez `autocapture: false`, `disable_session_recording: true`, `person_profiles: 'identified_only'`, `capture_pageview: false` e `disable_surveys: true`. Session recording voltou a depender do **toggle do painel** — exatamente o que o comentário daquele arquivo manda não fazer |
+| Inicializou o PostHog **dentro de `src/instrumentation-client.ts`** | O arquivo do Sentry, onde vivem as travas anti-PII |
+| `capture_exceptions: true` no client e `enableExceptionAutocapture: true` no server | Segundo caminho de captura de exceção, que **não passa** por `sanitizarEventoSentry` nem por `beforeSend` |
+| Renomeou `NEXT_PUBLIC_POSTHOG_KEY` → `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN` | Quebra `docs/08`, o `.env.example`, o Railway e a lista de `src/lib/env.ts` |
+| Removeu `$process_person_profile: false` dos eventos de servidor | Evento server-side passaria a criar perfil de pessoa, contrariando decisão documentada em `analytics/server.ts` |
+| Trocou o `fetch` direto por `posthog-node` | Dependência nova e um cliente instanciado por evento |
+| Pôs `NEXT_PUBLIC_POSTHOG_HOST` como obrigatória em produção | Sem critério — a região é US, onde ela é opcional por ter default |
+
+Nada foi commitado, então `git checkout -- src/ package.json pnpm-lock.yaml` + `pnpm install`
+restaurou tudo. **Se acontecer de novo, é esse o procedimento.**
+
+O que ele propôs de bom foram seis nomes de evento, sem PII nas propriedades. Estão guardados
+em `docs/PENDENCIAS.md` para entrarem por decisão, não por wizard.
 
 **Do painel, copie à mão apenas o que é credencial ou identificador.** Nada mais.
 

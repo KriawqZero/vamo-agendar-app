@@ -690,6 +690,20 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
 Cada um com o **gatilho** que o traz de volta — nenhum é "esquecido", todos são
 "decididos e adiados".
 
+- **Seis eventos de funil do dashboard (B2B), propostos pelo wizard do PostHog.**
+  *Gatilho:* quando a Phase 11 for medir uso real do dashboard, ou antes se o
+  funil B2C já estiver instrumentado e faltar o lado do profissional. O wizard
+  foi revertido inteiro (ver `docs/09-OBSERVABILIDADE_E_EMAIL.md`), mas os nomes
+  e as propriedades que ele sugeriu são bons e **não carregam PII** — vale
+  aproveitar a ideia por decisão, com o contrato de `docs/08` respeitado:
+  `manual_booking_created` e `booking_rescheduled` (`agendamentos.ts`),
+  `service_updated` e `service_deleted` (`servicos.ts`),
+  `schedule_exception_saved` e `schedule_exception_deleted` (`agenda.ts`).
+  Propriedades propostas, todas seguras: `service_duration_minutes`,
+  `whatsapp_requested`, `customer_record: 'existing' | 'new_or_matched'`.
+  Custo: nomear em inglês contraria a convenção pt-BR do projeto — decidir a
+  grafia antes de instrumentar, porque nome de evento não se renomeia depois sem
+  quebrar histórico.
 - **`tunnelRoute` do Sentry.** *Gatilho:* constatar perda relevante de evento de
   client por ad blocker. Ad blockers barram requisição para `*.sentry.io`, e
   `/book/[slug]` é público e recebe tráfego de campanha. Custo: a doc do Sentry
