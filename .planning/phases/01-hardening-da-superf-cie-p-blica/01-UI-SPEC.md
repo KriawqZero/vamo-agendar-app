@@ -240,19 +240,51 @@ Com a leitura pública migrando para `service_role` (que bypassa RLS), o embed `
 
 Cobertura de **estados que já existem** no caminho afetado. Nenhum estado novo é criado; a coluna Resolution descreve a verdade que precisa continuar valendo depois da fase.
 
-Applicable state considerations resolved: **7 covered, 2 backstop, 0 unresolved**
+**Procedência desta seção:** computada pelo `ui-consideration-probe` sobre 9 superfícies do booking público, com os tipos de elemento **autorados à mão**. A classificação por prosa do engine reconheceu só a lista de serviços e devolveu as outras 8 superfícies como `unclassified` (15 categorias, 8 buracos). Com os tipos autorados — `list-collection`, `nav`, `form`, `media`, `static-content`, `interactive-control` — o probe passou a 37 categorias aplicáveis e **zero `unclassified`**. O passo de confirmação de tipo é o que torna a cobertura sólida; a heurística sozinha teria deixado 8 superfícies fora.
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| empty | lista de serviços | ✅ covered | Sem serviço ativo, a etapa de serviço renderiza a caixa tracejada com a copy travada em `## Copywriting Contract` (`EtapaServico.tsx:41`) |
-| empty | grade de slots do dia | ✅ covered | Sem horário livre, renderiza a caixa tracejada com a copy travada; a fileira de datas continua navegável (`EtapaDataHora.tsx:127`) |
-| empty | comanda/resumo sem seleção | ✅ covered | `ResumoAgendamento` mostra `Escolha um serviço para começar` e o CTA fica `disabled` com `opacity-50` |
-| loading | busca de slots | ✅ covered | 9 skeletons `h-11 animate-pulse rounded-xl bg-veu` dentro de `aria-live="polite"`; nada de spinner novo |
-| loading | envio do agendamento | ✅ covered | `useActionState` → CTA vira `Confirmando…` e `disabled`; nenhum overlay bloqueante |
-| error | falha ao carregar slots | ✅ covered | Caixa vermelha `role="alert"` + `Tentar de novo` que reexecuta a busca; a copy renderizada é `err.message` — ver a regra de erros novos acima |
-| error | slot tomado por outro cliente | ✅ covered | Aviso âmbar `role="alert"` na etapa de data/hora + grade refeita; depende do acoplamento de substring documentado acima |
-| long-text | `nome_estabelecimento`, `descricao`, `endereco` longos | 🧪 backstop | Já contidos por `truncate` / `line-clamp-2` / `line-clamp-3` / `max-w-full`. Nenhuma mudança de fase mexe nisso; verificação visual com tenant de nome e endereço longos |
-| overflow | fileira de datas com `horizonte_maximo_dias` alto | 🧪 backstop | Scroll horizontal com `snap-x` e scrollbar oculta no mobile; `lg:grid-cols-7` no desktop. Risco real só se `horizonte_maximo_dias` sumir da projeção (ver B) — verificação visual com horizonte 30 |
+Applicable state considerations: **37 aplicáveis · 31 covered · 6 backstop · 0 unresolved · 0 unclassified**
+
+Cada linha `covered` ancora num invariante já verificado contra o código nas seções B e C. As `backstop` são as que dependem de olho humano com dado extremo — nenhuma delas tem evidência automatizável hoje, e no verify cada uma sem evidência explícita vira `human_needed`, nunca passa calada.
+
+| # | Element | Category | Status | Resolution / Reason |
+|---|---------|----------|--------|---------------------|
+| 1 | lista de serviços | empty | ✅ covered | Sem serviço ativo, renderiza a caixa tracejada com a copy travada (`EtapaServico.tsx:41-42`) |
+| 2 | lista de serviços | loading | ✅ covered | Vem do RSC já resolvida; não existe estado de carregamento no cliente e a fase não cria um |
+| 3 | lista de serviços | error | ✅ covered | Falha de resolução do estabelecimento cai em `notFound()` com 404 real antes do streaming (C11) |
+| 4 | lista de serviços | populated | ✅ covered | Card com nome, descrição, preço e duração; a projeção explícita de `servicos` (B) garante as cinco colunas |
+| 5 | lista de serviços | partial | ✅ covered | `descricao` nula já é tratada hoje; nenhuma outra coluna do card pode faltar, pela projeção B |
+| 6 | lista de serviços | overflow | 🧪 backstop | Tenant com muitos serviços faz a lista rolar no container da etapa — verificação visual com 20+ serviços ativos |
+| 7 | lista de serviços | zero-one-many | ✅ covered | Zero é o estado vazio (linha 1); um e muitos usam o mesmo card, sem copy singular/plural |
+| 8 | grade de slots + datas | empty | ✅ covered | Dia sem horário livre renderiza a caixa tracejada; a fileira de datas continua navegável (C3) |
+| 9 | grade de slots + datas | loading | ✅ covered | 9 skeletons `h-11 animate-pulse rounded-xl bg-veu` dentro de `aria-live="polite"` (C2) |
+| 10 | grade de slots + datas | error | ✅ covered | Caixa vermelha `role="alert"` + `Tentar de novo` que reexecuta a busca (C4); a copy é `err.message`, sob a regra de erros novos acima |
+| 11 | grade de slots + datas | populated | ✅ covered | Grade de horários do dia com a saída da engine anti-buraco, formato inalterado |
+| 12 | grade de slots + datas | partial | ✅ covered | Dia parcialmente ocupado é o caso normal da engine, não um estado degradado |
+| 13 | grade de slots + datas | overflow | 🧪 backstop | `horizonte_maximo_dias` alto alonga a fileira: `snap-x` com scrollbar oculta no mobile, `lg:grid-cols-7` no desktop — verificação visual com horizonte 30 |
+| 14 | grade de slots + datas | zero-one-many | ✅ covered | Um slot e muitos usam o mesmo botão; zero é o estado vazio (linha 8) |
+| 15 | grade de slots + datas | long-text | ✅ covered | Horário tem formato fixo `HH:MM` e data tem rótulo curto — não há texto de comprimento variável |
+| 16 | comanda de resumo | overflow | ✅ covered | Contida por `truncate` / `line-clamp` já existentes; a fase não altera classe de layout |
+| 17 | comanda de resumo | long-text | 🧪 backstop | Nome de serviço longo na comanda — verificação visual com serviço de nome extenso |
+| 18 | formulário de contato | empty | ✅ covered | Estado inicial com os dois campos vazios e CTA `disabled` com `opacity-50` |
+| 19 | formulário de contato | loading | ✅ covered | `useActionState` → CTA vira `Confirmando…` e `disabled`, sem overlay bloqueante |
+| 20 | formulário de contato | error | ✅ covered | Validação inline; corrida de slot volta para data/hora com aviso âmbar e grade refeita (C5) |
+| 21 | formulário de contato | partial | ✅ covered | Só nome ou só telefone não avança: validação de 10–11 dígitos barra na UI e a action revalida (C7) |
+| 22 | formulário de contato | long-text | 🧪 backstop | Nome muito longo no input e no resumo — verificação visual |
+| 23 | tela de sucesso | overflow | ✅ covered | Conteúdo de tamanho fixo, contido pelo layout atual |
+| 24 | tela de sucesso | long-text | 🧪 backstop | `nome_estabelecimento` longo na confirmação — verificação visual |
+| 25 | barra inferior / CTA | long-text | ✅ covered | Rótulos são strings fixas travadas no `## Copywriting Contract`; a fase proíbe reescrevê-las |
+| 26 | painel de marca | empty | ✅ covered | Tenant sem logo, capa ou descrição renderiza sem esses elementos, sem buraco de layout |
+| 27 | painel de marca | loading | ✅ covered | Vem do RSC; `next/image` cuida do carregamento e a fase não altera isso |
+| 28 | painel de marca | error | ✅ covered | Imagem que falha não bloqueia a página nem o wizard |
+| 29 | painel de marca | populated | ✅ covered | **A linha mais crítica desta tabela.** Com `createAdminClient()` (D-02) a leitura bypassa RLS, então a sanitização por plano em `obterDadosBookingPublico` passa a ser a **única** defesa: tenant gratuito não pode exibir cor, logo ou capa. Regressão aqui é visual **e** de monetização (C13) |
+| 30 | painel de marca | overflow | ✅ covered | `truncate` / `line-clamp-2` / `line-clamp-3` / `max-w-full` já aplicados e congelados por invariante |
+| 31 | painel de marca | long-text | 🧪 backstop | `nome_estabelecimento`, `descricao` e `endereco` longos juntos — verificação visual com tenant extremo |
+| 32 | link inexistente (404) | overflow | ✅ covered | Conteúdo fixo de `not-found.tsx` |
+| 33 | link inexistente (404) | long-text | ✅ covered | Copy fixa travada no `## Copywriting Contract` (`not-found.tsx:8,11`) |
+| 34 | progresso / stepper | loading | ✅ covered | Não tem estado de carregamento próprio — reflete a etapa corrente do wizard |
+| 35 | progresso / stepper | error | ✅ covered | Não tem caminho de erro próprio; erro de etapa é tratado na própria etapa |
+| 36 | progresso / stepper | overflow | ✅ covered | Quatro etapas fixas; nunca cresce |
+| 37 | progresso / stepper | long-text | ✅ covered | Rótulos de etapa são strings fixas travadas |
 
 <!-- Status vocabulary (locked by probe-core projectTruths):
      ✅ covered   → a plain truth string lifted into must_haves.truths
