@@ -76,11 +76,15 @@ describe('sanitizarEventoSentry', () => {
         expect(evento.request?.cookies).toBeUndefined()
     })
 
-    it('remove a identidade de usuário do evento', () => {
+    it('substitui a identidade de usuário pela negação explícita de IP', () => {
+        // WR-06: apagar o campo devolveria a decisão sobre inferir IP ao painel
+        // do Sentry. `ip_address: null` é a instrução de não guardar.
         const evento = sanitizarEventoSentry({
-            user: { id: 'org_123', email: 'maria@exemplo.com' },
+            user: { id: 'org_123', email: 'maria@exemplo.com', ip_address: '191.0.2.10' },
         })
-        expect(evento.user).toBeUndefined()
+        expect(evento.user).toEqual({ ip_address: null })
+        expect(JSON.stringify(evento)).not.toContain('maria@exemplo.com')
+        expect(JSON.stringify(evento)).not.toContain('191.0.2.10')
     })
 
     it('passa incólume por evento sem request, sem lançar', () => {
@@ -91,7 +95,80 @@ describe('sanitizarEventoSentry', () => {
             message: 'erro',
             level: 'error',
         }
-        expect(sanitizarEventoSentry(evento)).toEqual({ message: 'erro', level: 'error' })
+        expect(sanitizarEventoSentry(evento)).toEqual({
+            message: 'erro',
+            level: 'error',
+            user: { ip_address: null },
+        })
+    })
+
+    // CR-02: a sanitização era denylist e não cobria os campos onde o projeto
+    // de fato escreve. Allowlist onde é viável — chave nova cai fora sozinha.
+    it('mantém em extra apenas as chaves da allowlist', () => {
+        const evento = sanitizarEventoSentry({
+            extra: {
+                fluxo: 'booking_publico',
+                etapa: 'buscar_cliente',
+                statusCode: 500,
+                // O que uma fase futura poderia escrever sem ninguém notar:
+                email: 'maria@exemplo.com',
+                telefone: '11999999999',
+                clienteNome: 'Maria',
+            },
+        })
+
+        expect(evento.extra).toEqual({
+            fluxo: 'booking_publico',
+            etapa: 'buscar_cliente',
+            statusCode: 500,
+        })
+        expect(JSON.stringify(evento)).not.toContain('maria@exemplo.com')
+        expect(JSON.stringify(evento)).not.toContain('11999999999')
+        expect(JSON.stringify(evento)).not.toContain('Maria')
+    })
+
+    it('mantém em request apenas method, url e headers — campo novo cai fora', () => {
+        const evento = sanitizarEventoSentry({
+            request: {
+                method: 'POST',
+                url: 'https://app.local/book/salao',
+                data: { telefone: '11999999999' },
+                cookies: { sessao: 'abc' },
+                query_string: 'nome=Maria',
+                // Campo que o SDK pode passar a mandar amanhã: a denylist
+                // antiga deixaria passar em silêncio.
+                env: { REMOTE_ADDR: '191.0.2.10' },
+            } as never,
+        })
+
+        expect(evento.request).toEqual({ method: 'POST', url: 'https://app.local/book/salao' })
+    })
+
+    // CR-03(a): o `deny` do SDK substituía o filtro de PII embutido, e o
+    // Railway põe `x-real-ip` em toda requisição. IP é dado pessoal (LGPD).
+    it('mantém nos headers apenas a allowlist, derrubando todos os headers de IP', () => {
+        const evento = sanitizarEventoSentry({
+            request: {
+                url: 'https://app.local/book/salao',
+                headers: {
+                    'User-Agent': 'Mozilla/5.0',
+                    'content-type': 'application/json',
+                    'x-real-ip': '191.0.2.10',
+                    'cf-connecting-ip': '191.0.2.10',
+                    'true-client-ip': '191.0.2.10',
+                    'x-forwarded-for': '191.0.2.10',
+                    Forwarded: 'for=191.0.2.10',
+                    cookie: '__session=abc',
+                    authorization: 'Bearer token',
+                },
+            },
+        })
+
+        expect(evento.request?.headers).toEqual({
+            'User-Agent': 'Mozilla/5.0',
+            'content-type': 'application/json',
+        })
+        expect(JSON.stringify(evento)).not.toContain('191.0.2.10')
     })
 })
 

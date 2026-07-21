@@ -14,7 +14,9 @@
  */
 
 interface RequisicaoDoEvento {
+    method?: string
     url?: string
+    headers?: unknown
     query_string?: unknown
     data?: unknown
     cookies?: unknown
@@ -26,6 +28,60 @@ interface RequisicaoDoEvento {
 export interface FormatoDeEvento {
     request?: RequisicaoDoEvento
     user?: unknown
+    extra?: Record<string, unknown>
+}
+
+/**
+ * ALLOWLIST das chaves de `extra`.
+ *
+ * `extra` é onde `reportarExcecao` escreve o contexto por construção
+ * (`captureException(erro, { extra: contexto })`), e o tipo do parâmetro é um
+ * `Record<string, …>`: nada impede uma fase futura de escrever
+ * `reportarExcecao(err, { email: destinatario })`. Denylist falharia em
+ * silêncio nesse dia; allowlist obriga uma linha explícita aqui, que é a
+ * revisão que a regra "nunca PII" precisa ter.
+ */
+const CHAVES_DE_EXTRA_PERMITIDAS = new Set([
+    'fluxo',
+    'etapa',
+    'rotulo',
+    'statusCode',
+    'motivo',
+    'tenantHash',
+])
+
+/**
+ * ALLOWLIST dos campos de `request`. Tudo o que não estiver aqui — `data`
+ * (corpo da Server Action), `cookies`, `query_string`, `env` e qualquer campo
+ * que o SDK passe a mandar amanhã — é removido por construção.
+ */
+const CAMPOS_DE_REQUISICAO_PERMITIDOS = new Set(['method', 'url', 'headers'])
+
+/**
+ * ALLOWLIST dos headers. `user-agent` fica porque é o que dá atribuição de
+ * navegador/SO aos erros de `/book/[slug]` — a razão de o Sentry de browser
+ * existir nesta etapa. Os headers de IP (`x-real-ip`, `cf-connecting-ip`,
+ * `true-client-ip`, `forwarded`) caem aqui por não estarem na lista: IP de
+ * cliente final é dado pessoal sob a LGPD, e o Railway põe `x-real-ip` em
+ * toda requisição.
+ */
+const HEADERS_PERMITIDOS = new Set(['content-type', 'accept-language', 'user-agent'])
+
+/** Apaga do objeto toda chave fora da allowlist. Muta no lugar. */
+function manterSomente(
+    alvo: Record<string, unknown>,
+    permitidas: Set<string>,
+    insensivelACaixa = false,
+): void {
+    for (const chave of Object.keys(alvo)) {
+        const comparavel = insensivelACaixa ? chave.toLowerCase() : chave
+        if (!permitidas.has(comparavel)) delete alvo[chave]
+    }
+}
+
+/** Verdadeiro para objeto navegável (exclui `null` e arrays de propósito). */
+function ehObjeto(valor: unknown): valor is Record<string, unknown> {
+    return typeof valor === 'object' && valor !== null && !Array.isArray(valor)
 }
 
 export interface FormatoDeBreadcrumb {
@@ -53,20 +109,45 @@ function semQuerystring(url: string): string {
 }
 
 /**
- * `beforeSend`: corta querystring, corpo, cookies e identidade de usuário.
+ * `beforeSend`: reduz `request` e `extra` às suas allowlists e nega o IP.
+ *
+ * ⚠️ ALLOWLIST onde é viável, denylist onde não é — a diferença importa e está
+ * registrada em `docs/PENDENCIAS.md`. `request`, `request.headers` e `extra`
+ * são allowlist: campo novo do SDK cai fora por construção. `message`,
+ * `exception.values[].value`, `contexts` e `tags` NÃO são filtrados, porque
+ * reduzi-los quebraria o agrupamento e a própria utilidade do evento; a
+ * proteção deles é na origem (nenhum call site manda objeto de erro cru — ver
+ * `erroSinteticoSupabase`).
+ *
  * Genérica sobre o formato do evento para ser atribuível ao hook do SDK sem
  * briga de tipo. Evento sem `request` passa incólume, sem lançar.
  */
 export function sanitizarEventoSentry<T extends FormatoDeEvento>(evento: T): T {
-    if (evento.request) {
-        if (typeof evento.request.url === 'string') {
-            evento.request.url = semQuerystring(evento.request.url)
+    // Escrita via `Record` para não brigar com o genérico `T` na atribuição.
+    const bruto = evento as unknown as Record<string, unknown>
+
+    const requisicao = bruto.request
+    if (ehObjeto(requisicao)) {
+        manterSomente(requisicao, CAMPOS_DE_REQUISICAO_PERMITIDOS)
+
+        if (typeof requisicao.url === 'string') {
+            requisicao.url = semQuerystring(requisicao.url)
         }
-        delete evento.request.query_string
-        delete evento.request.data
-        delete evento.request.cookies
+        if (ehObjeto(requisicao.headers)) {
+            manterSomente(requisicao.headers, HEADERS_PERMITIDOS, true)
+        }
     }
-    delete evento.user
+
+    if (ehObjeto(bruto.extra)) {
+        manterSomente(bruto.extra, CHAVES_DE_EXTRA_PERMITIDAS)
+    }
+
+    // `delete evento.user` deixaria o campo ausente, e campo ausente devolve a
+    // decisão de inferir IP para o toggle do painel do Sentry — exatamente o
+    // que o CONTEXT proíbe. `ip_address: null` é a instrução explícita de não
+    // guardar o IP, e vive no código versionado.
+    bruto.user = { ip_address: null }
+
     return evento
 }
 
