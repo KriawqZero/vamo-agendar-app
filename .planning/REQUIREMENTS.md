@@ -151,9 +151,9 @@ Preenchida na criação do roadmap.
 | (a mapear) | — | Pending |
 
 **Coverage:**
-- v1 requirements: 56 total
+- v1 requirements: 59 total
 - Mapped to phases: 0
-- Unmapped: 56 ⚠️
+- Unmapped: 59 ⚠️
 
 ---
 *Requirements defined: 2026-07-20*
