@@ -130,7 +130,7 @@ precisa ser sabido antes.
 - Padrão a replicar: o `REVOKE SELECT` + `GRANT SELECT (colunas)` que `08_assinaturas.sql` já faz corretamente
 - `ALTER DEFAULT PRIVILEGES ... REVOKE` no schema `public` + a regra escrita no `docs/03`
 - SEG-05 fecha o `?secret=` com fallback `'secret-key'`, que hoje transforma env ausente em porta destrancada para disparar WhatsApp em nome de tenants
-- **Tarefa do owner, em paralelo e começando agora:** DNS do subdomínio de e-mail (SPF + DKIM + MX + DMARC `p=none` com `rua` monitorado). Propagação de 24–48h bloqueia a Phase 4 e é o item mais atrasado do milestone — não depende desta fase, mas precisa começar no dia 1
+- ✅ O DNS do subdomínio de e-mail, que era o item mais atrasado do milestone, **foi resolvido em 2026-07-21** e não bloqueia mais nada — ver Phase 4
 
 ---
 
@@ -190,7 +190,7 @@ precisa ser sabido antes.
 ### Phase 4: Canal de e-mail transacional
 
 **Goal**: O produto consegue falar por e-mail com o profissional sem queimar a reputação de um domínio que não tem histórico nenhum
-**Depends on**: Nenhuma fase de código — bloqueada pelo DNS do subdomínio (tarefa do owner, iniciada no dia 1)
+**Depends on**: Etapa preparatória "Fundação operacional" (SDK, wrapper e remetente do Resend já entregues lá). **DNS deixou de ser bloqueio** — ver notas
 **Requirements**: EML-01, EML-04, EML-05, EML-06
 **Success Criteria** (o que precisa ser VERDADE):
 
@@ -205,8 +205,10 @@ precisa ser sabido antes.
 
 **Notas de execução:**
 
-- **Dependência externa de maior alcance do milestone:** verificação SPF/DKIM do subdomínio é tarefa de DNS do owner com propagação de 24–48h. O código descola do DNS pelo guard de env
-- Subdomínio dedicado (`mail.vamoagendar.com.br`) isola a reputação do domínio raiz
+- ✅ **DNS RESOLVIDO em 2026-07-21** — deixou de ser a dependência externa de maior alcance do milestone. Verificado de fora por `dig`: `resend._domainkey.mail.vamoagendar.com.br` responde com a chave pública do Resend, propagada. O subdomínio dedicado `mail.vamoagendar.com.br` está verificado no painel e isola a reputação do domínio raiz, como recomendado
+- **Remetente**: `naoresponda@mail.vamoagendar.com.br`. Domínio verificado libera qualquer local-part — não é preciso verificar endereço por endereço
+- ⚠️ **Ainda pendente no DNS (um registro TXT cada, sem propagação dolorosa):** DMARC `p=none` com `rua` monitorado — hoje não existe nem no subdomínio nem na raiz, então o envio acontece sem relatório nenhum; e SPF no subdomínio, que também está ausente. Nenhum dos dois impede enviar: no Resend o alinhamento DMARC passa por **DKIM**, e o DKIM está válido
+- ⚠️ **Não há MX em lugar nenhum** — nem na raiz, nem no subdomínio. Isso é correto para `naoresponda@`, que não deve receber, mas significa que **nenhum endereço do domínio recebe e-mail hoje**. O canal de suporte da Phase 10 depende de resolver isso (Resend só envia; caixa de entrada exige provedor próprio)
 - DMARC em `p=none` com `rua` monitorado; endurecer para `quarantine` só depois de semanas de relatório limpo. Publicar `p=reject` de saída derruba o próprio e-mail sem sinal claro de causa
 - O SDK do Resend **não lança** em erro — devolve `{ data, error }`; o wrapper nunca pode lançar
 - Teto do Free: 100 e-mails/dia, 3.000/mês, 1 domínio. Sem observação da cota, o e-mail falha em silêncio no melhor dia do lançamento
