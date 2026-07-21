@@ -238,11 +238,118 @@ os dois não podiam ser verdade juntos. Resolvido separando diagnóstico de envi
 destinatário o script imprime o uso **e** o diagnóstico por produto, e não envia nada. Os
 dois intentos ficam satisfeitos.
 
+---
+
+## Adendo (2026-07-21, mesmo dia): mesclagem do wizard do PostHog
+
+> ⚠️ Este adendo **revoga** dois itens registrados acima: "nenhuma linha de
+> `src/lib/analytics/` foi reescrita" deixou de valer, e a regra "nunca rode os wizards"
+> foi substituída em `docs/09` por "wizard é fonte de diff, o diff precisa ser
+> reendurecido".
+
+### O que aconteceu
+
+O wizard do PostHog (v2.46.0) foi rodado três vezes no dia. Na primeira, revertido por
+inteiro — **erro do owner, reconhecido por ele**: a arquitetura do wizard era melhor que a
+nossa e foi jogada fora junto com os defaults ruins. Na segunda, rodou concorrente a esta
+sessão e foi commitada crua pelo owner (`5df0671`). Este adendo é o reendurecimento por
+cima, no mesmo fluxo que o wizard do Sentry já tinha tido em `924dc51`.
+
+**Nota de processo:** a sessão começou com o wizard rodando em paralelo, sobrescrevendo os
+arquivos entre uma leitura e a seguinte (`agendamentos.ts` mudou de 495 para 500 linhas em
+trinta segundos). O trabalho foi interrompido e devolvido ao owner em vez de editar sob um
+escritor concorrente — qualquer `pnpm build` naquele momento mediria uma árvore que mudava
+sozinha. Prova usada: `ps aux | grep wizard` com o processo vivo em `pts/3`.
+
+### Adotado do wizard
+
+| O que | Por quê |
+|---|---|
+| Init em `src/instrumentation-client.ts` | Roda **antes da hidratação**. A nossa init estava num `useEffect`, ou seja, depois — e evento perdido nesse intervalo é abandono de cliente de celular lento que nunca aparece no funil |
+| `posthog-node` no servidor | Substitui `fetch` artesanal para `/i/v0/e/`, endpoint não documentado que manteríamos sozinhos |
+| `flushAt: 1`, `flushInterval: 0`, `await shutdown()` | Invocação do Next morre antes do flush periódico; evento enfileirado sem flush é evento perdido em silêncio |
+| Sete eventos de dashboard (B2B) | O funil do lado do profissional não existia |
+
+### Reaplicado por cima
+
+As cinco flags (`capture_pageview`, `person_profiles`, `autocapture`,
+`disable_session_recording`, `disable_surveys`) voltaram, agora em
+`src/lib/analytics/opcoes-posthog.ts` e **travadas por teste**. Mais:
+`capture_exceptions: false` / `enableExceptionAutocapture: false` (error tracking é do
+Sentry, que passa por `sanitizarEventoSentry`; o caminho do PostHog não passa por nada),
+host de volta a **opcional** com default US, `$process_person_profile: false` conferido,
+fallback fire-and-forget restaurado em `server.ts`, e `NEXT_PUBLIC_POSTHOG_KEY` intocada.
+
+**Três travas acrescentadas além do escopo pedido** (`capture_heatmaps`,
+`capture_dead_clicks`, `rageclick`): as três são `undefined` no SDK, e `undefined` ali
+significa **o painel decide** por remote config. É o mesmo furo que
+`disable_session_recording` fecha — travar o replay e deixar heatmap implícito seria
+trancar a porta e esquecer a janela. Também entraram `disable_capture_url_hashes: true` e
+`disableGeoip: true` (o IP de um evento de servidor é o do datacenter; geolocalizar isso é
+dado inventado com custo de privacidade).
+
+**Removido do wizard:** `defaults: '2026-01-30'` (snapshot datado flipa opções que ninguém
+avaliou, e justo esse não inclui `disable_capture_url_hashes`) e `debug` em dev.
+
+### O teste é a entrega, não a documentação
+
+`src/lib/__tests__/opcoes-posthog.test.ts`, 27 asserções. Fica vermelho se qualquer flag
+mudar de valor ou sumir do objeto, se o arquivo de init parar de consumir o módulo por
+spread, se alguém colar flag como literal inline, se `$process_person_profile: false` sair,
+se o fallback de `after()` sumir, ou se a variável for renomeada para
+`NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`.
+
+Verificado por mutação, não só por "passou": trocar `autocapture` para `true` produz
+`1 failed | 26 passed` com `AssertionError: expected true to be false`. As cinco flags já
+estavam **documentadas** quando o wizard as apagou — duas vezes. Documento não impede
+nada; teste impede.
+
+### Decisões que exigiam julgamento
+
+**Grafia dos eventos — nome em inglês, propriedade em pt-BR.** `docs/08` já tinha 20+
+eventos em inglês (`booking_completed`, `first_service_created`) com propriedades em pt-BR
+(`servico_duracao_minutos`, `motivo: 'slot_indisponivel'`). Consistência com o contrato
+vigente vence a convenção geral pt-BR do projeto: ter `service_duration_minutes` ao lado
+de `servico_duracao_minutos` seria o mesmo número com dois nomes, e nome de evento ou de
+propriedade não se renomeia depois sem quebrar histórico de funil e insight salvo. As
+propriedades propostas pelo wizard foram traduzidas mantendo a semântica —
+`customer_record: 'existing' | 'new_or_matched'` virou
+`registro_cliente: 'existente' | 'novo_ou_reaproveitado'`.
+
+**`AnalyticsProvider` removido.** Sua única função era chamar `inicializarAnalytics()` num
+`useEffect`. Com a init em `instrumentation-client.ts` não sobrou nada — o wizard tinha
+deixado um stub "para compatibilidade de imports antigos" que nenhum arquivo importa, e
+stub sem importador é código morto que a próxima sessão perde tempo tentando entender.
+
+**`booking_status_changed` mantido**, apesar de não estar nos seis do escopo. É o único
+evento da taxonomia que mede taxa de cancelamento e se o profissional fecha o ciclo
+marcando "concluído". `status` é enum do banco, nunca PII.
+
+**`posthog-setup-report.md` removido da raiz** (decisão minha, fácil de reverter com
+`git revert` do commit de docs). Descrevia a config crua do wizard — inclusive
+`capture_exceptions: true` — e virou segunda fonte de verdade contradizendo `docs/08`. Os
+links de dashboard e insight que ele tinha de útil foram para `docs/08`.
+
+**Um comentário do Sentry tocado**, e só ele: `instrumentation-client.ts` apontava para
+`analytics/client.ts:35` como exemplo de trava no código, e aquela linha deixou de existir.
+O ponteiro passou a apontar para `opcoes-posthog.ts`. Nenhuma opção, integração ou
+sanitização do Sentry foi alterada; `src/lib/observabilidade/*` está intocado.
+
+### Verificação
+
+`pnpm lint` sem saída (exit 0), `pnpm test` 191 passed em 12 arquivos, `pnpm build`
+compilado com 14 páginas geradas. Rodados na árvore já commitada.
+
+Commits: `6291720` (travas + teste), `afb898c` (remoção do provider), `844e59f` (sete
+eventos), `2321f1f` (docs).
+
+---
+
 ## Decisões preservadas (não foram tocadas)
 
 - `tunnelRoute` e source maps continuam fora, com gatilho em `docs/PENDENCIAS.md`
 - `DEBUG_QSTASH` continua diferido e **não** aparece no bloco de env (verificado por grep negativo)
-- Nenhuma linha de `src/lib/analytics/` foi reescrita
+- ~~Nenhuma linha de `src/lib/analytics/` foi reescrita~~ — **revogado pelo adendo acima**
 - Nenhuma variável nova em `vitest.config.ts` (arquivo intocado, conferido por `git status`)
 - Os quatro artefatos da Phase 1 seguem sem modificação
 - 12 fases numeradas 1 a 12; soma da coluna Qtd = **56**, conferida por `awk`
