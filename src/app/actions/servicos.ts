@@ -7,12 +7,12 @@ import { obterAssinaturaVigente } from '@/lib/assinaturas'
 import { capturarEventoTenant } from '@/lib/analytics/server'
 
 interface ServicoInput {
-    id?: string;
-    nome: string;
-    descricao?: string;
-    preco: number;
-    duracaoMinutos: number;
-    ativo: boolean;
+    id?: string
+    nome: string
+    descricao?: string
+    preco: number
+    duracaoMinutos: number
+    ativo: boolean
 }
 
 /**
@@ -83,7 +83,7 @@ export async function salvarServico(input: ServicoInput) {
             if ((count ?? 0) >= limite) {
                 throw new Error(
                     `O plano ${PLANOS[plano].nome} permite até ${limite} serviços ativos. ` +
-                    'Desative outro serviço ou faça upgrade em Plano no menu.'
+                        'Desative outro serviço ou faça upgrade em Plano no menu.',
                 )
             }
         }
@@ -96,7 +96,7 @@ export async function salvarServico(input: ServicoInput) {
         preco: input.preco,
         duracao_minutos: input.duracaoMinutos,
         ativo: input.ativo,
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
     }
 
     if (input.id) {
@@ -112,6 +112,14 @@ export async function salvarServico(input: ServicoInput) {
         if (error) {
             console.error('Erro ao atualizar serviço:', error.message)
             throw new Error('Erro ao salvar as modificações do serviço.')
+        }
+
+        // Funil: manutenção do catálogo é sinal de tenant vivo. Sem nome nem
+        // preço do serviço — o evento conta que houve edição, não qual.
+        try {
+            capturarEventoTenant('service_updated', orgId)
+        } catch (analyticsErr) {
+            console.error('[analytics] service_updated não capturado (ignorado):', analyticsErr)
         }
 
         return data
@@ -133,11 +141,7 @@ export async function salvarServico(input: ServicoInput) {
         }
 
         // INSERT
-        const { data, error } = await supabase
-            .from('servicos')
-            .insert(payload)
-            .select()
-            .single()
+        const { data, error } = await supabase.from('servicos').insert(payload).select().single()
 
         if (error) {
             console.error('Erro ao criar serviço:', error.message)
@@ -148,7 +152,10 @@ export async function salvarServico(input: ServicoInput) {
             try {
                 capturarEventoTenant('first_service_created', orgId)
             } catch (analyticsErr) {
-                console.error('[analytics] first_service_created não capturado (ignorado):', analyticsErr)
+                console.error(
+                    '[analytics] first_service_created não capturado (ignorado):',
+                    analyticsErr,
+                )
             }
         }
 
@@ -168,19 +175,25 @@ export async function excluirServico(id: string) {
 
     const supabase = await createClient()
 
-    const { error } = await supabase
-        .from('servicos')
-        .delete()
-        .eq('id', id)
-        .eq('tenant_id', orgId) // Segurança extra RLS
+    const { error } = await supabase.from('servicos').delete().eq('id', id).eq('tenant_id', orgId) // Segurança extra RLS
 
     if (error) {
         console.error('Erro ao excluir serviço:', error.message)
         // Se houver FK vinculando a tabela, avisa que possui dependências
         if (error.code === '23503') {
-            throw new Error('Este serviço não pode ser excluído pois possui agendamentos associados a ele. Recomenda-se desativá-lo.')
+            throw new Error(
+                'Este serviço não pode ser excluído pois possui agendamentos associados a ele. Recomenda-se desativá-lo.',
+            )
         }
         throw new Error('Erro ao tentar excluir o serviço.')
+    }
+
+    // Funil: só dispara na exclusão que passou pelo RESTRICT do banco — o
+    // erro 23503 acima sai por throw e não conta como serviço removido.
+    try {
+        capturarEventoTenant('service_deleted', orgId)
+    } catch (analyticsErr) {
+        console.error('[analytics] service_deleted não capturado (ignorado):', analyticsErr)
     }
 
     return true
