@@ -21,9 +21,20 @@ function ehControle(caractere: string): boolean {
 }
 
 /**
- * O nome vem do banco e é input de usuário. `<`, `>` e `"` quebram o header, e
- * quebra de linha permite injeção de header (`Bcc:`) — propriedade do RFC 5322,
- * não do Resend.
+ * O nome vem do banco e é input de usuário, e o display name é montado como
+ * QUOTED-STRING — não como átomo.
+ *
+ * Motivo: os *specials* do RFC 5322 são `( ) < > [ ] : ; @ \ , . "`, e um átomo
+ * que os contenha quebra o header. A vírgula é a pior delas, porque num header
+ * de endereço ela é separador de lista: `Studio Bela, Sobrancelhas via
+ * VamoAgendar <naoresponda@…>` é lido como DOIS endereços, o Resend recusa com
+ * `invalid_from_address` e o tenant simplesmente nunca recebe e-mail. Parênteses
+ * (comentário no RFC) e ponto (`Bela Ltda.`) têm o mesmo problema, e os três
+ * são comuns no público-alvo.
+ *
+ * Dentro de uma quoted-string só `"` e `\` precisam sair; todo o resto vira
+ * literal e seguro. `<` e `>` também saem — não quebram mais o header, mas não
+ * há motivo para deixar HTML/tag entrar no assunto visível do destinatário.
  *
  * A troca de controle por espaço é feita por código de caractere, e não por
  * classe de regex, de propósito: escrever `\x00-\x1F` neste arquivo já resultou
@@ -34,12 +45,15 @@ function sanitizarNome(nome: string): string {
         .map((caractere) => (ehControle(caractere) ? ' ' : caractere))
         .join('')
 
-    return semControle.replace(/[<>"]/g, '').replace(/\s+/g, ' ').trim()
+    return semControle
+        .replace(/[\\"<>]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
 }
 
-/** Monta `"<Estabelecimento> via VamoAgendar <naoresponda@...>"`. */
+/** Monta `"<Estabelecimento> via VamoAgendar" <naoresponda@...>`. */
 export function montarRemetente(nomeEstabelecimento: string): string {
     const limpo = sanitizarNome(nomeEstabelecimento ?? '')
     const exibicao = limpo.length > 0 ? limpo : ROTULO_GENERICO
-    return `${exibicao}${SUFIXO_EXIBICAO} <${ENDERECO_REMETENTE}>`
+    return `"${exibicao}${SUFIXO_EXIBICAO}" <${ENDERECO_REMETENTE}>`
 }
