@@ -719,6 +719,42 @@ Cada um com o **gatilho** que o traz de volta — nenhum é "esquecido", todos s
   aplica hoje** — `cacheComponents` é opt-in e não está no `next.config.ts`.
   *Gatilho:* ligar Cache Components exige revisitar o Sentry antes.
 
+#### Diferidos da revisão de código da "Fundação operacional" (2026-07-21)
+
+- **⚠️ ORDEM DO PRÓXIMO DEPLOY DE PRODUÇÃO (WR-02).** `NEXT_PUBLIC_SENTRY_DSN`,
+  `RESEND_API_KEY`, `NEXT_PUBLIC_POSTHOG_KEY` e `ANALYTICS_TENANT_SALT` entraram
+  na lista de obrigatórias de `src/lib/env.ts`, e os gates manuais (criar projeto
+  no Sentry/PostHog, inserir os secrets no Railway) **ainda não foram
+  executados**. Deploy antes disso faz `register()` lançar, o boot morrer e o
+  produto inteiro cair em crash loop **por falta de credencial de
+  observabilidade** — o oposto do invariante "observabilidade nunca quebra o
+  produto". *Gatilho:* antes do próximo deploy de produção, conferir que as
+  quatro existem no Railway; se for preciso subir antes, remover as quatro da
+  lista no mesmo commit do deploy.
+- **A sanitização do Sentry é allowlist só onde é viável (CR-02).** São
+  allowlist: `request`, `request.headers` e `extra` — campo novo do SDK cai fora
+  por construção. **Não** são filtrados `message`, `exception.values[].value`,
+  `contexts` e `tags`, porque reduzi-los quebraria o agrupamento e a utilidade do
+  evento; a proteção deles é na origem (nenhum call site manda objeto de erro
+  cru — ver `erroSinteticoSupabase`). *Gatilho:* quando o projeto passar a usar
+  `setTag`/`setContext`, ou quando algum call site precisar mandar erro de
+  terceiro cru, `contexts`/`tags` entram na allowlist e `exception.values[].value`
+  ganha truncamento por padrão. Enquanto isso, todo `reportarExcecao` novo tem
+  que passar erro sintético, não objeto de erro de biblioteca.
+- **`import 'server-only'` em `src/lib/observabilidade/reportar.ts` (WR-10) não
+  foi aplicado.** O pacote resolve para um módulo que **lança** fora da condição
+  `react-server`, e `reportar.ts` é importado transitivamente por
+  `whatsapp-helper.test.ts` — a suíte inteira quebraria, e o conserto seria
+  acrescentar `resolve.conditions: ['react-server']` ao `vitest.config.ts`, o que
+  muda a resolução de react/next em todos os testes por um ganho pequeno (o DSN
+  do Sentry é identificador público por design, não secret). *Gatilho:* se
+  `vitest.config.ts` ganhar `resolve.conditions` por outro motivo, aplicar junto.
+- **`pnpm build && pnpm start` local sem secrets agora morre no boot (IN-03).**
+  `next start` roda com `NODE_ENV=production`, então o fail-fast de `env.ts` vale.
+  `pnpm build` continua livre (o `register()` não roda em `phase-production-build`)
+  e `pnpm dev` também. Para inspecionar o build local, use `--env-file=.env.local`
+  ou `NODE_ENV=development pnpm start`.
+
 - **Checkout Asaas + webhooks completos de cobrança** (`/api/webhooks/asaas`) —
   necessário **se o lançamento já pretender cobrar automaticamente**: roadmap técnico
   completo em `docs/07`. Pré-requisito registrado: **refazer a auditoria da Data API**
