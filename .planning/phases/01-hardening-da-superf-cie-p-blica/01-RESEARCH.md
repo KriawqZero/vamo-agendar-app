@@ -58,7 +58,7 @@ O fato que destrava tudo: **nenhuma leitura pública acontece no browser**. Toda
 | SEG-02 | `perfis_empresas` deixa de ser enumerável | GRANT por coluna **não resolve** (ver `## Common Pitfalls` → Pitfall 1). Resolve: `REVOKE ALL … FROM anon` + `DROP POLICY` da leitura pública + leitura via cliente privilegiado. Atenção: hoje **não existe** outra policy de SELECT em `perfis_empresas`, então a policy tem que ser **substituída**, não removida |
 | SEG-03 | `agendamentos` e `excecoes_agenda` expõem a `anon` só o que a engine consome | Colunas exatas mapeadas em `## Superfície mínima da página pública`. Com a recomendação principal (anon sem acesso) o critério é satisfeito com folga: `anon` não devolve coluna nenhuma |
 | SEG-04 | Coluna/tabela nova nasce sem acesso `anon` | `alter default privileges for role postgres in schema public revoke …` — e a **regra escrita** em `docs/03`, porque `supabase db diff` **não emite GRANT/REVOKE** (documentado no próprio repo) |
-| SEG-05 | Webhook de lembrete só aceita assinatura válida do QStash; app não sobe sem as chaves | `Receiver` de `@upstash/qstash` (pacote **não instalado** hoje) + `src/instrumentation.ts` (`register()` roda uma vez e precisa completar antes do servidor aceitar requisições — doc empacotada do Next 16.2.10). Exige env nova `QSTASH_NEXT_SIGNING_KEY` |
+| SEG-05 | Webhook de lembrete só aceita assinatura válida do QStash; app não sobe sem as chaves | `Receiver` de `@upstash/qstash` (pacote **não instalado** hoje) + `src/instrumentation.ts` (`register()` roda uma vez e precisa completar antes do servidor aceitar requisições — doc empacotada do Next 16.2.10). Usa `QSTASH_NEXT_SIGNING_KEY`, que **já está configurada** no `.env.local` e no Railway (correção de 2026-07-21) |
 
 ---
 
@@ -490,13 +490,17 @@ E há o caso pior, silencioso: `perfis_empresas`, `excecoes_agenda` e `agendamen
 
 ---
 
-### Pitfall 7: a nova env var trava o dev antes de alguém perceber
+### Pitfall 7: a nova env var trava o dev antes de alguém perceber — ❌ RETRATADO
 
-**O que dá errado:** `QSTASH_NEXT_SIGNING_KEY` **não existe hoje** em lugar nenhum do projeto. No instante em que `src/instrumentation.ts` passa a exigi-la, `pnpm dev` para de subir na máquina do owner até ele copiar a chave do console da Upstash. Se o `register()` for escrito antes de a chave estar no `.env.local`, a própria sessão de execução da fase trava.
+> **⚠️ Retratação (2026-07-21, posterior à pesquisa).** Este pitfall partia de uma premissa falsa e **não deve gerar tarefa no plano**. `QSTASH_NEXT_SIGNING_KEY` **já está configurada** no `.env.local` e no Railway: o `.env.example` versionado documenta as quatro variáveis do QStash (`QSTASH_URL`, `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`) com valores censurados. Verificado pelo owner.
+>
+> **Como o erro entrou:** a conclusão veio de um `grep` em `src/`, que estava correto — nenhum código lê a variável hoje, porque nada verifica assinatura. O salto foi tratar *"não é lida pelo código"* como *"não está configurada no ambiente"*. A pesquisa registrou honestamente que `.env.local` não foi lido (regra de segredos), mas mesmo assim afirmou a ausência como fato, em vez de marcá-la como suposição no `## Assumptions Log`. O `.env.example`, que é versionado e não contém segredo, teria respondido a pergunta.
+>
+> **Regra que fica:** afirmação sobre *estado de ambiente* (env configurada, serviço provisionado, conta ativa) é suposição até ser verificada por fonte que enxergue o ambiente. `grep` em código responde apenas o que o código lê.
 
-**Como evitar:** o plano começa com um passo humano ("copiar `QSTASH_NEXT_SIGNING_KEY` do console Upstash para `.env.local`") **antes** da tarefa que cria o `instrumentation.ts`. Adicionar também as duas chaves ao bloco `env` de `vitest.config.ts` (o arquivo já documenta por que isso é necessário: constantes de módulo são avaliadas no import, e stub por teste não alcança).
+**O que continua valendo deste item:** a **ordem** importa por outro motivo. Assim que o boot passar a exigir as chaves, qualquer ambiente que não as tenha para de subir. Como elas já existem no `.env.local` e no Railway, não há passo humano a fazer — mas a tarefa que adiciona a exigência deve vir acompanhada, no mesmo bloco, de acrescentar `QSTASH_CURRENT_SIGNING_KEY` e `QSTASH_NEXT_SIGNING_KEY` ao bloco `env` de `vitest.config.ts`. O arquivo já documenta por quê: constantes de módulo são avaliadas no import, e stub por teste não alcança. Sem isso, a suíte quebra no momento em que a falha dura entra.
 
-**Sinais de alerta:** `pnpm dev` falhando com a mensagem de env ausente logo depois de uma tarefa de código.
+**Sinais de alerta:** `pnpm test` falhando por env ausente logo depois da tarefa que introduz a verificação de assinatura.
 
 ---
 
@@ -621,7 +625,7 @@ Fase de refatoração de privilégios + mudança de contrato de webhook. Estado 
 | **Dados armazenados** | Nenhuma linha muda de conteúdo — a fase mexe em privilégio e policy, não em dado. Banco é dev e descartável (autorização do owner de 2026-07-21) | Nenhuma migração de dados. Sem query de pré-voo: não há constraint sendo apertada |
 | **Config de serviço vivo** | **QStash:** mensagens de lembrete já publicadas apontando para `…/api/webhooks/lembrete?secret=<valor>`, com entrega até ~14 dias à frente, invisíveis no git. **Supabase Cloud (`cimeiteyueeolwmlouxi`):** os GRANTs vivem só no banco — o `schemas/` não os reproduz por diff | QStash: `url: req.url` cobre a transição sem janela cega; opcionalmente esvaziar a fila (`docs/RESET_AMBIENTE_DEV.md` §4). Supabase: aplicar a migration manual no cloud e registrar a `version` em `supabase_migrations.schema_migrations` |
 | **Estado registrado no SO** | Nenhum. Não há Task Scheduler, pm2, systemd nem launchd neste projeto — verificado por ausência de qualquer referência a esses mecanismos no repositório | Nenhuma |
-| **Segredos e env vars** | `QSTASH_CURRENT_SIGNING_KEY` já existe. **`QSTASH_NEXT_SIGNING_KEY` não existe em lugar nenhum** — nem no código, nem na lista de vars requeridas de `.claude/CLAUDE.md`. `.env.local` não foi lido (regra de segredos) | Owner adiciona `QSTASH_NEXT_SIGNING_KEY` ao `.env.local` **antes** da tarefa do `instrumentation.ts`; ambas as chaves entram no bloco `env` de `vitest.config.ts`; a lista de vars requeridas de `.claude/CLAUDE.md` é atualizada |
+| **Segredos e env vars** | ❌ **Corrigido em 2026-07-21:** `QSTASH_CURRENT_SIGNING_KEY` **e** `QSTASH_NEXT_SIGNING_KEY` já estão configuradas no `.env.local` e no Railway — o `.env.example` versionado documenta as quatro vars do QStash. A afirmação original de que a segunda "não existe em lugar nenhum" veio de `grep` em `src/` e confundiu "não é lida pelo código" com "não está no ambiente" | Nenhuma ação do owner. Ambas as chaves entram no bloco `env` de `vitest.config.ts` na mesma tarefa que introduz a falha dura; a lista de vars requeridas de `.claude/CLAUDE.md` é atualizada (lá sim estão ausentes) |
 | **Artefatos de build / pacotes** | `@upstash/qstash` ausente de `node_modules` e de `package.json`. `pnpm-lock.yaml` muda com a instalação | `pnpm add @upstash/qstash`; lockfile commitado junto |
 
 **A pergunta canônica:** depois que todo arquivo do repositório estiver atualizado, o que ainda tem o comportamento antigo? Resposta: (a) o banco no Supabase Cloud, até a migration manual ser aplicada; (b) as mensagens já enfileiradas no QStash; (c) o `.env.local` da máquina do owner e de qualquer ambiente de deploy.
@@ -638,16 +642,15 @@ Fase de refatoração de privilégios + mudança de contrato de webhook. Estado 
 | `jq` | inspeção das respostas | ✓ | 1.8.1 | não essencial |
 | Docker (daemon) | shadow db efêmero do `supabase db diff` | ✓ | 29.6.1, daemon up | — |
 | `npx supabase` | gerar migration das mudanças de **policy** | ✓ (via `npx -y supabase@latest`) | — | escrever a migration de policy à mão (permitido nesta fase DEV, mas fora do padrão) |
-| **MCP do Supabase** | **aplicar** DDL no Supabase Cloud | ✗ **ausente nesta sessão** (MCPs conectados: context7, railway, todoist) | — | Owner aplica pelo SQL editor do dashboard **e** insere a mesma `version` em `supabase_migrations.schema_migrations`, ou conecta o MCP (exige OAuth do owner) |
-| `psql` | alternativa de aplicação direta | ✓ | 18.3 | exigiria a connection string do banco, que não está entre as vars conhecidas do projeto |
+| **MCP do Supabase** | **aplicar** DDL no Supabase Cloud | ✗ ausente nesta sessão, mas **já pré-aprovado** em `.claude/settings.local.json` (`mcp__supabase__apply_migration`, `execute_sql`, `list_migrations`) | — | Basta o OAuth do owner — nenhuma permissão nova é necessária |
+| **`psql` pelo pooler** | alternativa de aplicação direta | ✓ **verificado em 2026-07-21** | cliente 18.3 / servidor 17.6 | `aws-1-sa-east-1.pooler.supabase.com:5432`, usuário `postgres.<ref>`, senha em `SUPABASE_POSTGRES_PASSWORD`. DDL confirmado por transação revertida |
 
-**Dependências ausentes que bloqueiam execução:**
+**Correção de 2026-07-21 — a aplicação de DDL não é bloqueio.** A pesquisa registrou que `psql` "exigiria a connection string, que não está entre as vars conhecidas". Está: `SUPABASE_POSTGRES_PASSWORD` existe no `.env.local` e o host se deriva do project ref. Duas ressalvas apuradas na verificação:
 
-- **Aplicação de DDL no Supabase Cloud.** Sem o MCP do Supabase conectado, nenhum passo do plano consegue aplicar migration sozinho. O plano precisa de um `checkpoint:human-verify` (ou de a sessão de execução ter o MCP autenticado) em cada tarefa de banco. Não existe banco local — `docs/RESET_AMBIENTE_DEV.md` e a memória do projeto são explícitos: um stack Docker local do Supabase pode existir na máquina como resíduo e **engana**.
+- A **direct connection** (`db.<ref>.supabase.co`) resolve **apenas para IPv6** e a máquina do owner não tem rota IPv6 — inalcançável. Só o pooler funciona.
+- O prefixo do pooler é **`aws-1`**, não `aws-0` como dizem a documentação e os tutoriais. Uma varredura em `aws-0-*` retorna `ENOTFOUND tenant/user` em todas as regiões e parece "projeto não existe".
 
-**Dependências ausentes com contorno:**
-
-- `QSTASH_NEXT_SIGNING_KEY` — contorno é o owner copiar do console da Upstash; leva minutos, mas precisa acontecer antes da tarefa de código.
+**Consequência para o plano:** cada tarefa de banco **não** precisa de `checkpoint:human-verify`, desde que uma das duas vias esteja liberada antes da execução — MCP autenticado (permissão já concedida) ou `Bash(psql -h aws-1-sa-east-1.pooler.supabase.com *)` no `permissions.allow`. Em qualquer via, registrar a `version` em `supabase_migrations.schema_migrations`. Não existe banco local — `docs/RESET_AMBIENTE_DEV.md` e a memória do projeto são explícitos: um stack Docker local do Supabase pode existir na máquina como resíduo e **engana**.
 
 ---
 

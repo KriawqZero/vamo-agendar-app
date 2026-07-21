@@ -69,16 +69,23 @@ Contexto declarado pelo owner: *"Por estarmos usando supabase, segurança é CRU
 
 ---
 
-## Chave de assinatura do QStash
+## Chave de assinatura do QStash — ⚠️ PERGUNTA INVÁLIDA, premissa falsa
+
+> **Esta área não deveria ter sido discutida.** A pergunta partia de "a chave não existe no projeto", e a chave **existia o tempo todo**. Registrado aqui em vez de apagado, para que o erro não seja refeito.
 
 | Option | Description | Selected |
 |--------|-------------|----------|
-| Owner pega a chave agora, antes de planejar | Plano nasce sem checkpoint e roda inteiro | ✓ |
+| Owner pega a chave agora, antes de planejar | Plano nasce sem checkpoint e roda inteiro | ✓ *(anulada)* |
 | Primeira tarefa da fase é a parada para pegar a chave | Necessário no começo porque a correção faz a aplicação recusar subir sem as chaves | |
 | Webhook por último, separado das tarefas de banco | Entrega o fechamento da porta primeiro; webhook fica para a próxima sessão se o dia acabar | |
 
-**User's choice:** pega agora.
-**Notes:** o owner perguntou se `QSTASH_NEXT_SIGNING_KEY` era funcionalidade nova do QStash, já que usava o serviço só para agendar. Não é: o QStash já assina toda requisição que envia; o projeto é que nunca verificou a assinatura, conferindo em vez disso uma senha em query string com fallback literal `'secret-key'` no código. As duas chaves (atual e próxima) existem para rotação sem downtime e são ambas exigidas pelo construtor `Receiver` — confirmado na documentação oficial via Context7, não de memória.
+**Desfecho real:** o owner verificou o `.env.example` versionado e constatou que ele documenta as quatro variáveis do QStash — `QSTASH_URL`, `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY` e `QSTASH_NEXT_SIGNING_KEY` — e que a chave está configurada no `.env.local` e no Railway. Não havia nada a buscar. SEG-05 é trabalho puro de código, sem checkpoint de abertura.
+
+**Como o erro entrou:** `01-RESEARCH.md` afirmou que a variável "não existe em lugar nenhum", concluindo isso de um `grep` em `src/`. O grep estava certo — nenhum código lê a variável hoje, porque nada verifica assinatura. O salto foi tratar "não é lida pelo código" como "não está configurada no ambiente". O orquestrador repetiu a afirmação sem checar, e sua única tentativa de verificar (`grep` nos nomes de variável do `.env.local`) foi bloqueada por permissão — momento em que deveria ter recorrido ao `.env.example`, que é versionado e não contém segredo, ou perguntado. Em vez disso, construiu uma pergunta inteira sobre a premissa não verificada.
+
+**Lição para as próximas fases:** afirmação de RESEARCH sobre *estado de ambiente* (variável configurada, serviço provisionado, conta ativa) é hipótese até ser verificada por fonte que enxergue o ambiente. `grep` em código só responde o que o código lê.
+
+**O que sobrevive desta área:** a explicação técnica continua válida e vale para o plano. O QStash já assina toda requisição que envia; o projeto nunca verificou, conferindo em vez disso uma senha em query string com fallback literal `'secret-key'`. As duas chaves existem para rotação sem downtime e ambas são exigidas pelo construtor `Receiver` — confirmado na documentação oficial via Context7, não de memória.
 
 ---
 

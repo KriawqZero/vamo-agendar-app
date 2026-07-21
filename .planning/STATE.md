@@ -85,7 +85,7 @@ Nenhum ainda.
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(nenhum)* | | | |
+| Dívida de ambiente | `DEBUG_QSTASH=1` está no `.env.example` e provavelmente nos ambientes (Railway incluso). Já listada como dívida no `PROJECT.md`; remover de `.env.example` e dos ambientes. Não é escopo da Phase 1 | Aberto | 2026-07-21 |
 
 ## Session Continuity
 

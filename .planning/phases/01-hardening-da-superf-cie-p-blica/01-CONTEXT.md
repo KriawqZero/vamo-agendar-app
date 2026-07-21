@@ -92,8 +92,13 @@ Origem: `supabase/migrations/20260709161817_restaura_privilegios_dml_roles_api.s
 
 ### Pré-requisitos do owner (fora de código)
 
-- **`QSTASH_CURRENT_SIGNING_KEY` e `QSTASH_NEXT_SIGNING_KEY` no `.env.local`** — painel do Upstash → QStash → Signing Keys. O owner declarou que pega **antes** do planejamento. Sem elas, a D-05 faz a aplicação recusar subir e o `pnpm dev` para.
-- **Permissão de `psql` liberada** no settings do projeto, para que a execução não pare a cada comando. O owner optou por isso conscientemente; razoável enquanto o banco é descartável, a revisar quando houver cliente real.
+- **Nenhum relativo ao QStash.** ⚠️ *Correção de 2026-07-21, depois da primeira versão deste arquivo:* `QSTASH_NEXT_SIGNING_KEY` **já existe** no `.env.local` e no Railway — o `.env.example` versionado documenta as quatro variáveis (`QSTASH_URL`, `QSTASH_TOKEN`, `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY`) com valores censurados. Verificado pelo owner; o agente não tem permissão de leitura em `.env*` e não pôde confirmar por conta própria.
+  **Origem do erro, para não se repetir:** `01-RESEARCH.md` afirmou que a variável "não existe em lugar nenhum" a partir de um `grep` em `src/`. O grep estava correto — nenhum código **lê** a variável hoje, porque nada verifica assinatura. Mas "não é lida pelo código" foi tratado como "não está configurada no ambiente", e a conclusão virou fato sem verificação. Onde o RESEARCH afirmar ausência de configuração, tratar como hipótese até checar `.env.example` (versionado, sem segredo) ou perguntar ao owner.
+  **Consequência para o plano:** SEG-05 é trabalho puro de código, **sem tarefa de checkpoint para buscar chave**. Nada a acrescentar ao `.env.example` — as quatro variáveis já estão lá.
+- **Aplicação do DDL sem interrupção** — duas saídas equivalentes, escolha do owner:
+  1. **Autenticar o MCP do Supabase** — `mcp__supabase__apply_migration`, `mcp__supabase__execute_sql` e `mcp__supabase__list_migrations` **já estão pré-aprovados** em `.claude/settings.local.json`; basta o OAuth. Caminho de menor atrito.
+  2. **Liberar `psql`** acrescentando `Bash(psql -h aws-1-sa-east-1.pooler.supabase.com *)` ao `permissions.allow`. Atenção: a regra casa por **prefixo**, então um comando iniciado por `PGPASSWORD=... psql` não casa — exige `~/.pgpass` ou um encapsulador `scripts/db.sh`, que também é melhor por não expor a senha em `ps aux`.
+  O agente **não pode** conceder essas permissões a si mesmo (o classificador bloqueia, corretamente). A execução da fase depende de uma das duas estar feita.
 
 ### Claude's Discretion
 
