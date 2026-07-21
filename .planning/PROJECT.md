@@ -65,8 +65,6 @@ cair na agenda do profissional sem que nada quebre no caminho.
       (`supabase/schemas/01_perfis_empresas.sql:25`) entrega a lista completa de
       profissionais da plataforma, com `telefone_contato` e `org_id` do Clerk, numa
       única requisição com a chave publicável que vai no bundle
-- [ ] Rotina própria de backup (`pg_dump`) e keep-alive do banco rodando **antes** da
-      primeira migration deste milestone — única rede de proteção existente no plano Free
 - [ ] Duas requisições simultâneas para o mesmo intervalo nunca geram dois agendamentos
       ativos sobrepostos (proteção atômica no banco, considerando a duração do serviço)
 - [ ] Script repetindo POSTs não consegue lotar a agenda de um profissional (rate limit
@@ -120,8 +118,11 @@ cair na agenda do profissional sem que nada quebre no caminho.
   anti-buraco (nenhum concorrente brasileiro desta faixa previne buraco na oferta do
   horário — todos tratam depois, com fila de encaixe ou lista de espera). Torná-lo
   visível **entrou** no escopo; construir um segundo, não
-- **Backup gerenciado e proteção contra pausa do banco** — Supabase permanece no plano
-  Free; riscos aceitos conscientemente (ver Key Decisions)
+- **Rede de proteção do banco** — *revisado em 2026-07-21:* o banco atual não é produção
+  (nenhum profissional real, nenhum agendamento de cliente final) e o owner autorizou
+  reestruturar e rodar migration destrutiva sem cerimônia. Os requisitos BKP-01 a BKP-03 e
+  a fase dedicada foram removidos do v1. **Volta a ser obrigatório quando existir dado de
+  terceiro no banco** — ver Key Decisions
 - **Multi-profissional, multi-filial, cancelamento autônomo pelo cliente, app nativo,
   migração para WhatsApp Cloud API** — todos em "Depois de evidência" no
   `docs/PENDENCIAS.md`, cada um com gatilho observável
@@ -168,7 +169,10 @@ concentra risco exatamente ali.
   depende de código e é o único item com prazo fora do controle do owner
 - **Dependência externa**: verificação do domínio no Resend (SPF/DKIM) exige mudança de
   DNS e propagação — tarefa do owner, bloqueia os e-mails transacionais
-- **Orçamento**: Supabase permanece no plano Free (sem custo mensal de banco)
+- **Orçamento**: Supabase no plano Free durante a construção; upgrade para Pro (~US$ 25/mês,
+  traz backup diário e elimina a pausa por inatividade) é intenção do owner condicionada à
+  aprovação do sócio, sem data — não bloqueia nenhuma fase, mas é a condição para haver dado
+  de terceiro no banco
 - **Tech stack**: Next.js 16 + React 19 + Tailwind v4 + Clerk + Supabase (SQL puro, sem
   ORM) + Asaas + QStash + Evolution API + Resend + PostHog. Prisma/Drizzle, better-auth e
   Mercado Pago são proibidos (descartados no pivô)
@@ -186,7 +190,7 @@ concentra risco exatamente ali.
 | Fundador é propriedade do tenant, não da assinatura | O Gratuito é a ausência de linha vigente e trocar de plano exige cancelar e recriar a linha; se a marca ficasse na assinatura, quem cancelasse e voltasse perderia o preço travado | — Pending |
 | Plus extinto do código e do banco | Entrega só o slug personalizado, não justifica existir, e vender um plano que vai morrer cria atrito com os primeiros clientes; ninguém assina Plus hoje, então o custo da remoção é zero | — Pending |
 | Checkout construído em sandbox | A conta Asaas de produção ainda não foi verificada; construir contra sandbox permite terminar o trabalho sem depender do prazo de terceiros, com virada de chave depois | — Pending |
-| Supabase permanece no Free, riscos aceitos — com mitigação obrigatória antes de tocar schema | Decisão explícita do owner após ver os fatos: o plano Free não dá acesso a backup algum e pausa o projeto após uma semana de inatividade. **Avaliação corrigida pela pesquisa de armadilhas (2026-07-20):** a pausa preserva os dados (só é irrecuperável após 90 dias) e é mitigável a custo zero com um cron no QStash, que já está na stack; o risco caro é a retenção de backup zero, e ele não é futuro — é *deste* milestone, que altera schema com dados reais (dropar políticas, extinguir o Plus, limpar dados de teste, aplicar exclusion constraint). Consequência: `pg_dump` e keep-alive são as primeiras tarefas do roadmap, não itens de go-live | ⚠️ Revisit |
+| Rede de proteção do banco sai do v1; a condição que a reativa fica escrita | **Revogada em 2026-07-21 a decisão anterior** de fazer `pg_dump` + keep-alive como primeira fase do milestone. O owner esclareceu dois fatos que mudam a conta: (1) o Supabase Free é ponte — o Pro entra assim que ele convencer o sócio, e o Pro traz backup diário de 7 dias e elimina a pausa por inatividade, que só existe no Free; (2) o banco atual **não é produção** — só lixo descartável, sem profissional real nem agendamento de cliente final, e migration destrutiva está explicitamente autorizada. Construir dump verificado, regra pré-migration e keep-alive protegeria dado que ninguém quer de volta, e o keep-alive morreria no dia do upgrade. **A condição registrada:** no instante em que existir dado de terceiro no banco (primeiro profissional real ativado, ou migração para banco de produção), ou o Pro está ativo, ou `pg_dump` antes de cada migration destrutiva volta a ser obrigatório. Abrir ao público sem uma das duas é risco a ser decidido explicitamente, não descoberto | — Pending |
 | Lançar sem diferencial competitivo construído | O owner constatou que nada no produto força a escolha frente aos concorrentes; construir diferencial em dias é inviável, e a alternativa escolhida é descobrir o que importa com os primeiros usuários reais | ⚠️ Revisit |
 | Regra "e-mail OU WhatsApp" volta ao booking público | Com o envio por e-mail existindo, a promessa de `docs/05` deixa de ser falsa; hoje o WhatsApp é obrigatório porque nada enviava e-mail | — Pending |
 | Tornar a grade anti-buraco visível, antes do checkout | A pesquisa de mercado mostrou que ela é o único item em que o produto está sozinho na faixa de preço — e é invisível por natureza (o profissional não observa o buraco que não aconteceu). A lógica já existe na engine; falta contar e mostrar. O owner escolheu antecipá-la à monetização, coerente com "uso real vale mais que receita" neste milestone | — Pending |
