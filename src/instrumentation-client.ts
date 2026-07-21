@@ -44,3 +44,14 @@ if (dsn) {
         beforeBreadcrumb: sanitizarBreadcrumb,
     })
 }
+
+/**
+ * Sem este hook o SDK não instrumenta navegação do App Router — e o build
+ * imprime `ACTION REQUIRED` avisando disso. Importa aqui porque `/book/[slug]`
+ * é um wizard: o cliente final navega entre etapas, e erro que só aparece
+ * depois da primeira navegação ficaria invisível.
+ *
+ * A URL passada ao hook passa pelas mesmas travas de `opcoesBaseSentry`
+ * (`urlQueryParams: false`) e pelo `beforeSend`.
+ */
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart

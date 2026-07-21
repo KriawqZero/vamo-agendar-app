@@ -685,6 +685,40 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
 
 ### Demais preparações de lançamento
 
+#### Diferidos da etapa preparatória "Fundação operacional" (2026-07-21)
+
+Cada um com o **gatilho** que o traz de volta — nenhum é "esquecido", todos são
+"decididos e adiados".
+
+- **`tunnelRoute` do Sentry.** *Gatilho:* constatar perda relevante de evento de
+  client por ad blocker. Ad blockers barram requisição para `*.sentry.io`, e
+  `/book/[slug]` é público e recebe tráfego de campanha. Custo: a doc do Sentry
+  exige **excluir** a rota do matcher, e o projeto só tem `isPublicRoute` em
+  `src/proxy.ts` — mexer ali arrisca o gate do Clerk por um ganho de fração de
+  eventos. Exige teste manual com ad blocker ligado.
+- **Source maps do Sentry.** *Gatilho:* primeiro erro de client cujo stack
+  minificado não permitir diagnóstico. Custo: `SENTRY_AUTH_TOKEN` no ambiente de
+  build, um passo de build a mais e um modo de falha novo (build quebra se o
+  upload falhar). Stack de **servidor** já chega legível sem isso. Ao ligar,
+  lembrar de permitir o build do `@sentry/cli` em `pnpm-workspace.yaml`, hoje
+  marcado como `false`.
+- **Custo do Sentry no bundle de `/book/[slug]`: +73 KB gzip** (168,8 → 241,8 KB),
+  medido no build, bem acima dos 20–30 KB que a pesquisa estimou — sob Turbopack
+  o `treeshake` do `withSentryConfig` é no-op, então não há configuração que
+  reduza isso. *Gatilho:* se a conversão do booking público mostrar sensibilidade
+  a peso de página, reavaliar Sentry client-side (a alternativa é server-only,
+  que era a recomendação inicial e foi descartada pelo owner com justificativa).
+- **Instrumentação da causa raiz nos demais `throw new Error` das actions B2B**
+  (~105 pontos). Hoje cada um já produz evento via `onRequestError`; o ganho de
+  instrumentar é "mensagem melhor", não "evento existe ou não". *Gatilho:* cada
+  fase que tocar a action acrescenta onde a causa raiz importar.
+- **Fila do Asaas pausada como modo de falha silencioso.** Não tem código hoje —
+  é herança explícita da **Phase 9**, não lacuna desta etapa.
+- **Cache Components + Sentry têm issue aberta** (`getsentry/sentry-javascript#21333`):
+  `captureException` quebra o prerender com Cache Components ligado. **Não se
+  aplica hoje** — `cacheComponents` é opt-in e não está no `next.config.ts`.
+  *Gatilho:* ligar Cache Components exige revisitar o Sentry antes.
+
 - **Checkout Asaas + webhooks completos de cobrança** (`/api/webhooks/asaas`) —
   necessário **se o lançamento já pretender cobrar automaticamente**: roadmap técnico
   completo em `docs/07`. Pré-requisito registrado: **refazer a auditoria da Data API**

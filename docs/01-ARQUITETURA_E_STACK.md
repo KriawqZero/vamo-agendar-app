@@ -27,8 +27,12 @@ Toda a engenharia do projeto deve seguir estritamente as tecnologias e ferrament
    * **Upstash QStash:** Escalabilidade de filas *serverless* para agendamento de tarefas em background e envio de lembretes futuros.
 
 6. **Notificações:**
-   * **Resend:** Disparo de e-mails transacionais (boas-vindas, confirmação, faturamento).
+   * **Resend (SDK `resend`):** Disparo de e-mails transacionais (boas-vindas, confirmação, faturamento). Remetente verificado `naoresponda@mail.vamoagendar.com.br`. Todo envio passa pelo wrapper `src/lib/email/enviar.ts`, que nunca lança e é no-op silencioso sem `RESEND_API_KEY` (EML-05) — nenhum chamador fala com o SDK direto.
    * **Evolution API:** Gateway oficial (self-hosted, gratuito) para integração de WhatsApp via QR Code — notificações instantâneas de agendamento e lembretes aos clientes finais. Toda decisão que tangencie WhatsApp deve ser pensada em cima da Evolution API (instância por tenant; apikey global para gestão, `hash.apikey` da instância para envio).
+
+7. **Observabilidade:**
+   * **Sentry (`@sentry/nextjs`):** Error tracking de servidor e de browser, inicializado por `src/instrumentation.ts` e `src/instrumentation-client.ts`. `onRequestError` é o que faz exceção de Server Action chegar ao painel. As travas anti-PII vivem no código versionado (`src/lib/observabilidade/opcoes-sentry.ts`), nunca em toggle de painel; Session Replay não é instalado. Sem `NEXT_PUBLIC_SENTRY_DSN` o SDK não inicializa (no-op explícito).
+   * **PostHog:** Eventos de funil (ver `docs/08-ANALYTICS_E_FUNIL.md`). No-op sem credencial.
 
 ---
 

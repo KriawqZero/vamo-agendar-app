@@ -15,9 +15,18 @@ um disparo específico, e nunca "conserte" divergências alterando o log.
 
 | Env | Obrigatória | Efeito |
 | --- | --- | --- |
-| `NEXT_PUBLIC_POSTHOG_KEY` | não | Sem ela, **client e server são no-op total**. |
-| `NEXT_PUBLIC_POSTHOG_HOST` | não | Default `https://us.i.posthog.com`. |
-| `ANALYTICS_TENANT_SALT` | não | Salt do hash do tenant. **Sem ela o salt é a string vazia** (o hash continua pseudonimizando; o salt endurece contra correlação por força bruta a partir de `org_id`s conhecidos — configure em produção e nunca a troque depois, ou os `distinct_id`s históricos se desconectam). |
+| `NEXT_PUBLIC_POSTHOG_KEY` | **não em dev / sim em produção** (validado no boot por `src/lib/env.ts`) | Sem ela, **client e server são no-op total**. |
+| `NEXT_PUBLIC_POSTHOG_HOST` | não | Default `https://us.i.posthog.com`. **Obrigatória se o projeto for da região EU** (`https://eu.i.posthog.com`) — errar isso faz nenhum evento aparecer, sem nenhuma mensagem de erro. |
+| `ANALYTICS_TENANT_SALT` | **não em dev / sim em produção** (validado no boot por `src/lib/env.ts`) | Salt do hash do tenant. **Sem ela o salt é a string vazia** (o hash continua pseudonimizando; o salt endurece contra correlação por força bruta a partir de `org_id`s conhecidos — **nunca a troque depois**, ou os `distinct_id`s históricos se desconectam). |
+
+> **Mudança de contrato declarada (etapa preparatória "Fundação operacional",
+> 2026-07-21):** `NEXT_PUBLIC_POSTHOG_KEY` e `ANALYTICS_TENANT_SALT` eram
+> opcionais por design. A partir desta etapa, a ausência de qualquer uma delas
+> **derruba o boot em produção** (`src/lib/env.ts`, disparado pelo
+> `register()` de `src/instrumentation.ts`) em vez de degradar em silêncio —
+> este documento já pedia configurá-las em produção, e agora isso é executável.
+> **O no-op em desenvolvimento continua exatamente como está**, e `pnpm build`
+> sem secrets também: o hook de instrumentação não roda durante `next build`.
 
 > **Validação da key em produção:** o endpoint de ingestão do PostHog responde
 > `200 {"status":"Ok"}` **mesmo com api_key inválida** (drop silencioso). O log
