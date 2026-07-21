@@ -697,6 +697,18 @@ Cada um com o **gatilho** que o traz de volta — nenhum é "esquecido", todos s
   `booking_status_changed`, único que mede taxa de cancelamento). Grafia
   decidida: **nome em inglês, propriedade em pt-BR**, consistente com os 20+
   eventos que já existiam — contrato completo em `docs/08-ANALYTICS_E_FUNIL.md`.
+- **Session Replay no `/book/[slug]`.** *Gatilho:* **Phase 10 publicar os termos de uso
+  e a política de privacidade** — só aí existe base legal declarada para gravar sessão
+  de terceiro. Decidido pelo owner em 2026-07-21 (manter desligado até lá).
+  Não confundir com **captura de erro no navegador**, que está **ligada** no booking
+  público por decisão do owner e não é afetada por este item. Replay é o vídeo da
+  sessão: outro produto, outro risco.
+  Vale reavaliar porque é genuinamente útil — ver o cliente travar na escolha de
+  horário diz mais que um stack trace. Ao ligar, avaliar duas variantes: só no
+  `/dashboard` (o profissional tem conta e aceitou termos) ou no booking com
+  mascaramento total de inputs. ⚠️ O mascaramento é por **seletor de CSS**: campo novo
+  sem a classe certa passa a ser gravado e **nada avisa** — o defeito só aparece
+  assistindo a uma gravação. Se ligar, cobrir com teste de seletor.
 - **`tunnelRoute` do Sentry.** *Gatilho:* constatar perda relevante de evento de
   client por ad blocker. Ad blockers barram requisição para `*.sentry.io`, e
   `/book/[slug]` é público e recebe tráfego de campanha. Custo: a doc do Sentry
