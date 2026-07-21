@@ -67,11 +67,24 @@ export async function enviarEmail(params: ParamsEmail): Promise<ResultadoEmail> 
         if (error) {
             const motivo = classificarErroResend(error.name)
 
+            // Domínio que perde verificação devolve `validation_error` com 403
+            // ("Domain is not verified"), que cairia em `rejeitado` e sumiria —
+            // com 100% dos e-mails parados. 403 no `send` é sempre permissão
+            // NOSSA (domínio, chave restrita, modo de teste); endereço
+            // malformado do chamador vem como 422. O motivo devolvido continua
+            // sendo `rejeitado`: quem muda é a visibilidade, não o contrato
+            // (D-04 intacto, nenhum motivo novo).
+            const rejeicaoQueEDefeitoNosso = motivo === 'rejeitado' && error.statusCode === 403
+
             // D-05: falha inesperada vai ao Sentry; `rejeitado` não vai, porque
             // é dado ruim de entrada, não defeito nosso. Ao Sentry vai só o
             // identificador de erro (enum fechado) e o código HTTP —
             // `error.message` NUNCA atravessa esta fronteira.
-            if (motivo === 'falha_transporte' || motivo === 'config_ausente') {
+            if (
+                motivo === 'falha_transporte' ||
+                motivo === 'config_ausente' ||
+                rejeicaoQueEDefeitoNosso
+            ) {
                 reportarExcecao(new Error(`resend:${error.name}`), {
                     statusCode: error.statusCode,
                 })

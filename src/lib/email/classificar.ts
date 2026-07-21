@@ -14,13 +14,18 @@ export function classificarErroResend(nome: string): MotivoFalhaEmail {
         // Rejeição do Resend: dado ruim de entrada, não defeito nosso.
         // Não vai ao Sentry.
         case 'validation_error':
-        case 'invalid_from_address':
-        case 'security_error':
         case 'invalid_idempotent_request':
         case 'concurrent_idempotent_requests':
             return 'rejeitado'
 
         // Erro de configuração ou de programação nossa — merece Sentry.
+        //
+        // ⚠️ `invalid_from_address` e `security_error` estavam em `rejeitado`,
+        // e a justificativa ("dado ruim de entrada") não se aplica a eles: o
+        // `from` é CONSTANTE DE PRODUTO (`ENDERECO_REMETENTE`), não vem de
+        // input nenhum. Se ele foi recusado — DKIM alterado, domínio suspenso,
+        // remetente malformado — a causa é nossa e 100% dos e-mails param.
+        // Silenciosamente, que é o oposto declarado de OPE-02.
         // `invalid_access` e `invalid_region` não constavam da tabela do plano
         // (o SDK instalado tem 21 literais, a tabela cobria 19): os dois são
         // problema de credencial/parâmetro nosso, não do fornecedor.
@@ -35,6 +40,8 @@ export function classificarErroResend(nome: string): MotivoFalhaEmail {
         case 'method_not_allowed':
         case 'invalid_access':
         case 'invalid_region':
+        case 'invalid_from_address':
+        case 'security_error':
             return 'config_ausente'
 
         // Cota, limite de taxa, 5xx e falha de rede. `application_error` cobre

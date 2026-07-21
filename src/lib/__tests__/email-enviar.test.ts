@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const enviarMock = vi.fn()
 const construtorMock = vi.fn()
+const reportarMock = vi.fn()
+
+// A borda de Sentry é mockada para que o teste possa afirmar QUANDO o wrapper
+// grita — que é a diferença entre um e-mail que morre em silêncio e um que o
+// owner descobre no mesmo dia (OPE-02).
+vi.mock('../observabilidade/reportar', () => ({
+    reportarExcecao: (...args: unknown[]) => reportarMock(...args),
+    reportarFalhaSilenciosa: vi.fn(),
+}))
 
 vi.mock('resend', () => ({
     Resend: class {
@@ -28,6 +37,7 @@ const PARAMS = {
 beforeEach(() => {
     enviarMock.mockReset()
     construtorMock.mockReset()
+    reportarMock.mockReset()
 })
 
 afterEach(() => {
@@ -116,6 +126,60 @@ describe('enviarEmail', () => {
         expect(enviarMock).toHaveBeenCalledWith(expect.anything(), {
             idempotencyKey: 'boas-vindas/org_1',
         })
+    })
+
+    /**
+     * CR-05: se o DKIM de `mail.vamoagendar.com.br` mudar ou o domínio for
+     * suspenso, TODA chamada devolve 403 e nada mais sai. Sem este reporte, a
+     * descoberta acontece quando um profissional reclamar.
+     */
+    it('domínio não verificado (403) vira evento no Sentry mesmo sendo rejeitado', async () => {
+        vi.stubEnv('RESEND_API_KEY', 're_teste')
+        enviarMock.mockResolvedValue({
+            data: null,
+            error: {
+                name: 'validation_error',
+                statusCode: 403,
+                message: 'Domain is not verified. Please add and verify your domain.',
+            },
+        })
+
+        const resultado = await enviarEmail(PARAMS)
+
+        expect(resultado).toEqual({ ok: false, motivo: 'rejeitado' })
+        expect(reportarMock).toHaveBeenCalledTimes(1)
+        const [erro, contexto] = reportarMock.mock.calls[0]
+        expect((erro as Error).message).toBe('resend:validation_error')
+        expect(contexto).toEqual({ statusCode: 403 })
+        // Nenhuma frase interna do Resend atravessa a fronteira, nem para o
+        // Sentry (D-04).
+        expect(JSON.stringify(reportarMock.mock.calls)).not.toContain('Domain')
+    })
+
+    it('rejeição do endereço do destinatário (422) continua fora do Sentry', async () => {
+        vi.stubEnv('RESEND_API_KEY', 're_teste')
+        enviarMock.mockResolvedValue({
+            data: null,
+            error: { name: 'validation_error', statusCode: 422, message: 'Invalid `to` field.' },
+        })
+
+        await expect(enviarEmail(PARAMS)).resolves.toEqual({ ok: false, motivo: 'rejeitado' })
+        expect(reportarMock).not.toHaveBeenCalled()
+    })
+
+    it('remetente recusado devolve config_ausente e grita no Sentry', async () => {
+        vi.stubEnv('RESEND_API_KEY', 're_teste')
+        enviarMock.mockResolvedValue({
+            data: null,
+            error: {
+                name: 'invalid_from_address',
+                statusCode: 422,
+                message: 'Invalid `from` field.',
+            },
+        })
+
+        await expect(enviarEmail(PARAMS)).resolves.toEqual({ ok: false, motivo: 'config_ausente' })
+        expect(reportarMock).toHaveBeenCalledTimes(1)
     })
 
     it('monta from com o nome do estabelecimento e replyTo do profissional', async () => {
