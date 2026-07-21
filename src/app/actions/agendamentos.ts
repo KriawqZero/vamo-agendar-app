@@ -9,6 +9,7 @@ import { obterSlotsDisponiveis } from '@/lib/booking-engine'
 import { dispararNotificacoesAgendamento } from '@/lib/notificacoes-agendamento'
 import { PLANOS } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
+import { capturarEventoTenant } from '@/lib/analytics/server'
 
 interface ListarParams {
     dataFiltro?: string; // YYYY-MM-DD (um único dia)
@@ -140,6 +141,7 @@ export async function atualizarStatusAgendamento(
         }
     }
 
+    capturarEventoTenant('booking_status_changed', orgId, { status })
     revalidatePath('/dashboard')
 
     return data
@@ -343,6 +345,9 @@ export async function criarAgendamentoManual({
         })
     }
 
+    capturarEventoTenant('manual_booking_created', orgId, {
+        whatsapp_solicitado: Boolean(enviarWhatsApp),
+    })
     revalidatePath('/dashboard')
 
     return agendamento
@@ -489,6 +494,7 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
         console.error('Falha ao realinhar lembrete na remarcação (ignorada):', err)
     }
 
+    capturarEventoTenant('booking_rescheduled', orgId)
     revalidatePath('/dashboard')
 
     return data

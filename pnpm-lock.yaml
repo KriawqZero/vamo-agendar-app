@@ -35,6 +35,9 @@ importers:
       posthog-js:
         specifier: ^1.399.2
         version: 1.399.2
+      posthog-node:
+        specifier: ^5.46.0
+        version: 5.46.0
       react:
         specifier: 19.2.4
         version: 19.2.4
@@ -670,8 +673,14 @@ packages:
   '@posthog/core@1.40.2':
     resolution: {integrity: sha512-H12j7O9iHGvpK9t2ko8W4pvfbV1pBDxrsWC1LA6yp2RhzwvC4T3sWhu+AekDQJSRSrJEWlB0t/Ueq9QhPSq7FQ==}
 
+  '@posthog/core@1.44.0':
+    resolution: {integrity: sha512-uE+mdKvetxNQC6gWQf4MHIH8bGt+JN6z7ho0A4G3t9G1VGQTx9wHYHNwkKf3gzi+1oAXS9ej2VVY4pjWUU2PWg==}
+
   '@posthog/types@1.393.0':
     resolution: {integrity: sha512-vzWeEJZ7ERQhFRoQYaP5jzN1JvIu46UJyHXsuv+dTGW2r3sMgREOhNxXLZjmFHwZ8/FOHQoyqqQmXTCXZSfMSg==}
+
+  '@posthog/types@1.397.1':
+    resolution: {integrity: sha512-W/LpWbKVaaUnfZKuFuHa+Dg03D+fC87cM+PQbG+59JcSPW8F0JcBtSoXmpfrqbpuxUToMo+gktutrUkAb/KQBw==}
 
   '@react-native-async-storage/async-storage@1.24.0':
     resolution: {integrity: sha512-W4/vbwUOYOjco0x3toB8QCr7EjIP6nE9G7o8PMguvvjYT5Awg09lyV4enACRx4s++PPulBiBSjL0KTFx2u0Z/g==}
@@ -3843,6 +3852,15 @@ packages:
   posthog-js@1.399.2:
     resolution: {integrity: sha512-xcvrGEgUYtIVcWPRlVfc/NkMo0IP9nwnM/dzJIAzjDOSewkdDk/9T4Vz1+gooEhXdQCPfG44jSK95mVJsoySqA==}
 
+  posthog-node@5.46.0:
+    resolution: {integrity: sha512-Uzkth327Qxho9X55UygGUjVKCF9oaox90HQpa0o9YNjwLjbQmXttgHChzAtjAcsMw/ZKr3NnHC3xcAaS5dXwEQ==}
+    engines: {node: ^20.20.0 || >=22.22.0}
+    peerDependencies:
+      rxjs: ^7.0.0
+    peerDependenciesMeta:
+      rxjs:
+        optional: true
+
   preact@10.29.7:
     resolution: {integrity: sha512-DCHYrK/B10yUD3ZjLfhZ3WIE/9Vf9VFUODcRE2dRomTYDpJk6z6L9wecSfhfE6M9ZTHUdyQkoC46arIDhEV84Q==}
     peerDependencies:
@@ -5255,7 +5273,13 @@ snapshots:
     dependencies:
       '@posthog/types': 1.393.0
 
+  '@posthog/core@1.44.0':
+    dependencies:
+      '@posthog/types': 1.397.1
+
   '@posthog/types@1.393.0': {}
+
+  '@posthog/types@1.397.1': {}
 
   '@react-native-async-storage/async-storage@1.24.0(react-native@0.86.0(@babel/core@7.29.7)(@types/react@19.2.17)(bufferutil@4.1.0)(react@19.2.4)(utf-8-validate@6.0.6))':
     dependencies:
@@ -8754,6 +8778,10 @@ snapshots:
       web-vitals: 5.3.0
     transitivePeerDependencies:
       - preact-render-to-string
+
+  posthog-node@5.46.0:
+    dependencies:
+      '@posthog/core': 1.44.0
 
   preact@10.29.7: {}
 

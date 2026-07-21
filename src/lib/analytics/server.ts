@@ -1,47 +1,39 @@
 import { after } from 'next/server'
+import { PostHog } from 'posthog-node'
 import { hashTenantId } from './tenant'
 
 /**
  * Captura de eventos de funil no servidor (SOMENTE servidor).
  *
- * Envia direto ao endpoint HTTP de captura do PostHog via `fetch` — sem
- * posthog-node. Sem `NEXT_PUBLIC_POSTHOG_KEY` tudo é no-op.
- *
- * Abordagem única de não-bloqueio (documentada em docs/08-ANALYTICS_E_FUNIL.md):
- * o `after()` de 'next/server' é chamado DENTRO deste helper — os chamadores
- * (server actions, route handlers) apenas invocam a função. Se `after()` não
- * estiver disponível (fora de contexto de request), cai para fetch
- * fire-and-forget. Nenhum caminho lança: analytics jamais quebra o produto.
+ * Usa posthog-node com envio imediato. Sem as variáveis de ambiente, tudo é
+ * no-op. O `after()` mantém o envio fora do caminho crítico da resposta e
+ * aguarda o flush antes que o runtime encerre a invocação.
  */
 
 type PropsEvento = Record<string, string | number | boolean | null>
 
-const HOST_PADRAO = 'https://us.i.posthog.com'
-
 async function enviarAoPostHog(evento: string, props: PropsEvento | undefined, distinctId: string): Promise<void> {
     const key = process.env.NEXT_PUBLIC_POSTHOG_KEY
-    if (!key) return
+    const host = process.env.NEXT_PUBLIC_POSTHOG_HOST
+    if (!key || !host) return
+
+    const posthog = new PostHog(key, {
+        host,
+        flushAt: 1,
+        flushInterval: 0,
+        enableExceptionAutocapture: true,
+    })
+
     try {
-        const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || HOST_PADRAO
-        const res = await fetch(`${host.replace(/\/$/, '')}/i/v0/e/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                api_key: key,
-                event: evento,
-                distinct_id: distinctId,
-                properties: {
-                    ...props,
-                    // Eventos server-side não criam perfil de pessoa: a identidade
-                    // (tenant hash) é gerida no client via posthog.identify().
-                    $process_person_profile: false
-                },
-                timestamp: new Date().toISOString()
-            })
+        posthog.capture({
+            distinctId,
+            event: evento,
+            properties: {
+                ...props,
+                $process_person_profile: false,
+            },
         })
-        if (!res.ok) {
-            console.error(`[analytics] PostHog respondeu ${res.status} para o evento "${evento}"`)
-        }
+        await posthog.shutdown()
     } catch (err) {
         console.error(`[analytics] falha ao enviar evento "${evento}" (ignorada):`, err)
     }
@@ -57,13 +49,8 @@ export function capturarEventoServidor(
     props?: PropsEvento,
     distinctId: string = 'server'
 ): void {
-    if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return
-    try {
-        after(() => enviarAoPostHog(evento, props, distinctId))
-    } catch {
-        // Fora de contexto de request (ex.: job interno): fire-and-forget.
-        void enviarAoPostHog(evento, props, distinctId)
-    }
+    if (!process.env.NEXT_PUBLIC_POSTHOG_KEY || !process.env.NEXT_PUBLIC_POSTHOG_HOST) return
+    after(() => enviarAoPostHog(evento, props, distinctId))
 }
 
 /**

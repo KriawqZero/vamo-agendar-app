@@ -1,8 +1,11 @@
 {
-  "mcpServers": {
-    "supabase": {
-      "type": "http",
-      "url": "https://mcp.supabase.com/mcp?project_ref=cimeiteyueeolwmlouxi&features=docs%2Cdatabase%2Cdebugging%2Cdevelopment%2Cfunctions%2Cbranching%2Cstorage"
+    "mcpServers": {
+        "supabase": {
+            "type": "http",
+            "url": "https://mcp.supabase.com/mcp?project_ref=cimeiteyueeolwmlouxi&features=docs%2Cdatabase%2Cdebugging%2Cdevelopment%2Cfunctions%2Cbranching%2Cstorage"
+        },
+        "Sentry": {
+            "url": "https://mcp.sentry.dev/mcp/kriawq-tests/javascript-nextjs"
+        }
     }
-  }
 }
