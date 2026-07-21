@@ -9,6 +9,7 @@ import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 import { ehHexValida } from '@/lib/cores'
 import { capturarEventoTenant } from '@/lib/analytics/server'
+import { reportarExcecao } from '@/lib/observabilidade/reportar'
 
 interface AgendamentoPublicoParams {
     tenantId: string
@@ -126,6 +127,10 @@ export async function criarAgendamentoPublico({
 
     if (cError) {
         console.error('Erro ao buscar cliente existente:', cError.message)
+        // Fluxo B2C: a mensagem amigável apaga a causa raiz e o cliente final
+        // vai embora sem reclamar. Reportar ANTES do throw, sem nenhum dado
+        // do cliente no contexto.
+        reportarExcecao(cError, { fluxo: 'booking_publico', etapa: 'buscar_cliente' })
         throw new Error('Erro ao processar dados de contato.')
     }
 
@@ -146,6 +151,10 @@ export async function criarAgendamentoPublico({
 
         if (cnError || !novoCliente) {
             console.error('Erro ao cadastrar novo cliente:', cnError?.message)
+            reportarExcecao(cnError ?? new Error('cadastro_cliente_sem_retorno'), {
+                fluxo: 'booking_publico',
+                etapa: 'cadastrar_cliente',
+            })
             throw new Error('Erro ao processar dados de contato.')
         }
         clienteId = novoCliente.id
@@ -166,6 +175,12 @@ export async function criarAgendamentoPublico({
 
     if (agError || !agendamento) {
         console.error('Erro ao criar agendamento:', agError?.message)
+        // É literalmente o critério de sucesso do milestone quebrando: o
+        // agendamento real não caiu na agenda do profissional.
+        reportarExcecao(agError ?? new Error('agendamento_sem_retorno'), {
+            fluxo: 'booking_publico',
+            etapa: 'criar_agendamento',
+        })
         // Funil: sem isto o visitante que passou da validação de slot mas caiu
         // no INSERT sumiria do funil sem motivo. Nunca afeta o throw abaixo.
         try {

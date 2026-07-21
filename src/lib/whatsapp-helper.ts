@@ -1,24 +1,24 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
+import { reportarFalhaSilenciosa } from './observabilidade/reportar'
+
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080'
 const QSTASH_TOKEN = process.env.QSTASH_TOKEN
 const QSTASH_URL = process.env.QSTASH_URL || 'https://qstash-us-east-1.upstash.io'
 const APP_URL = process.env.APP_URL || 'https://vamoagendar.com.br'
 
 interface SubstituicaoParams {
-    template: string;
-    clienteNome: string;
-    empresaNome: string;
-    dataHoraStr: string; // Ex: "05/07/2026 às 14:00"
+    template: string
+    clienteNome: string
+    empresaNome: string
+    dataHoraStr: string // Ex: "05/07/2026 às 14:00"
 }
 
 /** Resultado padronizado de um disparo síncrono (envio de texto). */
 export type ResultadoEnvio = { ok: true } | { ok: false; motivo: string }
 
 /** Resultado do agendamento de um lembrete no QStash. */
-export type ResultadoAgendamento =
-    | { ok: true; messageId: string }
-    | { ok: false; motivo: string }
+export type ResultadoAgendamento = { ok: true; messageId: string } | { ok: false; motivo: string }
 
 /**
  * Substitui as chaves dinâmicas no template da mensagem.
@@ -27,7 +27,7 @@ export function processarMensagemTemplate({
     template,
     clienteNome,
     empresaNome,
-    dataHoraStr
+    dataHoraStr,
 }: SubstituicaoParams): string {
     const [dataPart, horaPart] = dataHoraStr.split(' às ')
 
@@ -65,7 +65,7 @@ export async function enviarMensagemWhatsApp(
     instanceName: string,
     instanceToken: string,
     telefone: string,
-    texto: string
+    texto: string,
 ): Promise<ResultadoEnvio> {
     const telefoneLimpo = telefone.replace(/\D/g, '')
     // Garante que o telefone tenha o código do país (55 para Brasil)
@@ -76,22 +76,32 @@ export async function enviarMensagemWhatsApp(
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'apikey': instanceToken
+                apikey: instanceToken,
             },
             body: JSON.stringify({
                 number: destinatario,
-                text: texto
-            })
+                text: texto,
+            }),
         })
 
         if (!response.ok) {
-            console.error(`Erro ao disparar WhatsApp via Evolution (${response.status}):`, await response.text())
+            console.error(
+                `Erro ao disparar WhatsApp via Evolution (${response.status}):`,
+                await response.text(),
+            )
+            // Falha de transporte vira linha de log e some — só `disparos_whatsapp`
+            // guarda, e ninguém consulta antes do painel da Phase 11. Contexto
+            // carrega SÓ o código HTTP: nunca telefone, nome ou texto da mensagem.
+            reportarFalhaSilenciosa('whatsapp:falha_transporte', {
+                statusCode: response.status,
+            })
             return { ok: false, motivo: `http_${response.status}` }
         }
 
         return { ok: true }
     } catch (err) {
         console.error('Falha de rede ao chamar Evolution API:', err)
+        reportarFalhaSilenciosa('whatsapp:erro_rede')
         return { ok: false, motivo: 'erro_rede' }
     }
 }
@@ -103,10 +113,15 @@ export async function enviarMensagemWhatsApp(
 export async function agendarLembreteQStash(
     agendamentoId: string,
     tenantId: string,
-    targetTimestampMs: number
+    targetTimestampMs: number,
 ): Promise<ResultadoAgendamento> {
     if (!QSTASH_TOKEN) {
         console.warn('QSTASH_TOKEN não configurado. Lembrete em background não será agendado.')
+        // "Lembrete com env faltando" é um dos modos de falha silenciosos
+        // nomeados no ROADMAP: devolve `motivo` e ninguém olha. Em produção o
+        // fail-fast de `src/lib/env.ts` impede chegar aqui — este reporte cobre
+        // o caso de a variável existir vazia ou de o guard ser afrouxado.
+        reportarFalhaSilenciosa('qstash:sem_token')
         return { ok: false, motivo: 'qstash_sem_token' }
     }
 
@@ -120,18 +135,21 @@ export async function agendarLembreteQStash(
         const response = await fetch(publishUrl, {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${QSTASH_TOKEN}`,
+                Authorization: `Bearer ${QSTASH_TOKEN}`,
                 'Content-Type': 'application/json',
-                'Upstash-Not-Before': String(scheduledSeconds)
+                'Upstash-Not-Before': String(scheduledSeconds),
             },
             body: JSON.stringify({
                 agendamentoId,
-                tenantId
-            })
+                tenantId,
+            }),
         })
 
         if (!response.ok) {
-            console.error(`Falha ao registrar agendamento no QStash (${response.status}):`, await response.text())
+            console.error(
+                `Falha ao registrar agendamento no QStash (${response.status}):`,
+                await response.text(),
+            )
             return { ok: false, motivo: `http_${response.status}` }
         }
 
@@ -164,8 +182,8 @@ export async function cancelarLembreteQStash(messageId: string): Promise<Resulta
         const response = await fetch(`${QSTASH_URL}/v2/messages/${messageId}`, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${QSTASH_TOKEN}`
-            }
+                Authorization: `Bearer ${QSTASH_TOKEN}`,
+            },
         })
 
         // 404 = mensagem inexistente (já executada/cancelada): sucesso brando.
@@ -173,7 +191,10 @@ export async function cancelarLembreteQStash(messageId: string): Promise<Resulta
             return { ok: true }
         }
 
-        console.error(`Falha ao cancelar lembrete no QStash (${response.status}):`, await response.text())
+        console.error(
+            `Falha ao cancelar lembrete no QStash (${response.status}):`,
+            await response.text(),
+        )
         return { ok: false, motivo: `http_${response.status}` }
     } catch (err) {
         console.error('Erro de conexão ao cancelar job no QStash:', err)
@@ -182,12 +203,12 @@ export async function cancelarLembreteQStash(messageId: string): Promise<Resulta
 }
 
 interface RegistroDisparo {
-    tenantId: string;
-    agendamentoId?: string | null;
-    tipo: 'confirmacao' | 'lembrete' | 'teste';
-    status: 'enviado' | 'agendado' | 'executado' | 'falha' | 'ignorado' | 'cancelado';
-    motivo?: string | null;
-    qstashMessageId?: string | null;
+    tenantId: string
+    agendamentoId?: string | null
+    tipo: 'confirmacao' | 'lembrete' | 'teste'
+    status: 'enviado' | 'agendado' | 'executado' | 'falha' | 'ignorado' | 'cancelado'
+    motivo?: string | null
+    qstashMessageId?: string | null
 }
 
 /**
@@ -196,19 +217,17 @@ interface RegistroDisparo {
  */
 export async function registrarDisparo(
     client: SupabaseClient,
-    { tenantId, agendamentoId, tipo, status, motivo, qstashMessageId }: RegistroDisparo
+    { tenantId, agendamentoId, tipo, status, motivo, qstashMessageId }: RegistroDisparo,
 ): Promise<void> {
     try {
-        const { error } = await client
-            .from('disparos_whatsapp')
-            .insert({
-                tenant_id: tenantId,
-                agendamento_id: agendamentoId ?? null,
-                tipo,
-                status,
-                motivo: motivo ?? null,
-                qstash_message_id: qstashMessageId ?? null
-            })
+        const { error } = await client.from('disparos_whatsapp').insert({
+            tenant_id: tenantId,
+            agendamento_id: agendamentoId ?? null,
+            tipo,
+            status,
+            motivo: motivo ?? null,
+            qstash_message_id: qstashMessageId ?? null,
+        })
 
         if (error) {
             console.error('Erro ao registrar disparo de WhatsApp (ignorado):', error.message)
