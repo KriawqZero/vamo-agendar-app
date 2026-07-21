@@ -100,7 +100,13 @@ cair na agenda do profissional sem que nada quebre no caminho.
 - [ ] Owner consegue coletar feedback dos primeiros usuários (conversa direta, funil e
       um ponto de feedback dentro do produto)
 - [ ] Primeiros profissionais convidados e ativados com acompanhamento até o primeiro
-      agendamento real
+      agendamento real, em ritmo escalonado (números novos disparando juntos é o perfil
+      de banimento do WhatsApp)
+
+**Diferencial visível**
+
+- [ ] Profissional vê quantos horários invendáveis a grade anti-buraco evitou na agenda
+      dele, com escape hatch para exibir todos os horários quando quiser ignorar a regra
 
 ### Out of Scope
 
@@ -108,9 +114,12 @@ cair na agenda do profissional sem que nada quebre no caminho.
   chave acontece quando a verificação aprovar, sem retrabalho de gating
 - **Cobrança anual** — só mensal por ora; simplifica o checkout (uma subscription
   `MONTHLY`) e nada indica demanda
-- **Construir um diferencial competitivo antes de lançar** — reconhecidamente o produto
-  não tem hoje uma razão de escolha que o separe dos concorrentes; a decisão do owner é
-  lançar e descobrir com os primeiros usuários em vez de apostar no escuro
+- **Construir um diferencial competitivo NOVO** — o produto não tem hoje uma razão de
+  escolha construída do zero, e criar uma leva mais que este milestone. *Revisado em
+  2026-07-20 após a pesquisa de mercado:* o diferencial já existe e é a grade
+  anti-buraco (nenhum concorrente brasileiro desta faixa previne buraco na oferta do
+  horário — todos tratam depois, com fila de encaixe ou lista de espera). Torná-lo
+  visível **entrou** no escopo; construir um segundo, não
 - **Backup gerenciado e proteção contra pausa do banco** — Supabase permanece no plano
   Free; riscos aceitos conscientemente (ver Key Decisions)
 - **Multi-profissional, multi-filial, cancelamento autônomo pelo cliente, app nativo,
@@ -180,6 +189,12 @@ concentra risco exatamente ali.
 | Supabase permanece no Free, riscos aceitos — com mitigação obrigatória antes de tocar schema | Decisão explícita do owner após ver os fatos: o plano Free não dá acesso a backup algum e pausa o projeto após uma semana de inatividade. **Avaliação corrigida pela pesquisa de armadilhas (2026-07-20):** a pausa preserva os dados (só é irrecuperável após 90 dias) e é mitigável a custo zero com um cron no QStash, que já está na stack; o risco caro é a retenção de backup zero, e ele não é futuro — é *deste* milestone, que altera schema com dados reais (dropar políticas, extinguir o Plus, limpar dados de teste, aplicar exclusion constraint). Consequência: `pg_dump` e keep-alive são as primeiras tarefas do roadmap, não itens de go-live | ⚠️ Revisit |
 | Lançar sem diferencial competitivo construído | O owner constatou que nada no produto força a escolha frente aos concorrentes; construir diferencial em dias é inviável, e a alternativa escolhida é descobrir o que importa com os primeiros usuários reais | ⚠️ Revisit |
 | Regra "e-mail OU WhatsApp" volta ao booking público | Com o envio por e-mail existindo, a promessa de `docs/05` deixa de ser falsa; hoje o WhatsApp é obrigatório porque nada enviava e-mail | — Pending |
+| Tornar a grade anti-buraco visível, antes do checkout | A pesquisa de mercado mostrou que ela é o único item em que o produto está sozinho na faixa de preço — e é invisível por natureza (o profissional não observa o buraco que não aconteceu). A lógica já existe na engine; falta contar e mostrar. O owner escolheu antecipá-la à monetização, coerente com "uso real vale mais que receita" neste milestone | — Pending |
+| Carência de 10 dias antes do downgrade por inadimplência | Sem prazo, `inadimplente` é estado absorvente: Pro gratuito para sempre com custo real de instância Evolution por tenant. Cortar no mesmo dia seria pior — boleto e PIX compensam com atraso e o cartão tem retry automático. Degradação em degraus: banner → e-mail → downgrade não-destrutivo | — Pending |
+| Rate limit com Redis novo no Upstash | Não é fornecedor novo (a conta já existe pelo QStash) e a `@upstash/ratelimit` traz os algoritmos atômicos prontos. A alternativa (contador no Postgres) gastaria escrita no Supabase Free, que é o recurso mais escasso da configuração escolhida. O Redis do Railway não serve: pertence à Evolution API e fala TCP, incompatível com a lib, que é HTTP/REST | — Pending |
+| Checkout aberto na janela de fundador e pago fora dela vale R$ 29,90 | O Asaas cobra o valor com que a assinatura foi criada; materializar o preço travado é a única leitura possível sem reprocessar valor. Generoso e consciente, em vez de descoberto em produção | — Pending |
+| LGPD: direito de exclusão documentado e atendido manualmente | Sem volume, atender por SQL é proporcional. Ressalva registrada: `agendamentos.cliente_id` é `ON DELETE CASCADE`, então o atendimento manual precisa ser por **anonimização** — um `DELETE FROM clientes` destruiria agendamentos futuros que o profissional ainda vai atender | ⚠️ Revisit |
+| Remetente dos e-mails: `"<Estabelecimento> via VamoAgendar"` com `Reply-To` do profissional | O cliente final nunca se cadastrou no VamoAgendar — deu o contato ao profissional. Remetente não reconhecido é a principal causa de marcação como spam, e reclamação acima de 0,1% queima a reputação de um domínio novo | — Pending |
 | `docs/` permanece; só o `PENDENCIAS.md` migra para o `.planning/` | A sobreposição real com o GSD é só a lista de tarefas; os docs numerados são prescritivos (como fazer) e o mapa do codebase é descritivo (o que existe) — papéis diferentes. Mover `docs/` para `lixo/` quebraria 5 agentes customizados e 7 referências do CLAUDE.md, e o próprio CLAUDE.md instrui a nunca usar `lixo/` como referência | ✓ Good |
 
 ## Evolution
