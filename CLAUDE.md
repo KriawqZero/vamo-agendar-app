@@ -32,6 +32,8 @@ Uma tarefa só está concluída quando:
 
 Next.js 16 (App Router) + React 19 + Tailwind CSS v4 + Clerk (auth/multi-tenant via Organizations) + Supabase (`@supabase/ssr`, SQL puro, **sem ORM**) + Asaas (pagamentos) + Upstash QStash (filas/lembretes) + Evolution API (WhatsApp) + Resend (SDK `resend`, e-mails) + PostHog (analytics, no-op sem credenciais) + Sentry (`@sentry/nextjs`, error tracking, no-op sem DSN).
 
+**⛔ Nunca rode `npx @sentry/wizard` nem `npx @posthog/wizard`** — ambas as integrações já existem e os defaults dos wizards (Session Replay, `autocapture`, `dataCollection` permissivo, `tunnelRoute`) são exatamente o que foi desligado de propósito. Do painel, copie só a credencial. Detalhes e o histórico da mesclagem em `docs/09-OBSERVABILIDADE_E_EMAIL.md`.
+
 **Observabilidade e e-mail (etapa preparatória "Fundação operacional"):** todo envio de e-mail passa por `enviarEmail` (`src/lib/email/enviar.ts`) — nunca instanciar `new Resend()` direto, o construtor lança sem chave. Falha inesperada vai ao Sentry por `reportarExcecao`/`reportarFalhaSilenciosa` (`src/lib/observabilidade/reportar.ts`); condição esperada de negócio **não** vai. As travas anti-PII do Sentry são asserção de teste sobre `opcoesBaseSentry`, não configuração de painel. Em produção, variável obrigatória ausente derruba o boot (`src/lib/env.ts`) — ao adicionar variável nova que falhe em silêncio, acrescente-a àquela lista.
 
 **Tecnologias descartadas no pivô — nunca instalar ou referenciar**: Prisma/Drizzle, better-auth, Mercado Pago. Qualquer resquício delas em código legado deve ser refatorado para a stack oficial.
@@ -105,6 +107,7 @@ Se o WhatsApp do tenant estiver desconectado, o fluxo falha **silenciosamente** 
 | `06-MENSAGERIA_E_WHATSAPP.md` | Fluxos e payloads Evolution API + QStash |
 | `07-PLANOS_E_MONETIZACAO.md` | Planos Gratuito/Plus/Pro e roadmap Asaas |
 | `08-ANALYTICS_E_FUNIL.md` | Eventos de funil com PostHog |
+| `09-OBSERVABILIDADE_E_EMAIL.md` | Sentry (travas anti-PII), fail-fast de env e wrapper do Resend — **inclui a regra de nunca rodar os wizards** |
 | `PENDENCIAS.md` | Lista viva de tarefas e bugs — **consultar antes de cada nova etapa** |
 | `ASSINATURAS.md` | Snippets para testes/simulação de assinaturas em dev |
 | `RESET_AMBIENTE_DEV.md` | Procedimento de reset total do ambiente dev |
