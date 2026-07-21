@@ -1,4 +1,9 @@
 allowBuilds:
+  # false de propósito: o postinstall do @sentry/cli baixa um binário pré-compilado
+  # que serve só ao upload de source maps — deliberadamente fora desta etapa
+  # (ver docs/PENDENCIAS.md). Sem isto, o aviso de build ignorado faz todo
+  # `pnpm exec` sair com código 1 e derruba o hook de lint/prettier.
+  '@sentry/cli': false
   bufferutil: true
   core-js: true
   sharp: true
