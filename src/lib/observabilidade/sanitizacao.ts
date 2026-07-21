@@ -29,12 +29,27 @@ export interface FormatoDeEvento {
 }
 
 export interface FormatoDeBreadcrumb {
+    category?: string
     data?: { url?: unknown }
 }
 
-/** Remove a querystring de uma URL, preservando o resto. */
+/**
+ * Categorias de breadcrumb que NUNCA saem deste processo.
+ *
+ * `console` é a mais perigosa do projeto inteiro, e não por hipótese: o
+ * breadcrumb de console carrega `message` (texto formatado) E `data.arguments`
+ * (os objetos crus). Dois caminhos reais passam por ali —
+ * `whatsapp-helper.ts` loga o corpo de erro da Evolution (nome e telefone do
+ * cliente final ecoados no payload) e o corpo de erro do QStash, cuja URL de
+ * destino embute `?secret=<QSTASH_CURRENT_SIGNING_KEY>`. Um breadcrumb fica no
+ * isolation scope da requisição e é anexado ao PRÓXIMO evento capturado, então
+ * um contexto de reporte limpo não protege nada.
+ */
+const CATEGORIAS_DE_BREADCRUMB_DESCARTADAS = new Set(['console'])
+
+/** Remove querystring E fragmento de uma URL, preservando o resto. */
 function semQuerystring(url: string): string {
-    return url.split('?')[0]
+    return url.split(/[?#]/)[0]
 }
 
 /**
@@ -56,11 +71,21 @@ export function sanitizarEventoSentry<T extends FormatoDeEvento>(evento: T): T {
 }
 
 /**
- * `beforeBreadcrumb`: breadcrumbs de fetch/xhr guardam a URL completa em
- * `data.url`, e a querystring de `/book/[slug]` pode carregar contato do
- * cliente final. Breadcrumb sem `data.url` passa incólume.
+ * `beforeBreadcrumb`: devolver `null` DESCARTA o breadcrumb (contrato do SDK).
+ *
+ * Duas barreiras, nesta ordem:
+ * 1. categoria descartada por allowlist invertida — nada de `console` sai;
+ * 2. breadcrumbs de fetch/xhr guardam a URL completa em `data.url`, e a
+ *    querystring de `/book/[slug]` pode carregar contato do cliente final.
+ *
+ * A trava (1) é redundante com a remoção da integração `Console` nos arquivos
+ * de init, e isso é proposital: a integração é configuração, esta função é
+ * código com teste. Breadcrumb sem `data.url` passa incólume.
  */
-export function sanitizarBreadcrumb<T extends FormatoDeBreadcrumb>(breadcrumb: T): T {
+export function sanitizarBreadcrumb<T extends FormatoDeBreadcrumb>(breadcrumb: T): T | null {
+    if (typeof breadcrumb.category === 'string') {
+        if (CATEGORIAS_DE_BREADCRUMB_DESCARTADAS.has(breadcrumb.category)) return null
+    }
     if (breadcrumb.data && typeof breadcrumb.data.url === 'string') {
         breadcrumb.data.url = semQuerystring(breadcrumb.data.url)
     }

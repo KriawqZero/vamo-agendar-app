@@ -16,6 +16,26 @@
  * granular abaixo.
  */
 
+/**
+ * Nome da integração de console no SDK — verificado em
+ * `@sentry/core@10.67.0` (`build/cjs/integrations/console.js:12`).
+ */
+export const NOME_INTEGRACAO_CONSOLE = 'Console'
+
+/**
+ * Remove a integração `Console` da lista de defaults do SDK.
+ *
+ * `consoleIntegration()` é DEFAULT nos runtimes de servidor e de edge (não no
+ * browser, onde o breadcrumb de console vem da `breadcrumbsIntegration`). Ela
+ * transforma todo `console.error` do projeto em breadcrumb com `message` e
+ * `data.arguments`, e é lá que a PII e o `?secret=` do QStash moram. O browser
+ * já desliga isso em `instrumentation-client.ts`; esta função é a mesma trava
+ * para servidor e edge.
+ */
+export function semIntegracaoDeConsole<T extends { name: string }>(integracoes: T[]): T[] {
+    return integracoes.filter((integracao) => integracao.name !== NOME_INTEGRACAO_CONSOLE)
+}
+
 export const opcoesBaseSentry = {
     // Só erro nesta etapa. Atenção: sob Turbopack o `treeshake` do
     // `withSentryConfig` é no-op — isto zera o TRÁFEGO de trace, mas o código
