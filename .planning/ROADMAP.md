@@ -16,6 +16,7 @@ código real e violá-las produz trabalho que não funciona ou que precisa ser r
 
 | Precede | Depende | Por quê |
 |---|---|---|
+| Etapa preparatória (fail-fast de env) | Phase 1 (SEG-05) | SEG-05 exige que a aplicação não suba sem as chaves de assinatura do QStash. O mecanismo de fail-fast nasce na etapa preparatória — a Phase 1 acrescenta as chaves dela à mesma lista, em vez de inventar um segundo caminho |
 | Phase 1 (hardening da Data API) | Phase 3 (rate limit) | Enquanto o INSERT `anon` existir, o rate limit na Server Action é teatro — o atacante ignora a action e escreve direto no PostgREST |
 | Phase 1 (hardening da Data API) | Phase 9 (cobrança) | A partir do checkout, os dados de cobrança passam a ser reais; o custo de um vazamento muda de categoria |
 | Desnormalização da duração | Exclusion constraint | Ambas dentro da Phase 2, nesta ordem obrigatória: a constraint **não pode nem ser escrita** hoje, porque a duração vive em `servicos` e constraint só enxerga a própria linha |
@@ -93,6 +94,7 @@ precisa ser sabido antes.
 - Fases inteiras (1, 2, 3): trabalho planejado do milestone
 - Fases decimais (2.1, 2.2): inserções urgentes depois do planejamento
 
+- [ ] **Etapa preparatória: Fundação operacional** - Sentry, PostHog e Resend de pé antes da Phase 1 começar
 - [ ] **Phase 1: Hardening da superfície pública** - A chave publicável deixa de servir a base de profissionais e a agenda de todos os tenants
 - [ ] **Phase 2: Integridade da agenda** - Duração gravada no agendamento e proteção atômica contra double-booking
 - [ ] **Phase 3: Anti-abuso no booking público** - Rate limit e honeypot sem nenhuma fricção visível ao cliente
@@ -108,10 +110,35 @@ precisa ser sabido antes.
 
 ## Phase Details
 
+### Etapa preparatória: Fundação operacional
+
+**Goal**: O produto tem error tracking, funil e canal de e-mail de pé antes da Phase 1 começar — e a ausência de configuração em produção deixa de ser silenciosa
+**Depends on**: Nada — é a primeira coisa do milestone. É pré-requisito obrigatório da Phase 1
+**Requirements**: OPE-02, EML-05
+**Success Criteria** (o que precisa ser VERDADE):
+
+  1. Uma exceção não tratada em produção chega ao projeto do Sentry do owner, com rota e stack, sem depender de alguém reclamar
+  2. Nenhum evento do Sentry carrega nome, telefone ou e-mail de cliente final — nem em querystring, nem em breadcrumb, nem em corpo de Server Action — e a trava está no código versionado, não em toggle de painel
+  3. Sem `RESEND_API_KEY`, `enviarEmail` devolve `desativado`, nenhum fluxo quebra e nada é registrado como erro
+  4. Um e-mail real sai de `naoresponda@mail.vamoagendar.com.br` identificado como `"<Estabelecimento> via VamoAgendar"`, com resposta indo ao profissional, e chega à caixa do owner
+  5. Em produção, subir sem uma variável obrigatória derruba o boot listando todos os nomes ausentes de uma vez — e `pnpm build` local sem secrets continua funcionando
+  6. Um evento real de funil aparece no projeto do PostHog do owner (a verificação com tráfego real de produção continua sendo OPE-03, na Phase 11)
+
+**Plans**: 1 plano (quick task 260721-jif)
+
+**Notas de execução:**
+
+- Os três produtos vêm juntos de propósito: wrapper do Resend nascido antes do Sentry nasceria com `console.error`, que no Railway é linha de log que ninguém lê, e a Phase 4 herdaria a dívida de trocar depois
+- O PostHog **já está implementado e correto** (`src/lib/analytics/`) — o que falta é projeto criado, chaves nos ambientes e verificação de que evento chega. Nenhuma linha de `analytics/` é reescrita aqui
+- `tunnelRoute` e source maps do Sentry ficaram de fora com justificativa registrada em `docs/PENDENCIAS.md`; `tunnelRoute` colide com o matcher de `src/proxy.ts`
+- A instrumentação cobre a lista fechada de pontos de falha silenciosa que existem hoje; a fila do Asaas (`ROADMAP.md:390`) não tem código ainda e é herança explícita da Phase 9
+
+---
+
 ### Phase 1: Hardening da superfície pública
 
 **Goal**: A chave publicável que vai no bundle deixa de dar acesso a qualquer coisa além do estritamente necessário para a página pública funcionar, e o webhook de lembrete só aceita quem o QStash assinou
-**Depends on**: Nada (primeira fase)
+**Depends on**: Etapa preparatória "Fundação operacional" (o fail-fast de env que SEG-05 exige nasce lá)
 **Requirements**: SEG-01, SEG-02, SEG-03, SEG-04, SEG-05
 **Success Criteria** (o que precisa ser VERDADE):
 
@@ -191,14 +218,13 @@ precisa ser sabido antes.
 
 **Goal**: O produto consegue falar por e-mail com o profissional sem queimar a reputação de um domínio que não tem histórico nenhum
 **Depends on**: Etapa preparatória "Fundação operacional" (SDK, wrapper e remetente do Resend já entregues lá). **DNS deixou de ser bloqueio** — ver notas
-**Requirements**: EML-01, EML-04, EML-05, EML-06
+**Requirements**: EML-01, EML-04, EML-06
 **Success Criteria** (o que precisa ser VERDADE):
 
   1. Profissional que acaba de criar a conta recebe um e-mail com o link `/book/[slug]` dele pronto para compartilhar
   2. O e-mail chega identificado pelo estabelecimento (`"<Estabelecimento> via VamoAgendar"`) e responder vai para o profissional, não para o VamoAgendar
-  3. Sem `RESEND_API_KEY` configurada, o produto funciona igual e nenhum fluxo quebra — no-op silencioso, como o PostHog já faz
-  4. Endereço que deu hard bounce entra em supressão e não recebe novo envio
-  5. A entrega foi verificada em Gmail, Outlook e um domínio corporativo, com a aba de chegada registrada (Principal, Promoções ou Spam)
+  3. Endereço que deu hard bounce entra em supressão e não recebe novo envio
+  4. A entrega foi verificada em Gmail, Outlook e um domínio corporativo, com a aba de chegada registrada (Principal, Promoções ou Spam)
 
 **Plans**: TBD
 **UI hint**: yes
@@ -212,6 +238,7 @@ precisa ser sabido antes.
 - DMARC em `p=none` com `rua` monitorado; endurecer para `quarantine` só depois de semanas de relatório limpo. Publicar `p=reject` de saída derruba o próprio e-mail sem sinal claro de causa
 - O SDK do Resend **não lança** em erro — devolve `{ data, error }`; o wrapper nunca pode lançar
 - Teto do Free: 100 e-mails/dia, 3.000/mês, 1 domínio. Sem observação da cota, o e-mail falha em silêncio no melhor dia do lançamento
+- EML-05 e o wrapper de envio foram entregues na etapa preparatória — esta fase consome `enviarEmail`, não o reescreve
 
 ---
 
@@ -373,14 +400,13 @@ precisa ser sabido antes.
 
 **Goal**: O owner enxerga se o sistema está de pé sem abrir o SQL editor, e o banco sai da fase DEV livre
 **Depends on**: Phase 1 até Phase 10 (todo o trabalho de schema precisa ter acontecido antes das migrations virarem imutáveis)
-**Requirements**: OPE-01, OPE-02, OPE-03, OPE-04, OPE-05
+**Requirements**: OPE-01, OPE-03, OPE-04, OPE-05
 **Success Criteria** (o que precisa ser VERDADE):
 
   1. Uma página visível só ao owner responde quatro perguntas num só lugar: instâncias de WhatsApp conectadas vs. total, disparos com erro nas últimas 24h, agendamentos criados hoje e último evento de cobrança recebido
-  2. Uma exceção não tratada em produção chega ao owner sem depender de alguém reclamar
-  3. Um evento real de funil aparece no painel do PostHog de produção — verificado, não configurado
-  4. O banco de produção não tem dados de teste, e o tenant do owner continua lá, claramente identificado
-  5. Uma migration já aplicada não pode mais ser editada — hook de imutabilidade **ativado**, não só existente
+  2. Um evento real de funil aparece no painel do PostHog de produção — verificado, não configurado
+  3. O banco de produção não tem dados de teste, e o tenant do owner continua lá, claramente identificado
+  4. Uma migration já aplicada não pode mais ser editada — hook de imutabilidade **ativado**, não só existente
 
 **Plans**: TBD
 **UI hint**: yes
@@ -391,6 +417,7 @@ precisa ser sabido antes.
 - Sem essa fase o critério de sucesso do milestone ("agendamentos reais acontecendo") não é verificável e o milestone não tem como ser declarado concluído
 - Limpeza de dados de teste: `SELECT` com o mesmo `WHERE` + conferência de contagem antes de converter em `DELETE`. Se até esta fase o banco ainda for o Free sem backup, um `DELETE` mal filtrado não tem desfazer — ver "Rede de proteção do banco — condição, não fase" no topo deste roadmap
 - O hook já existe pronto em `.claude/hooks/migrations-prod.md` — a entrega é ativá-lo
+- OPE-02 foi entregue na etapa preparatória — esta fase assume o Sentry de pé e cobre o que sobra: o painel do owner (OPE-01) e o funil verificado com tráfego real (OPE-03)
 
 ---
 
@@ -422,6 +449,7 @@ precisa ser sabido antes.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
+| Etapa preparatória. Fundação operacional | 0/1 | Not started | - |
 | 1. Hardening da superfície pública | 0/TBD | Not started | - |
 | 2. Integridade da agenda | 0/TBD | Not started | - |
 | 3. Anti-abuso no booking público | 0/TBD | Not started | - |
@@ -437,15 +465,17 @@ precisa ser sabido antes.
 
 ## Cobertura de requisitos
 
-56 de 56 requisitos v1 mapeados, cada um para exatamente uma fase. Nenhum órfão, nenhuma
-duplicata. Rastreabilidade completa em `.planning/REQUIREMENTS.md`.
+56 de 56 requisitos v1 mapeados, cada um para exatamente **um destino** — uma das 12 fases
+ou a etapa preparatória. Nenhum órfão, nenhuma duplicata. Rastreabilidade completa em
+`.planning/REQUIREMENTS.md`.
 
 | Categoria | Requisitos | Fase |
 |---|---|---|
 | Superfície pública e integridade multi-tenant | SEG-01 a SEG-05 | 1 |
 | Correção da agenda | AGE-01 a AGE-05 | 2 |
 | Anti-abuso | ABU-01 a ABU-03 | 3 |
-| Comunicação por e-mail | EML-01, EML-04, EML-05, EML-06 | 4 |
+| Comunicação por e-mail | EML-01, EML-04, EML-06 | 4 |
+| Comunicação por e-mail | EML-05 | Etapa preparatória |
 | Comunicação por e-mail | EML-03 | 5 |
 | Comunicação por e-mail | EML-02 | 9 |
 | Booking público | BOO-01 a BOO-03 | 5 |
@@ -454,15 +484,18 @@ duplicata. Rastreabilidade completa em `.planning/REQUIREMENTS.md`.
 | Autonomia do cliente final | AUT-01 a AUT-09 | 8 |
 | Cobrança | COB-01 a COB-08 | 9 |
 | Obrigações de lançamento | JUR-01 a JUR-03 | 10 |
-| Operação e go-live | OPE-01 a OPE-05 | 11 |
+| Operação e go-live | OPE-01, OPE-03, OPE-04, OPE-05 | 11 |
+| Operação e go-live | OPE-02 | Etapa preparatória |
 | Ativação dos primeiros usuários | ATI-01 a ATI-03 | 12 |
 
-**Por que EML está partido em três fases:** EML-03 (confirmação ao cliente final) só é
+**Por que EML está partido em quatro destinos:** EML-03 (confirmação ao cliente final) só é
 verificável quando o booking coletar e-mail, o que acontece na Phase 5 — hoje o campo não
 existe na UI pública. EML-02 (recibo da assinatura) só dispara quando o webhook de
 cobrança existir, na Phase 9, e a pesquisa é explícita que o recibo não pode estar no
 caminho síncrono do billing. Deixar os três na Phase 4 criaria dois critérios de sucesso
-não verificáveis.
+não verificáveis. EML-05 (o produto funciona sem credencial de e-mail) é propriedade do
+wrapper de envio, e o wrapper nasce na **etapa preparatória** porque as Phases 4, 5 e 9 o
+consomem — deixá-lo na Phase 4 faria a Phase 5 depender de código que ainda não existe.
 
 ---
 *Roadmap criado: 2026-07-20*

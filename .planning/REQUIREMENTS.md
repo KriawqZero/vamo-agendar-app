@@ -139,7 +139,8 @@ Reconhecidos e adiados. Não entram neste roadmap.
 ## Traceability
 
 Preenchida na criação do roadmap (2026-07-20). Cada requisito v1 mapeia para **exatamente
-uma** fase de `.planning/ROADMAP.md`.
+um destino** de `.planning/ROADMAP.md` — uma das 12 fases ou a etapa preparatória
+"Fundação operacional".
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
@@ -174,7 +175,7 @@ uma** fase de `.planning/ROADMAP.md`.
 | EML-02 | Phase 9 | Pending |
 | EML-03 | Phase 5 | Pending |
 | EML-04 | Phase 4 | Pending |
-| EML-05 | Phase 4 | Pending |
+| EML-05 | Etapa preparatória | Pending |
 | EML-06 | Phase 4 | Pending |
 | BOO-01 | Phase 5 | Pending |
 | BOO-02 | Phase 5 | Pending |
@@ -192,7 +193,7 @@ uma** fase de `.planning/ROADMAP.md`.
 | JUR-02 | Phase 10 | Pending |
 | JUR-03 | Phase 10 | Pending |
 | OPE-01 | Phase 11 | Pending |
-| OPE-02 | Phase 11 | Pending |
+| OPE-02 | Etapa preparatória | Pending |
 | OPE-03 | Phase 11 | Pending |
 | OPE-04 | Phase 11 | Pending |
 | OPE-05 | Phase 11 | Pending |
@@ -204,35 +205,38 @@ uma** fase de `.planning/ROADMAP.md`.
 
 | Phase | Nome | Requisitos | Qtd |
 |-------|------|------------|-----|
+| — | Etapa preparatória: Fundação operacional | EML-05, OPE-02 | 2 |
 | 1 | Hardening da superfície pública | SEG-01, SEG-02, SEG-03, SEG-04, SEG-05 | 5 |
 | 2 | Integridade da agenda | AGE-01, AGE-02, AGE-03, AGE-04, AGE-05 | 5 |
 | 3 | Anti-abuso no booking público | ABU-01, ABU-02, ABU-03 | 3 |
-| 4 | Canal de e-mail transacional | EML-01, EML-04, EML-05, EML-06 | 4 |
+| 4 | Canal de e-mail transacional | EML-01, EML-04, EML-06 | 3 |
 | 5 | Contato flexível no booking | EML-03, BOO-01, BOO-02, BOO-03 | 4 |
 | 6 | Diferencial visível — agenda densa | DIF-01, DIF-02 | 2 |
 | 7 | Fim do Plus e preço correto | PLA-01, PLA-02, PLA-03, PLA-04 | 4 |
 | 8 | Autonomia do cliente final | AUT-01, AUT-02, AUT-03, AUT-04, AUT-05, AUT-06, AUT-07, AUT-08, AUT-09 | 9 |
 | 9 | Cobrança automática ponta a ponta | COB-01, COB-02, COB-03, COB-04, COB-05, COB-06, COB-07, COB-08, EML-02 | 9 |
 | 10 | Obrigações jurídicas e LGPD executável | JUR-01, JUR-02, JUR-03 | 3 |
-| 11 | Observabilidade e go-live | OPE-01, OPE-02, OPE-03, OPE-04, OPE-05 | 5 |
+| 11 | Observabilidade e go-live | OPE-01, OPE-03, OPE-04, OPE-05 | 4 |
 | 12 | Ativação dos primeiros profissionais | ATI-01, ATI-02, ATI-03 | 3 |
 
 **Coverage:**
 - v1 requirements: 56 total
-- Mapped to phases: 56
+- Mapped: 56 (54 nas 12 fases + 2 na etapa preparatória)
 - Unmapped: 0 ✓
 
 **Removidos do v1 em 2026-07-21:** BKP-01, BKP-02, BKP-03 (rede de proteção do banco) —
 o banco atual não é produção e migration destrutiva está autorizada pelo owner. Razão e
 condição de reativação em Out of Scope acima e no `ROADMAP.md`.
 
-**Nota sobre a categoria EML:** os seis requisitos de e-mail estão distribuídos em três
-fases porque só assim viram critério verificável. EML-03 (confirmação ao cliente final)
+**Nota sobre a categoria EML:** os seis requisitos de e-mail estão distribuídos em quatro
+destinos porque só assim viram critério verificável. EML-03 (confirmação ao cliente final)
 depende do booking coletar e-mail, o que acontece na Phase 5 — hoje o campo não existe na
 UI pública. EML-02 (recibo da assinatura) dispara a partir do webhook de cobrança, na
 Phase 9, e a pesquisa é explícita que o recibo não pode viver no caminho síncrono do
-billing. Os demais (EML-01, EML-04, EML-05, EML-06) são a infraestrutura de envio e ficam
-na Phase 4.
+billing. EML-05 (o produto funciona sem credencial de e-mail) saiu para a **etapa
+preparatória** porque é propriedade do wrapper de envio, e o wrapper nasce lá — as Phases
+4, 5 e 9 o consomem. Os demais (EML-01, EML-04, EML-06) são a infraestrutura de envio e
+ficam na Phase 4.
 
 ---
 *Requirements defined: 2026-07-20*
