@@ -39,6 +39,17 @@ export interface ParamsEmail {
 }
 
 export async function enviarEmail(params: ParamsEmail): Promise<ResultadoEmail> {
+    // D-04 define `config_ausente` como "faltou remetente/destinatário — erro
+    // de programação". Sem esta guarda o campo vazio ia para o Resend, voltava
+    // como `validation_error` e virava `rejeitado`: um bug nosso classificado
+    // como culpa do dado de entrada, sem Sentry e sem log. Vem ANTES do guard
+    // de credencial de propósito — erro de programação é erro de programação
+    // com ou sem chave.
+    if (!params.para?.trim() || !params.replyTo?.trim() || !params.assunto?.trim()) {
+        reportarExcecao(new Error('email:config_ausente'), { fluxo: 'enviar_email' })
+        return { ok: false, motivo: 'config_ausente' }
+    }
+
     const apiKey = process.env.RESEND_API_KEY?.trim()
 
     // EML-05: sem credencial o produto funciona igual. Estado ESPERADO em dev —

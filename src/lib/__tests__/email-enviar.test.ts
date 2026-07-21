@@ -57,6 +57,28 @@ describe('enviarEmail', () => {
         erroSpy.mockRestore()
     })
 
+    /**
+     * WR-03: a Phase 4 vai chamar com `para: perfil.email_contato ?? ''`. Sem a
+     * guarda, o campo vazio vira `validation_error` no Resend → `rejeitado` →
+     * silêncio total. Bug nosso não pode ser classificado como dado ruim de
+     * entrada.
+     */
+    it.each([
+        ['destinatário', { para: '' }],
+        ['destinatário só com espaço', { para: '   ' }],
+        ['reply-to', { replyTo: '' }],
+        ['assunto', { assunto: '' }],
+    ])('sem %s devolve config_ausente sem tocar no Resend', async (_rotulo, faltando) => {
+        vi.stubEnv('RESEND_API_KEY', 're_teste')
+
+        await expect(enviarEmail({ ...PARAMS, ...faltando })).resolves.toEqual({
+            ok: false,
+            motivo: 'config_ausente',
+        })
+        expect(enviarMock).not.toHaveBeenCalled()
+        expect(reportarMock).toHaveBeenCalledTimes(1)
+    })
+
     it('sucesso devolve o id', async () => {
         vi.stubEnv('RESEND_API_KEY', 're_teste')
         enviarMock.mockResolvedValue({ data: { id: 'email_123' }, error: null })
