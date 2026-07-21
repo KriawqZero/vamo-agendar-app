@@ -60,6 +60,13 @@ cair na agenda do profissional sem que nada quebre no caminho.
       apenas `tenant_id IS NOT NULL`)
 - [ ] Acesso `anon` reduzido ao mínimo por GRANT de coluna (hoje a agenda completa de
       todos os tenants é listável publicamente)
+- [ ] `perfis_empresas` deixa de ser enumerável publicamente — hoje
+      `SELECT TO anon USING (true)` sem GRANT por coluna
+      (`supabase/schemas/01_perfis_empresas.sql:25`) entrega a lista completa de
+      profissionais da plataforma, com `telefone_contato` e `org_id` do Clerk, numa
+      única requisição com a chave publicável que vai no bundle
+- [ ] Rotina própria de backup (`pg_dump`) e keep-alive do banco rodando **antes** da
+      primeira migration deste milestone — única rede de proteção existente no plano Free
 - [ ] Duas requisições simultâneas para o mesmo intervalo nunca geram dois agendamentos
       ativos sobrepostos (proteção atômica no banco, considerando a duração do serviço)
 - [ ] Script repetindo POSTs não consegue lotar a agenda de um profissional (rate limit
@@ -170,7 +177,7 @@ concentra risco exatamente ali.
 | Fundador é propriedade do tenant, não da assinatura | O Gratuito é a ausência de linha vigente e trocar de plano exige cancelar e recriar a linha; se a marca ficasse na assinatura, quem cancelasse e voltasse perderia o preço travado | — Pending |
 | Plus extinto do código e do banco | Entrega só o slug personalizado, não justifica existir, e vender um plano que vai morrer cria atrito com os primeiros clientes; ninguém assina Plus hoje, então o custo da remoção é zero | — Pending |
 | Checkout construído em sandbox | A conta Asaas de produção ainda não foi verificada; construir contra sandbox permite terminar o trabalho sem depender do prazo de terceiros, com virada de chave depois | — Pending |
-| Supabase permanece no Free, riscos aceitos | Decisão explícita do owner após ver os fatos: o plano Free não dá acesso a backup algum e pausa o projeto após uma semana de inatividade (o que derrubaria todos os links `/book/[slug]` ao mesmo tempo). O risco de pausa é auto-limitante — só dispara no cenário de fracasso; o de perda de dados cresce com o sucesso | ⚠️ Revisit |
+| Supabase permanece no Free, riscos aceitos — com mitigação obrigatória antes de tocar schema | Decisão explícita do owner após ver os fatos: o plano Free não dá acesso a backup algum e pausa o projeto após uma semana de inatividade. **Avaliação corrigida pela pesquisa de armadilhas (2026-07-20):** a pausa preserva os dados (só é irrecuperável após 90 dias) e é mitigável a custo zero com um cron no QStash, que já está na stack; o risco caro é a retenção de backup zero, e ele não é futuro — é *deste* milestone, que altera schema com dados reais (dropar políticas, extinguir o Plus, limpar dados de teste, aplicar exclusion constraint). Consequência: `pg_dump` e keep-alive são as primeiras tarefas do roadmap, não itens de go-live | ⚠️ Revisit |
 | Lançar sem diferencial competitivo construído | O owner constatou que nada no produto força a escolha frente aos concorrentes; construir diferencial em dias é inviável, e a alternativa escolhida é descobrir o que importa com os primeiros usuários reais | ⚠️ Revisit |
 | Regra "e-mail OU WhatsApp" volta ao booking público | Com o envio por e-mail existindo, a promessa de `docs/05` deixa de ser falsa; hoje o WhatsApp é obrigatório porque nada enviava e-mail | — Pending |
 | `docs/` permanece; só o `PENDENCIAS.md` migra para o `.planning/` | A sobreposição real com o GSD é só a lista de tarefas; os docs numerados são prescritivos (como fazer) e o mapa do codebase é descritivo (o que existe) — papéis diferentes. Mover `docs/` para `lixo/` quebraria 5 agentes customizados e 7 referências do CLAUDE.md, e o próprio CLAUDE.md instrui a nunca usar `lixo/` como referência | ✓ Good |
