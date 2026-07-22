@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { obterSlotsDisponiveis } from '@/lib/booking-engine'
 import { diaLocal, TIMEZONE_PADRAO } from '@/lib/timezone'
@@ -12,8 +12,72 @@ import { capturarEventoTenant } from '@/lib/analytics/server'
 import { reportarExcecao } from '@/lib/observabilidade/reportar'
 import { erroSinteticoSupabase } from '@/lib/observabilidade/erro-supabase'
 
+// Projeção explícita das leituras públicas. Coluna nova no banco (ex.: cpf_cnpj
+// na cobrança) NÃO entra sozinha no payload que vai para o browser — com o
+// cliente privilegiado no caminho, pedir a linha inteira seria vazamento por
+// omissão. A enumeração completa do que a UI consome está no 01-UI-SPEC §B:
+// coluna que falta aqui não estoura erro, some da tela em silêncio.
+const COLUNAS_PERFIL_PUBLICO =
+    'tenant_id, slug, slug_gratuito, nome_estabelecimento, descricao, instagram, endereco, timezone, antecedencia_minima_minutos, horizonte_maximo_dias, cor_marca, logo_url, capa_url'
+
+const COLUNAS_SERVICO_PUBLICO = 'id, nome, descricao, preco, duracao_minutos'
+
+/**
+ * Resolve o estabelecimento a partir do slug da URL — sempre no SERVIDOR.
+ *
+ * É a única porta de entrada do caminho público: o `tenant_id` (org_id do Clerk)
+ * nunca chega do navegador, ele sai daqui. Busca pelo slug customizado, cai no
+ * `slug_gratuito` do provisionamento e só devolve o perfil se o slug acessado
+ * for o efetivo do plano vigente (downgrade invalida o customizado na hora).
+ *
+ * Recebe o cliente PRIVILEGIADO: a role anon perdeu a Data API nesta fase.
+ */
+async function resolverPerfilPublicoPorSlug(admin: SupabaseClient, slug: string) {
+    let { data: perfil, error: pError } = await admin
+        .from('perfis_empresas')
+        .select(COLUNAS_PERFIL_PUBLICO)
+        .eq('slug', slug)
+        .maybeSingle()
+
+    if (!perfil && !pError) {
+        const fallback = await admin
+            .from('perfis_empresas')
+            .select(COLUNAS_PERFIL_PUBLICO)
+            .eq('slug_gratuito', slug)
+            .maybeSingle()
+        perfil = fallback.data
+        pError = fallback.error
+    }
+
+    if (pError) {
+        // Erro de leitura com service role é falha de infraestrutura, não
+        // "slug não existe": sem isto a página vira 404 silencioso e ninguém
+        // fica sabendo. O slug nunca entra no contexto (é dado do visitante).
+        console.error('Erro ao resolver perfil público pelo slug:', pError.message)
+        reportarExcecao(erroSinteticoSupabase(pError), {
+            fluxo: 'booking_publico',
+            etapa: 'resolver_perfil',
+        })
+        return null
+    }
+
+    if (!perfil) {
+        return null
+    }
+
+    // Plano vigente com o MESMO cliente privilegiado (ver JSDoc de
+    // obterPlanoVigentePublico): cliente anônimo degradaria todo tenant pago
+    // para gratuito em silêncio. O tenant_id vem do perfil resolvido acima.
+    const plano = await obterPlanoVigentePublico(admin, perfil.tenant_id)
+    if (obterSlugEfetivo(perfil, plano) !== slug) {
+        return null
+    }
+
+    return { perfil, plano }
+}
+
 interface AgendamentoPublicoParams {
-    tenantId: string
+    slug: string
     servicoId: string
     dataHora: string // ISO string em UTC
     clienteNome: string
@@ -23,9 +87,12 @@ interface AgendamentoPublicoParams {
 
 /**
  * Cria um agendamento público (B2C) sem exigência de autenticação do cliente final.
+ *
+ * Recebe o `slug` da URL, nunca o `tenant_id`: o tenant é resolvido no servidor,
+ * então nenhum valor vindo do navegador escolhe em qual tenant se escreve.
  */
 export async function criarAgendamentoPublico({
-    tenantId,
+    slug,
     servicoId,
     dataHora,
     clienteNome,
@@ -33,7 +100,7 @@ export async function criarAgendamentoPublico({
     clienteEmail,
 }: AgendamentoPublicoParams) {
     // 1. Sanitizar e validar dados de entrada básicos
-    if (!tenantId || !servicoId || !dataHora || !clienteNome || !clienteTelefone) {
+    if (!slug || !servicoId || !dataHora || !clienteNome || !clienteTelefone) {
         throw new Error('Preencha todos os campos obrigatórios.')
     }
 
@@ -47,18 +114,22 @@ export async function criarAgendamentoPublico({
         throw new Error('Data e horário inválidos.')
     }
 
-    const supabase = await createClient()
+    // Todo o caminho público (leituras e escritas) usa o cliente PRIVILEGIADO:
+    // a role anon perdeu a Data API nesta fase. O preço disso é que o RLS não
+    // filtra mais nada aqui — cada query abaixo carrega o `tenant_id` resolvido
+    // no servidor a partir do slug, e a projeção de colunas é explícita.
+    const admin = createAdminClient()
 
-    // 2. Validar que o tenant existe (e obter o fuso e as regras de acesso do estabelecimento)
-    const { data: tenant, error: tError } = await supabase
-        .from('perfis_empresas')
-        .select('tenant_id, timezone, antecedencia_minima_minutos, horizonte_maximo_dias')
-        .eq('tenant_id', tenantId)
-        .maybeSingle()
+    // 2. Resolver o estabelecimento pelo slug (valida existência e slug efetivo
+    // do plano vigente) e obter o fuso e as regras de acesso.
+    const resolvido = await resolverPerfilPublicoPorSlug(admin, slug)
 
-    if (tError || !tenant) {
+    if (!resolvido) {
         throw new Error('Estabelecimento inválido ou indisponível.')
     }
+
+    const { perfil: tenant } = resolvido
+    const tenantId: string = tenant.tenant_id
 
     const timezone = tenant.timezone || TIMEZONE_PADRAO
     // Mesmo regrasAcesso usado em obterSlotsPublicos: sem isto, a validação do
@@ -71,7 +142,7 @@ export async function criarAgendamentoPublico({
 
     // 3. Buscar informações do serviço (duração), exigindo que esteja ativo e
     // pertença ao MESMO tenant — impede agendamento cruzado entre tenants.
-    const { data: servico, error: sError } = await supabase
+    const { data: servico, error: sError } = await admin
         .from('servicos')
         .select('duracao_minutos, nome')
         .eq('id', servicoId)
@@ -91,7 +162,7 @@ export async function criarAgendamentoPublico({
         tenantId,
         dateStr,
         duracaoServicoMinutos: servico.duracao_minutos,
-        supabase,
+        supabase: admin,
         timezone,
         regrasAcesso,
     })
@@ -109,12 +180,12 @@ export async function criarAgendamentoPublico({
         )
     }
 
-    // A partir daqui as ESCRITAS usam o cliente PRIVILEGIADO (somente servidor):
-    // o visitante é anon e o RLS não permite SELECT em `clientes` (o RETURNING
-    // do insert exige visibilidade de SELECT), nem o lookup por telefone —
-    // abrir SELECT público de `clientes` exporia dados pessoais. As validações
-    // acima (tenant, serviço do mesmo tenant, slot livre) são o porteiro.
-    const admin = createAdminClient()
+    // As ESCRITAS abaixo dependem do mesmo cliente privilegiado: o visitante é
+    // anon e o RLS não permite SELECT em `clientes` (o RETURNING do insert
+    // exige visibilidade de SELECT), nem o lookup por telefone — abrir SELECT
+    // público de `clientes` exporia dados pessoais. As validações acima
+    // (tenant resolvido do slug, serviço do mesmo tenant, slot livre) são o
+    // porteiro que substitui o RLS.
 
     // 5. Buscar cliente existente com o mesmo telefone para este tenant, ou criar novo
     let clienteId: string
@@ -228,48 +299,28 @@ export async function criarAgendamentoPublico({
  * funcionar imediatamente após um downgrade (e volta num re-upgrade).
  */
 export async function obterDadosBookingPublico(slug: string) {
-    const supabase = await createClient()
-
-    // 1. Buscar perfil pelo slug customizado; se não achar, pelo slug do provisionamento
-    let { data: perfil, error: pError } = await supabase
-        .from('perfis_empresas')
-        .select('*')
-        .eq('slug', slug)
-        .maybeSingle()
-
-    if (!perfil && !pError) {
-        const fallback = await supabase
-            .from('perfis_empresas')
-            .select('*')
-            .eq('slug_gratuito', slug)
-            .maybeSingle()
-        perfil = fallback.data
-        pError = fallback.error
-    }
-
-    if (pError || !perfil) {
-        return null
-    }
-
-    // 2. Validar que o slug acessado é o efetivo para o plano vigente do tenant.
-    // A leitura do plano usa o cliente PRIVILEGIADO: a role anon perdeu todo
-    // privilégio em `assinaturas` (o GRANT por coluna deixava
-    // `?select=tenant_id` devolver o org_id do Clerk de todo tenant pagante).
-    // Passar o cliente anônimo aqui degradaria TODO tenant pago para gratuito
-    // em silêncio — slug customizado viraria 404 e a personalização sumiria,
-    // porque `obterPlanoVigentePublico` trata erro de leitura como 'gratuito'.
-    // O tenant_id vem de `perfil.tenant_id`, resolvido no servidor a partir do
-    // slug — nunca do navegador (mitigação 1 da D-02).
+    // Leitura pública inteira no cliente PRIVILEGIADO (a role anon perdeu a
+    // Data API nesta fase). Com o RLS fora do caminho, o filtro por tenant e a
+    // lista de colunas passam a ser a defesa — ambos ficam no helper e nas
+    // constantes de projeção deste módulo (mitigações 1 e 2 da D-02).
     const admin = createAdminClient()
-    const plano = await obterPlanoVigentePublico(admin, perfil.tenant_id)
-    if (obterSlugEfetivo(perfil, plano) !== slug) {
+
+    // 1. Resolver o perfil pelo slug (customizado ou do provisionamento) e
+    // validar que o slug acessado é o efetivo do plano vigente.
+    const resolvido = await resolverPerfilPublicoPorSlug(admin, slug)
+
+    if (!resolvido) {
         return null
     }
 
-    // 3. Buscar serviços ativos desta empresa
-    const { data: servicos, error: sError } = await supabase
+    const { perfil, plano } = resolvido
+
+    // 2. Buscar serviços ativos desta empresa. `ativo` e `tenant_id` são
+    // colunas de FILTRO — não precisam (nem devem) estar na projeção que viaja
+    // para o browser.
+    const { data: servicos, error: sError } = await admin
         .from('servicos')
-        .select('*')
+        .select(COLUNAS_SERVICO_PUBLICO)
         .eq('tenant_id', perfil.tenant_id)
         .eq('ativo', true)
         .order('nome', { ascending: true })
@@ -279,10 +330,13 @@ export async function obterDadosBookingPublico(slug: string) {
         throw new Error('Não foi possível carregar os serviços.')
     }
 
-    // 4. Personalização visual SANITIZADA pelo plano vigente (mesmo padrão do slug
+    // 3. Personalização visual SANITIZADA pelo plano vigente (mesmo padrão do slug
     // efetivo): downgrade não zera as colunas, então o valor persistido é ignorado
     // quando o plano atual não inclui o recurso. Os campos crus são neutralizados
     // no `perfil` para impedir consumo acidental fora deste objeto.
+    // ⚠️ Com a leitura no cliente privilegiado (RLS bypassado), esta sanitização
+    // é a ÚNICA defesa: sem ela, tenant gratuito passa a exibir cor/logo/capa
+    // pagas — regressão visual E de monetização, silenciosa nas duas pontas.
     const recursos = PLANOS[plano].recursos
     const personalizacao = {
         corMarca:
@@ -300,30 +354,36 @@ export async function obterDadosBookingPublico(slug: string) {
 
 /**
  * Retorna os slots disponíveis calculados para uma data e duração de serviço.
+ *
+ * Recebe o `slug` da URL: o tenant, o fuso e as regras de acesso são resolvidos
+ * no servidor. Se o slug não resolver (caso real: downgrade de plano invalida o
+ * slug customizado com a aba do cliente aberta), a função FALHA — antes ela caía
+ * em fuso e regras padrão e devolvia uma grade calculada errada, sem sintoma.
  */
-export async function obterSlotsPublicos(
-    tenantId: string,
-    dateStr: string,
-    duracaoMinutos: number,
-) {
-    const supabase = await createClient()
+export async function obterSlotsPublicos(slug: string, dateStr: string, duracaoMinutos: number) {
+    const admin = createAdminClient()
 
-    // Fuso e regras de acesso do estabelecimento (SELECT anon permitido em perfis_empresas).
-    const { data: perfil } = await supabase
-        .from('perfis_empresas')
-        .select('timezone, antecedencia_minima_minutos, horizonte_maximo_dias')
-        .eq('tenant_id', tenantId)
-        .maybeSingle()
+    const resolvido = await resolverPerfilPublicoPorSlug(admin, slug)
+
+    if (!resolvido) {
+        // Esta mensagem é renderizada VERBATIM ao cliente final na caixa de erro
+        // da etapa de data/hora (o botão "Tentar de novo" é a saída). Nunca
+        // trocar por texto técnico nem vazar slug, tenant ou código do Postgres.
+        console.error('Slug público não resolvido ao buscar horários.')
+        throw new Error('Não foi possível carregar os horários. Tente de novo.')
+    }
+
+    const { perfil } = resolvido
 
     return obterSlotsDisponiveis({
-        tenantId,
+        tenantId: perfil.tenant_id,
         dateStr,
         duracaoServicoMinutos: duracaoMinutos,
-        supabase,
-        timezone: perfil?.timezone || TIMEZONE_PADRAO,
+        supabase: admin,
+        timezone: perfil.timezone || TIMEZONE_PADRAO,
         regrasAcesso: {
-            antecedenciaMinutos: perfil?.antecedencia_minima_minutos ?? 15,
-            horizonteDias: perfil?.horizonte_maximo_dias ?? 14,
+            antecedenciaMinutos: perfil.antecedencia_minima_minutos ?? 15,
+            horizonteDias: perfil.horizonte_maximo_dias ?? 14,
         },
     })
 }
