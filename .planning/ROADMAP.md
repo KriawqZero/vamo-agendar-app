@@ -148,7 +148,14 @@ precisa ser sabido antes.
   4. Uma tabela nova criada no schema `public` não aparece na Data API sem GRANT explícito
   5. POST sem assinatura válida do QStash no webhook de lembrete é rejeitado, e a aplicação não sobe se as chaves de assinatura não estiverem configuradas
 
-**Plans**: TBD
+**Plans**: 5 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Tracer: fecha o portão de `assinaturas` ponta a ponta + harness de verificação anônima (wave 1)
+- [ ] 01-02-PLAN.md — Leitura pública via admin client, projeções explícitas e contrato por slug (D-02/D-04) (wave 2)
+- [ ] 01-03-PLAN.md — Webhook de lembrete assinado pelo QStash + fail-fast de boot (SEG-05/D-05) (wave 1)
+- [ ] 01-04-PLAN.md — Banco fechado por padrão: REVOKE total de anon, policies substitutas e default privileges (D-01/D-03/D-07) (wave 3)
+- [ ] 01-05-PLAN.md — Verificação integrada dos 5 critérios + UAT obrigatório de booking e dashboard (wave 4)
 
 **Notas de execução:**
 
@@ -450,7 +457,7 @@ precisa ser sabido antes.
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | Etapa preparatória. Fundação operacional | 0/1 | Not started | - |
-| 1. Hardening da superfície pública | 0/TBD | Not started | - |
+| 1. Hardening da superfície pública | 0/5 | Not started | - |
 | 2. Integridade da agenda | 0/TBD | Not started | - |
 | 3. Anti-abuso no booking público | 0/TBD | Not started | - |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |
