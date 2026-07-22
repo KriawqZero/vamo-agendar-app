@@ -49,6 +49,7 @@ duas precisa estar valendo:
 1. **Supabase Pro** — backup diário com 7 dias de retenção, e o projeto deixa de ser
    pausável por inatividade (pausa é exclusiva do Free). Depende de aprovação do sócio,
    sem data.
+
 2. **`pg_dump` próprio antes de cada migration destrutiva** — se o Pro não tiver saído até
    lá, esta é a alternativa mínima, e ela custa um script.
 
@@ -64,10 +65,12 @@ Não há data fixa de lançamento. O produto abre quando esta barra estiver sati
 - 1 a 3 são o que protege o critério de sucesso "sem que nada quebre no caminho"
 - 4 e 5 entregam o canal de e-mail, que é o plano de continuidade do WhatsApp e portanto
   pré-requisito de escalar convites (Phase 12)
+
 - 7 impede abrir vendendo um plano que vai morrer com um selo de desconto que mente
 - 10 é obrigação legal, não escolha
 - 11 é o que torna o critério de sucesso verificável — sem ela não há onde ver se
   agendamentos reais estão acontecendo
+
 - 12 é a abertura em si
 
 **Adiáveis para depois da abertura, nesta ordem de preferência de corte:**
@@ -151,10 +154,21 @@ precisa ser sabido antes.
 **Plans**: 5 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 01-01-PLAN.md — Tracer: fecha o portão de `assinaturas` ponta a ponta + harness de verificação anônima (wave 1)
-- [ ] 01-02-PLAN.md — Leitura pública via admin client, projeções explícitas e contrato por slug (D-02/D-04) (wave 2)
 - [ ] 01-03-PLAN.md — Webhook de lembrete assinado pelo QStash + fail-fast de boot (SEG-05/D-05) (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 01-02-PLAN.md — Leitura pública via admin client, projeções explícitas e contrato por slug (D-02/D-04) (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 01-04-PLAN.md — Banco fechado por padrão: REVOKE total de anon, policies substitutas e default privileges (D-01/D-03/D-07) (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
 - [ ] 01-05-PLAN.md — Verificação integrada dos 5 critérios + UAT obrigatório de booking e dashboard (wave 4)
 
 **Notas de execução:**
