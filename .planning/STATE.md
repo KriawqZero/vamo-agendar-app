@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
-status: ready_to_execute
-stopped_at: "Gaps da Phase 1 planejados: 01-06 a 01-09, verificados pelo plan-checker (PASSED na 3a iteracao). Serializacao estrita 01-07 -> 01-06 -> 01-08 -> 01-09. Proximo: /gsd-execute-phase 01"
-last_updated: "2026-07-22T14:05:00.000Z"
+status: executing
+stopped_at: "Completed 01-07-PLAN.md — suite de integracao da escrita publica; proximo na serializacao: 01-06"
+last_updated: "2026-07-22T14:24:55.905Z"
 last_activity: 2026-07-22
-last_activity_desc: "Fechamento de gaps da Phase 01 planejado (4 planos) a partir de 01-VERIFICATION.md"
+last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 5
+  completed_plans: 6
 ---
 
 # Project State
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — GAP CLOSURE PLANNED
-Plan: 5 of 9 concluídos (01-01 a 01-05); 4 de fechamento de gaps aguardando execução
-Status: Ready to execute — serialização estrita 01-07 → 01-06 → 01-08 → 01-09
-Last activity: 2026-07-22 — planejamento do fechamento de gaps (01-06 a 01-09)
+Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
+Plan: 6 de 9 concluídos (01-01 a 01-05 e 01-07)
+Status: Ready to execute — próximo na serialização estrita do gap closure: **01-06**, depois 01-08 e 01-09
+Last activity: 2026-07-22 — 01-07 concluído (suíte de integração da escrita pública)
 
-Progress: [█████░░░░░] 56%
+Progress: [███████░░░] 67%
 
 ## Performance Metrics
 
@@ -63,6 +63,7 @@ Progress: [█████░░░░░] 56%
 | Phase 01 P02 | ~12min | 3 tasks | 5 files |
 | Phase 01 P04 | ~35min | 3 tasks | 8 files |
 | Phase 01 P05 | ~45min | 3 tasks | 1 files |
+| Phase 01 P07 | ~28min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -93,6 +94,11 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: Criterio 5 satisfeito na substancia por duas camadas (app nao serve nada + verificarAssinaturaQstash lanca sem chave), registrado como insatisfeito na forma — mudar semantica de boot e decisao de arquitetura, nao improviso de plano de verificacao
 - [Phase ?]: Policies residuais de servicos/horarios_funcionamento registradas e nao fechadas: migration nao aplicavel criaria drift 18 arquivos x 17 versions no ledger; o conserto futuro e DROP puro, a substituta 1b ja existe
 - [Phase ?]: Assertiva de vazamento por PADRAO e nao por substring: grep 'org_' falseia em producao por causa da baggage do Sentry (sentry-org_id=N)
+- [Phase ?]: [Phase 01]: pnpm test hermetico por desenho — suite de integracao fora do glob padrao do vitest, opt-in por EXIGIR_INTEGRACAO=1 com dono unico no script test:integracao; contagem que NAO cresce (13 arquivos / 196 testes) e a prova, nao o sintoma
+- [Phase ?]: [Phase 01]: Suite que toca banco reprova em vez de pular — sentinela que nunca e pulada + banner em stderr; pulo silencioso e como o gap volta sem ninguem ver
+- [Phase ?]: [Phase 01]: Acoplamento por substring entre modulos nao importaveis juntos e pinado por assercao de FONTE (o teste le BookingApp.tsx do disco) derivada de uma constante unica
+- [Phase ?]: [Phase 01]: Horario do agendamento de teste sai da propria engine (obterSlotsPublicos), nunca de literal cravado — e o que exercita a validacao por igualdade exata em vez de contorna-la
+- [Phase ?]: [Phase 01]: CAMINHO_ENV_LOCAL e o mecanismo de provar a sentinela sem mover, renomear ou escrever no .env.local real; a falha e por AUSENCIA e so os NOMES das variaveis aparecem na saida
 
 ### Pending Todos
 
@@ -140,6 +146,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T06:45:42.968Z
-Stopped at: Completed 01-05-PLAN.md — fase 01 pronta para verificacao
+Last session: 2026-07-22T14:24:23.421Z
+Stopped at: Completed 01-07-PLAN.md — suite de integracao da escrita publica; proximo na serializacao: 01-06
 Resume file: None
