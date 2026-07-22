@@ -151,7 +151,7 @@ precisa ser sabido antes.
   4. Uma tabela nova criada no schema `public` não aparece na Data API sem GRANT explícito
   5. POST sem assinatura válida do QStash no webhook de lembrete é rejeitado, e a aplicação não sobe se as chaves de assinatura não estiverem configuradas
 
-**Plans**: 2/5 plans executed
+**Plans**: 3/5 plans executed
 
 Plans:
 **Wave 1**
@@ -161,7 +161,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-02-PLAN.md — Leitura pública via admin client, projeções explícitas e contrato por slug (D-02/D-04) (wave 2)
+- [x] 01-02-PLAN.md — Leitura pública via admin client, projeções explícitas e contrato por slug (D-02/D-04) (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -471,7 +471,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | Etapa preparatória. Fundação operacional | 0/1 | Not started | - |
-| 1. Hardening da superfície pública | 2/5 | In Progress|  |
+| 1. Hardening da superfície pública | 3/5 | In Progress|  |
 | 2. Integridade da agenda | 0/TBD | Not started | - |
 | 3. Anti-abuso no booking público | 0/TBD | Not started | - |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |

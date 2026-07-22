@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: executing
-stopped_at: Completed 01-03-PLAN.md
-last_updated: "2026-07-22T05:31:07.662Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-07-22T05:54:09.482Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 5
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 ## Current Position
 
 Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
-Plan: 3 of 5
+Plan: 4 of 5
 Status: Ready to execute
 Last activity: 2026-07-22 — Phase 01 execution started
 
-Progress: [████░░░░░░] 40%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [████░░░░░░] 40%
 |------|----------|-------|-------|
 | Phase 01 P01 | 46min | 2 tasks | 4 files |
 | Phase 01 P03 | ~25min | 3 tasks | 9 files |
+| Phase 01 P02 | ~12min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,10 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: Assinatura do QStash substitui conferencia de secret em query string no webhook de lembrete
 - [Phase ?]: Chaves de assinatura lidas na chamada, nunca em constante de modulo
 - [Phase ?]: url: req.url preserva os lembretes ja enfileirados com query string
+- [Phase ?]: Leituras publicas por slug: o browser manda slug, o servidor devolve tenant_id — resolverPerfilPublicoPorSlug e a porta unica das tres funcoes publicas
+- [Phase ?]: Projecao explicita por constante de modulo no caminho publico: com service role no caminho, pedir a linha inteira e vazamento por omissao (coluna nova entra sozinha no payload)
+- [Phase ?]: tenantHash continua derivado do org_id cru no servidor — derivar do slug trocaria a chave do funil e partiria a serie do PostHog
+- [Phase ?]: Fallback silencioso em leitura publica e bug: obterSlotsPublicos com slug nao resolvido lanca, em vez de calcular grade com fuso e regras padrao
 
 ### Pending Todos
 
@@ -93,8 +98,9 @@ Nenhum ainda.
 - **Revisão jurídica humana** dos termos e da política antes de publicar (Phase 10) — menor confiança de toda a pesquisa
 - **Precedência de lookup** quando telefone e e-mail batem em clientes diferentes: decidir na Phase 5, não descobrir em produção
 - 🚨 **Janela de crash-loop aberta agora (quick task 260721-jif).** A lista de treze variáveis obrigatórias em produção já está valendo no `master`. Deploy de produção **antes** de provisionar `ANALYTICS_TENANT_SALT`, `NEXT_PUBLIC_SENTRY_DSN` e `RESEND_API_KEY` no Railway derruba o boot de propósito. É o comportamento pedido (OPE-02 e SEG-05 dependem dele), mas o intervalo entre merge e configuração é risco real. Duas saídas escritas em `docs/PENDENCIAS.md`: provisionar antes, ou remover as quatro da lista no mesmo commit do deploy
-- pnpm build não rodado no plano 01-01 (lint e test verdes); a Definition of Done exige os três — rodar no 01-02 ou no fechamento da fase
-- UAT do wizard completo de /book/avantis pendente (regressão obrigatória do CONTEXT §specifics); o contrafactual de slug prova só a leitura do plano
+- ✅ **RESOLVIDO no 01-02 — `pnpm build` não rodado no 01-01.** Os três comandos da Definition of Done rodaram verdes sobre o HEAD do 01-02: lint exit 0, 196 testes, build exit 0 com 14 páginas
+- UAT do wizard completo de /book/avantis pendente (regressão obrigatória do CONTEXT §specifics); o contrafactual de slug prova só a leitura do plano — **agravado pelo 01-02**, que trocou o identificador recebido pelas duas actions públicas (`tenantId` → `slug`). Escopo do 01-05
+- Caixa de erro de slots nunca vista renderizando a copy nova do 01-02 ("Não foi possível carregar os horários. Tente de novo."); teste barato no UAT do 01-05: chamar `obterSlotsPublicos('slug-inexistente', …)`
 
 ### Quick Tasks Completed
 
@@ -121,6 +127,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T05:31:07.655Z
-Stopped at: Completed 01-03-PLAN.md
+Last session: 2026-07-22T05:54:09.475Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
