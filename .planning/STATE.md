@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
-status: verifying
-stopped_at: Completed 01-05-PLAN.md — fase 01 pronta para verificacao
+status: gaps_found
+stopped_at: "Phase 1 executada (5/5 planos) e verificada: gaps_found, 5/7 must-haves. Dois itens abertos + 7 UAT visuais nao executados. Proximo: /gsd-plan-phase 1 --gaps"
 last_updated: "2026-07-22T06:45:42.975Z"
 last_activity: 2026-07-22
-last_activity_desc: Phase 01 execution started
+last_activity_desc: "Phase 1 executada e verificada — gaps_found (SEG-05 fail-fast de boot nao derruba o processo; caminho de escrita do booking sem teste)"
 progress:
   total_phases: 1
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 5
   completed_plans: 5
 ---
