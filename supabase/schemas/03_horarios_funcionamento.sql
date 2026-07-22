@@ -17,10 +17,26 @@ CREATE INDEX idx_horarios_funcionamento_tenant_dia ON horarios_funcionamento (te
 ALTER TABLE horarios_funcionamento ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de RLS
--- 1. Leitura pública para quem vai realizar o agendamento
-CREATE POLICY "Permitir SELECT público para todos"
-ON horarios_funcionamento FOR SELECT TO anon, authenticated
-USING (ativo = true);
+-- 1. REMOVIDA na Phase 1 pela migration
+--    20260722145948_fecha_policies_residuais_servicos_horarios.sql.
+--    Era uma policy de SELECT concedida a anon e authenticated com a expressão
+--    `ativo = true`, sem cláusula de tenant. Como policies são permissivas e se
+--    somam por OR, o predicado efetivo de qualquer conta logada virava
+--    `(ativo = true) OR (tenant_id = próprio)` — ou seja, qualquer profissional
+--    lia a agenda de funcionamento (e o tenant_id) de todos os outros. Para a role
+--    anônima ela já era inerte desde a 20260722060000 (sem privilégio, policy não é
+--    avaliada), mas continuava pré-carregada: um único GRANT ... TO anon futuro
+--    reabriria o buraco sem que nenhuma policy nova precisasse existir.
+--
+--    NÃO HÁ SUBSTITUTA, de propósito: o bloco 1b logo abaixo já cobre o próprio
+--    tenant INCLUSIVE as linhas inativas — é o que permite listar e reativar um dia
+--    desativado e o que faz o INSERT/UPDATE ... RETURNING funcionar. Uma segunda
+--    policy seria redundância pura (a D-07 não se aplica aqui justamente porque a
+--    1b pré-existe).
+--
+--    Nada anônimo depende disto: desde o plano 01-02 toda a leitura pública desta
+--    tabela acontece pelo createAdminClient() (service role, RLS bypassado), com o
+--    tenant resolvido no servidor a partir do slug.
 
 -- 1b. O dono precisa enxergar também as linhas inativas (dias desativados),
 -- tanto para listá-las no dashboard quanto porque INSERT/UPDATE ... RETURNING
