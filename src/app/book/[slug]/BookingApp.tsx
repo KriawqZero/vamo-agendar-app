@@ -6,7 +6,12 @@ import { diaLocal, somarDias, formatarDataHoraLonga, TIMEZONE_PADRAO } from '@/l
 import { capturarEvento } from '@/lib/analytics/client'
 import LuzAmbiente from '@/app/LuzAmbiente'
 import { classesAcento } from './acento'
-import { COPY_ERRO_SLOTS_FALLBACK, mensagemDeMotivo } from './mensagens'
+import {
+    COPY_ERRO_SLOTS_FALLBACK,
+    COPY_FALLBACK_ENVIO,
+    mensagemDeEnvio,
+    mensagemDeMotivo,
+} from './mensagens'
 import { ORDEM_ETAPAS } from './passos'
 import CabecalhoEstabelecimento from './CabecalhoEstabelecimento'
 import PainelMarca from './PainelMarca'
@@ -271,24 +276,32 @@ export default function BookingApp({
                     clienteNome: nomeInformado,
                     clienteTelefone: telefoneLimpo,
                 })
-                setAgendamentoCriado(res)
-                mudarEtapa('sucesso')
-            } catch (err) {
-                const mensagem =
-                    err instanceof Error
-                        ? err.message
-                        : 'Não foi possível confirmar o agendamento. Tente outro horário.'
-                if (mensagem.includes('já foi preenchido')) {
+                if (res.ok) {
+                    setAgendamentoCriado(res.agendamento)
+                    mudarEtapa('sucesso')
+                } else if (res.motivo === 'slot_indisponivel') {
                     // Recuperação de double-booking: solta o slot morto, refaz a
                     // grade e leva o cliente direto para escolher outro horário.
+                    //
+                    // A decisão é pelo DISCRIMINANTE, nunca por substring da
+                    // mensagem: até esta rodada ela era um `.includes()` sobre um
+                    // trecho da cópia de double-booking, e em build de produção
+                    // essa comparação era SEMPRE falsa — a `.message` da exceção
+                    // não atravessa a fronteira de flight (vira `digest`). O
+                    // efeito medido era o visitante que perdia a corrida ficar
+                    // preso nesta etapa, olhando um horário que já não existe.
                     setSlotSelecionado(null)
                     setTentativaSlots((t) => t + 1)
-                    setAvisoDataHora(mensagem)
+                    setAvisoDataHora(mensagemDeEnvio(res.motivo))
                     setDirecao('voltar')
                     mudarEtapa('data_hora')
                 } else {
-                    setErroEnvio(mensagem)
+                    setErroEnvio(mensagemDeEnvio(res.motivo))
                 }
+            } catch {
+                // Só o INESPERADO de verdade chega aqui: a rede caiu no meio do
+                // POST, ou o servidor devolveu 500 — nenhum `motivo` voltou.
+                setErroEnvio(COPY_FALLBACK_ENVIO)
             }
             return null
         },
