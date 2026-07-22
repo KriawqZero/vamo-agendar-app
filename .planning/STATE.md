@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: executing
-stopped_at: "Completed 01-07-PLAN.md — suite de integracao da escrita publica; proximo na serializacao: 01-06"
-last_updated: "2026-07-22T14:24:55.905Z"
+stopped_at: Completed 01-06-PLAN.md
+last_updated: "2026-07-22T14:54:06.029Z"
 last_activity: 2026-07-22
-last_activity_desc: Phase 01 execution started
+last_activity_desc: 01-06 concluído (boot de produção morre de verdade; harness de quatro vereditos)
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 6
+  completed_plans: 7
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 ## Current Position
 
 Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
-Plan: 6 de 9 concluídos (01-01 a 01-05 e 01-07)
-Status: Ready to execute — próximo na serialização estrita do gap closure: **01-06**, depois 01-08 e 01-09
-Last activity: 2026-07-22 — 01-07 concluído (suíte de integração da escrita pública)
+Plan: 7 de 9 concluídos (01-01 a 01-07)
+Status: Ready to execute — próximo na serialização estrita do gap closure: **01-08**, depois 01-09
+Last activity: 2026-07-22 — 01-06 concluído (boot de produção morre de verdade; harness de quatro vereditos)
 
-Progress: [███████░░░] 67%
+Progress: [████████░░] 78%
 
 ## Performance Metrics
 
@@ -64,6 +64,7 @@ Progress: [███████░░░] 67%
 | Phase 01 P04 | ~35min | 3 tasks | 8 files |
 | Phase 01 P05 | ~45min | 3 tasks | 1 files |
 | Phase 01 P07 | ~28min | 3 tasks | 4 files |
+| Phase 01 P06 | ~50min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,11 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: [Phase 01]: Acoplamento por substring entre modulos nao importaveis juntos e pinado por assercao de FONTE (o teste le BookingApp.tsx do disco) derivada de uma constante unica
 - [Phase ?]: [Phase 01]: Horario do agendamento de teste sai da propria engine (obterSlotsPublicos), nunca de literal cravado — e o que exercita a validacao por igualdade exata em vez de contorna-la
 - [Phase ?]: [Phase 01]: CAMINHO_ENV_LOCAL e o mecanismo de provar a sentinela sem mover, renomear ou escrever no .env.local real; a falha e por AUSENCIA e so os NOMES das variaveis aparecem na saida
+- [Phase ?]: [Phase 01]: Boot de producao encerra de verdade (process.exit(1)) quando falta env obrigatoria — guardado por NODE_ENV=production e por NEXT_RUNTIME==='nodejs'; no edge o comportamento anterior (relancar) e preservado
+- [Phase ?]: [Phase 01]: Harness de boot mede o status DO SERVIDOR — set -m para o job ganhar grupo de processos proprio, wait no PID capturado em $!, curl 7 (recusa de conexao) como asserção de porta morta; setsid proibido porque $! deixaria de ser o servidor
+- [Phase ?]: [Phase 01]: Harness nasce ANTES do conserto e a primeira execucao tem de REPROVAR — harness escrito depois nunca prova que mediria a falha
+- [Phase ?]: [Phase 01]: Complemento de env identico nas duas execucoes do harness: quatro das quatorze obrigatorias nao existem no .env.local, e sem injeta-las o CONTROLE seria impossivel e a mensagem do MORTE listaria cinco nomes em vez de um
+- [Phase ?]: [Phase 01]: Tres diagnosticos de Edge Runtime (process.stderr/process.exit em env.ts) registrados em PENDENCIAS, nao silenciados — aliasar process por globalThis esconderia o sinal em vez de resolve-lo
 
 ### Pending Todos
 
@@ -146,6 +152,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T14:24:23.421Z
-Stopped at: Completed 01-07-PLAN.md — suite de integracao da escrita publica; proximo na serializacao: 01-06
+Last session: 2026-07-22T14:53:25.873Z
+Stopped at: Completed 01-06-PLAN.md
 Resume file: None
