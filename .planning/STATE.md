@@ -4,15 +4,15 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
-status: needs_gap_closure
-stopped_at: "2ª rodada EXECUTADA por inteiro (01-10 a 01-16) e VERIFICADA: os 3 gaps anteriores fecharam, mas a verificação reprova de novo com 2 gaps bloqueantes NOVOS, vindos do code review e reproduzidos empiricamente. Próximo: /gsd-plan-phase 01 --gaps"
-last_updated: "2026-07-22T20:30:00.000Z"
+status: ready_to_execute
+stopped_at: "3ª rodada de fechamento de gaps PLANEJADA (01-17 a 01-19) e verificada pelo plan-checker em duas passagens — 3 warnings levantados e fechados, 0 blockers. Trabalho na branch `fase-01-gaps-rodada-3` (a `posthog` foi mergeada na master pelo PR #7 e apagada). Próximo: /gsd-execute-phase 01"
+last_updated: "2026-07-22T19:25:00.000Z"
 last_activity: 2026-07-22
-last_activity_desc: "2ª rodada de fechamento de gaps executada (7 planos), revisada em profundidade (2 blockers) e verificada (gaps_found, 11/13) — a fase segue reprovada"
+last_activity_desc: "3ª rodada planejada: 01-17 conserta o instrumento que certifica fechamento sem ter medido, 01-18 fecha o DoS por entrada não validada na superfície pública anônima, 01-19 escreve o alcance real da D-03 e reexecuta as 8 provas sobre o HEAD final"
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 16
+  total_plans: 19
   completed_plans: 16
 ---
 
@@ -27,8 +27,20 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — 2ª rodada EXECUTADA, REVISADA e VERIFICADA
-Plan: 16 de 16 concluídos (01-01 a 01-16). A verificação **rodou** sobre o HEAD `8edb32d` e **reprovou**: 11/13 must-haves, `status: gaps_found` em `01-VERIFICATION.md`
+Phase: 01 (hardening-da-superf-cie-p-blica) — 3ª rodada de fechamento de gaps PLANEJADA, pronta para executar
+Plan: 16 de 19 concluídos (01-01 a 01-16). A verificação **rodou** sobre o HEAD `8edb32d` e **reprovou**: 11/13 must-haves, `status: gaps_found` em `01-VERIFICATION.md`. Os planos 01-17, 01-18 e 01-19 existem para fechar os dois gaps e o item de registro — nenhum deles executado ainda
+
+### Planejamento da 3ª rodada (2026-07-22, branch `fase-01-gaps-rodada-3`)
+
+Três planos, serialização estrita (um por wave), commits `951cd98` (criação) e `ba46c4b` (correções do plan-checker):
+
+- **01-17 (wave 1, tracer)** — GAP A: `scripts/verificar-superficie-anon.sh` ganha contador `ESPERADAS` (exit 2 quando nenhuma checagem produziu prova positiva) e veredito de identidade do alvo. O controle re-executável `scripts/verificar-controle-harness-anon.sh` **nasce vermelho** — é critério de aceite, não observação: 4 vereditos, 4 reprovados antes do conserto, provado por `test $? -eq 1`. Cobre três eixos de falso verde, incluindo um que o code review não tinha (alvo que nega tudo uniformemente). O stub é `node:http` efêmero em `mktemp -d`, sem Docker e sem tocar o `.env.local` real
+- **01-18 (wave 2, depende de 01-17)** — GAP B: validação na fronteira de `obterSlotsPublicos` **antes** de `createAdminClient()`, guarda de profundidade no topo de `gerarSlotsAntiBuraco`, e replicação da validação de `duracaoMinutos` em `obterSlotsDashboard`. Fecha por **teto medido**, não por mudança de forma: a mesma sonda com `-5000000` contra `next start` tem de devolver `servico_invalido` em < 1.000 ms e < 10.000 bytes (linha de base legítima: 525 ms / 2.179 bytes; o gap abriu em 26.751 ms / 19.291.480 bytes). Os vereditos `ENTRADA_HOSTIL`/`DATA_HOSTIL` exigem o discriminante esperado **e a ausência de `slug_invalido`** no corpo — é o que prova que a guarda roda antes da resolução do slug
+- **01-19 (wave 3, depende de 01-18)** — ITEM C: o alcance real da D-03 escrito em `docs/03-PADROES_DE_BANCO_DE_DADOS.md` (a garantia vale para objetos criados por `postgres`; tabela criada por `supabase_admin` ainda herda `anon`/`authenticated` — default de plataforma que a migration não tocou), registro coerente em `PENDENCIAS.md` incluindo os dez avisos da 2ª rodada de review como **ponteiros** com a colisão de numeração resolvida, e gate que reexecuta as 8 provas encadeadas sobre o HEAD final
+
+**Fronteira medida antes de escrever:** `criarAgendamentoPublico` lê `duracao_minutos` do banco e deriva `dateStr` de um `Date` já validado por `isNaN` — nenhum valor do navegador alcança o laço da engine pelo caminho de ESCRITA. Por isso o GAP B é estritamente o caminho de LEITURA, e o WR-03 diferido (escrita pública sem limite de tamanho) continua diferido, com a fronteira escrita em voz alta nos dois planos.
+
+**Achado de tipagem que o relatório de verificação não tinha:** `ResultadoSlots` declara a falha como `MotivoLeituraPublica = Extract<MotivoPublico, 'slug_invalido' | 'erro_interno'>`, então `data_invalida` e `servico_invalido` **não** compilam contra ele apesar de serem membros de `MotivoPublico`. O 01-18 manda criar alias próprio em vez de alargar `MotivoLeituraPublica` — sem isso o executor bateria em erro de compilação no meio do plano.
 
 ### Resultado da 3ª passagem de verificação (2026-07-22)
 
@@ -55,9 +67,9 @@ Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code rev
 Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
 
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
-Last activity: 2026-07-22 — plano 01-16 executado (ÚLTIMO da fase): a degradação por falha de leitura de `assinaturas` virou distinguível e reportada, e o link público de tenant pagante deixou de cair
+Last activity: 2026-07-22 — 3ª rodada de fechamento de gaps planejada (01-17 a 01-19) e aprovada pelo plan-checker na segunda passagem
 
-Progress: [██████████] 100% (16/16 planos executados; **a verificação da fase ainda NÃO rodou sobre este HEAD** — a fase permanece não marcada como completa)
+Progress: [████████░░] 84% (16/19 planos executados; os 3 da 3ª rodada estão planejados e não executados. A fase permanece **reprovada** na verificação — 11/13 must-haves — até que 01-17, 01-18 e 01-19 rodem e uma 4ª verificação meça o resultado)
 
 ## Performance Metrics
 
