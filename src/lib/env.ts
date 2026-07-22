@@ -10,9 +10,9 @@
  *     sem elas o boot já morre com mensagem clara e imediata, e duplicar isso
  *     aqui só criaria risco de errar o nome e derrubar produção à toa.
  *
- * (b) A Phase 1 (SEG-05) acrescenta `QSTASH_NEXT_SIGNING_KEY` a esta mesma
- *     lista. O mecanismo nasce aqui e é extensível por uma linha
- *     (`QSTASH_CURRENT_SIGNING_KEY` já está). Não inventar um segundo caminho.
+ * (b) A Phase 1 (SEG-05) acrescentou `QSTASH_NEXT_SIGNING_KEY` a esta mesma
+ *     lista, como previsto: uma linha, nenhum caminho novo. O mecanismo continua
+ *     extensível do mesmo jeito — não inventar um segundo caminho.
  *
  * (c) GATILHO PARA INSTALAR ZOD: quando a primeira variável exigir validação
  *     de FORMATO, e não só de presença, o `filter` abaixo deixa de servir e o
@@ -22,7 +22,7 @@
  * (d) Variável `NEXT_PUBLIC_*` precisa existir no BUILD para chegar ao bundle
  *     do browser. Esta validação é de RUNTIME e não substitui isso.
  *
- * (e) ⚠️ Quatro das treze são `NEXT_PUBLIC_*`, e isso tem modo de falha
+ * (e) ⚠️ Quatro das quatorze são `NEXT_PUBLIC_*`, e isso tem modo de falha
  *     próprio: o acesso precisa ser DINÂMICO (indexar `process.env` pelo nome
  *     vindo da lista), nunca acesso literal por propriedade. Acesso literal a
  *     `NEXT_PUBLIC_*` é substituído por valor em tempo de build, e a validação
@@ -41,6 +41,7 @@ export const OBRIGATORIAS_EM_PRODUCAO = [
     'QSTASH_TOKEN',
     'QSTASH_URL',
     'QSTASH_CURRENT_SIGNING_KEY',
+    'QSTASH_NEXT_SIGNING_KEY',
     'EVOLUTION_API_URL',
     'EVOLUTION_GLOBAL_API_KEY',
     'APP_URL',

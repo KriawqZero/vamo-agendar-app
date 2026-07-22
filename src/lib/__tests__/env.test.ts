@@ -72,9 +72,16 @@ describe('validarEnvObrigatorio', () => {
 })
 
 describe('OBRIGATORIAS_EM_PRODUCAO', () => {
-    it('tem os treze nomes acordados, sem duplicata', () => {
-        expect(OBRIGATORIAS_EM_PRODUCAO).toHaveLength(13)
-        expect(new Set(OBRIGATORIAS_EM_PRODUCAO).size).toBe(13)
+    it('tem os quatorze nomes acordados, sem duplicata', () => {
+        expect(OBRIGATORIAS_EM_PRODUCAO).toHaveLength(14)
+        expect(new Set(OBRIGATORIAS_EM_PRODUCAO).size).toBe(14)
+    })
+
+    it('exige as DUAS chaves de assinatura do QStash (SEG-05)', () => {
+        // Só a atual não basta: o Receiver usa a próxima para rotacionar chave
+        // sem janela de quebra, e sem ela o webhook lança em runtime.
+        expect(OBRIGATORIAS_EM_PRODUCAO).toContain('QSTASH_CURRENT_SIGNING_KEY')
+        expect(OBRIGATORIAS_EM_PRODUCAO).toContain('QSTASH_NEXT_SIGNING_KEY')
     })
 
     it('não inclui as chaves do Clerk (falham alto e imediato por conta própria)', () => {

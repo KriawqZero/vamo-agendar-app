@@ -125,11 +125,26 @@ export async function agendarLembreteQStash(
         return { ok: false, motivo: 'qstash_sem_token' }
     }
 
+    // Sem chave de assinatura não se publica: o default embutido que existia
+    // aqui transformava configuração ausente em porta destrancada — quem
+    // adivinhasse o valor disparava WhatsApp em nome de qualquer tenant.
+    const chaveAssinatura = process.env.QSTASH_CURRENT_SIGNING_KEY
+    if (!chaveAssinatura?.trim()) {
+        console.warn(
+            'QSTASH_CURRENT_SIGNING_KEY não configurada. Lembrete em background não será agendado.',
+        )
+        reportarFalhaSilenciosa('qstash:sem_chave_assinatura')
+        return { ok: false, motivo: 'qstash_sem_chave_assinatura' }
+    }
+
     const scheduledSeconds = Math.floor(targetTimestampMs / 1000)
 
     try {
-        const secret = process.env.QSTASH_CURRENT_SIGNING_KEY || 'secret-key'
-        const webhookUrl = `${APP_URL}/api/webhooks/lembrete?secret=${secret}`
+        // O parâmetro `secret` continua na URL publicada de propósito: a fila do QStash
+        // tem lembretes em voo (até 14 dias) e o webhook casa a assinatura
+        // contra a URL completa. Quem autentica agora é o header assinado — o
+        // parâmetro virou redundante e sai numa fase posterior, com a fila seca.
+        const webhookUrl = `${APP_URL}/api/webhooks/lembrete?secret=${chaveAssinatura}`
         const publishUrl = `${QSTASH_URL}/v2/publish/${webhookUrl}`
 
         const response = await fetch(publishUrl, {
