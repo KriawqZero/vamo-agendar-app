@@ -151,7 +151,7 @@ precisa ser sabido antes.
   4. Uma tabela nova criada no schema `public` não aparece na Data API sem GRANT explícito
   5. POST sem assinatura válida do QStash no webhook de lembrete é rejeitado, e a aplicação não sobe se as chaves de assinatura não estiverem configuradas
 
-**Plans**: 9/9 plans executed
+**Plans**: 9/9 executados · 7 planejados na 2ª rodada de fechamento de gaps (01-10 a 01-16)
 
 Plans:
 **Wave 1**
@@ -180,6 +180,20 @@ Plans:
 - [x] 01-08-PLAN.md — DROP das duas policies residuais de `servicos`/`horarios_funcionamento` (gap 3) (wave 3, depende de 01-06 e 01-07)
 - [x] 01-09-PLAN.md — Gate de reexecução das provas + reparo de REQUIREMENTS/ROADMAP/PENDENCIAS (wave 4, depende dos três)
 
+**2ª rodada de fechamento de gaps** *(planejada em 2026-07-22 a partir da reverificação sobre o HEAD `4596463`, que REPROVOU com 7/9 must-haves, e dos achados aprovados do `01-REVIEW.md`; waves próprias, os nove planos acima já estão concluídos)*
+
+⛔ **Serialização estrita mantida — um plano por wave, nunca em paralelo.** Todos os sete constroem, tocam o Supabase de dev, ou dependem do estado que o anterior deixou. Os três modos de falha nomeados na rodada 1 (`.next/` compartilhado, fixture do tenant de teste apagada no meio, contagem cross-tenant poluída) continuam valendo integralmente.
+
+- [ ] 01-10-PLAN.md — **Tracer:** um erro esperado atravessa a fronteira de flight em build de produção, com harness que reprova antes do conserto (gap 2, parte 1) (wave 1)
+- [ ] 01-11-PLAN.md — A chave HMAC sai da URL publicada e o corpo do gateway sai do log (gap 1 / CR-01 + CR-04) (wave 2)
+- [ ] 01-12-PLAN.md — Caminho de escrita discriminado e recuperação de double-booking viva (gap 2, parte 2 — insumo obrigatório do SC4 da Phase 2) (wave 3)
+- [ ] 01-13-PLAN.md — `PENDENCIAS`/`CONTEXT`/`COVERAGE` coerentes, rotação de chave datada e os quatro deferimentos por escrito (gap 3 / WR-05) (wave 4)
+- [ ] 01-14-PLAN.md — Namespace do slug público deixa de ser sequestrável: UNIQUE, checagem cruzada e resolução não-ambígua (CR-03) (wave 5)
+- [ ] 01-15-PLAN.md — Default privilege passa a cobrir FUNCTIONS e o harness anônimo para de dar verde sem provar nada (WR-02 + WR-08) (wave 6)
+- [ ] 01-16-PLAN.md — Falha de leitura em `assinaturas` para de derrubar o link público de tenant pagante (WR-07) (wave 7)
+
+**Fora do escopo desta rodada, por decisão do owner:** WR-01 (a Server Action pública devolve `tenant_id` e `slug_gratuito` — o mais barato e o mais aderente ao tema da fase), WR-03 (escrita pública sem limite de tamanho nem validação de e-mail), WR-04 (verificação por `req.url` pode matar todos os lembretes atrás do proxy) e WR-06 (falha de transporte gera lembrete duplicado). Registrados com razão e gatilho de retorno em `docs/PENDENCIAS.md` pelo plano 01-13 — nenhum foi descartado.
+
 **Notas de execução:**
 
 - Fase de baixo risco e alto retorno: **nenhum componente do browser fala com o Supabase** (não existe `createBrowserClient` no projeto), então a superfície `anon` pode ser reduzida sem tocar em frontend
@@ -191,6 +205,9 @@ Plans:
 - **O critério 5 é provado por `bash scripts/verificar-fail-fast-boot.sh`** — quatro vereditos com o exit code como veredito: `BUILD` (o build continua saindo 0 com a variável vazia), `MORTE` (o `next start` de produção encerra com código 1, nomeia a variável em `stderr` e a porta recusa conexão), `CONTROLE` (o mesmo build com as quatorze presentes responde 200) e `WEBHOOK` (401 sem assinatura, 401 com o secret legado em query string, 401 com assinatura forjada, 200 no controle). É o comando a rodar antes de qualquer afirmação sobre SEG-05
 - **A primeira medição da fase (plano 01-05, confirmada pelo verificador) encontrou o processo SOBREVIVENDO:** com uma obrigatória vazia o `next start` logava o erro, respondia 500 em toda rota e seguia escutando — deploy verde com 100% do tráfego falhando. Não era buraco de segurança, era defeito operacional. A semântica de boot foi alterada por decisão do owner no plano 01-06 (`process.exit(1)` guardado por produção + runtime `nodejs`), e só então o critério 5 passou a ser literalmente verdadeiro
 - Os quatro planos do fechamento de gaps rodaram na ordem 01-07 → 01-06 → 01-08 → 01-09, um por wave; o 01-09 reexecutou as três provas sobre o HEAD final antes de escrever qualquer documento
+- **A reverificação sobre o HEAD `4596463` REPROVOU com 7/9 must-haves**, com dois bloqueadores novos que o code review levantou e o verificador confirmou de forma independente: (1) a chave HMAC que autentica o webhook era publicada em texto claro na query string de todo lembrete — a porta foi fechada com fechadura correta e a chave ficou no capacho; (2) em build de produção o React transporta só o `digest` do erro de Server Action, então a copy contratada no `01-UI-SPEC` e a recuperação de double-booking estavam mortas na tela. Nenhum dos dois é regressão do fechamento de gaps — são dívida que a fase carregou desde o começo e que só apareceu quando alguém foi medir a produção em vez de ler o código
+- **Lição de método da rodada 2, e a razão de o plano 01-10 ser um tracer:** teste que chama a Server Action **em processo** não prova a travessia, e verificação em `pnpm dev` não prova comportamento de produção. Foi um verde de suíte num caminho morto que deixou o defeito atravessar nove planos, um review e uma verificação. A partir daqui, toda afirmação sobre o que o cliente final vê exige `next start` sobre build de produção
+- ⚠️ **O gap 2 é insumo obrigatório da Phase 2:** o Success Criteria 4 dela ("quem perde a corrida vê a mensagem amigável com os horários recarregados") é insatisfazível por construção enquanto o erro esperado não atravessar a fronteira. O plano 01-12 é o que o desbloqueia
 
 ---
 
