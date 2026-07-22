@@ -151,7 +151,7 @@ precisa ser sabido antes.
   4. Uma tabela nova criada no schema `public` não aparece na Data API sem GRANT explícito
   5. POST sem assinatura válida do QStash no webhook de lembrete é rejeitado, e a aplicação não sobe se as chaves de assinatura não estiverem configuradas
 
-**Plans**: 11/16 plans executed
+**Plans**: 12/16 plans executed
 
 Plans:
 **Wave 1**
@@ -186,7 +186,7 @@ Plans:
 
 - [x] 01-10-PLAN.md — **Tracer:** um erro esperado atravessa a fronteira de flight em build de produção, com harness que reprova antes do conserto (gap 2, parte 1) (wave 1)
 - [x] 01-11-PLAN.md — A chave HMAC sai da URL publicada e o corpo do gateway sai do log (gap 1 / CR-01 + CR-04) (wave 2)
-- [ ] 01-12-PLAN.md — Caminho de escrita discriminado e recuperação de double-booking viva (gap 2, parte 2 — insumo obrigatório do SC4 da Phase 2) (wave 3)
+- [x] 01-12-PLAN.md — Caminho de escrita discriminado e recuperação de double-booking viva (gap 2, parte 2 — insumo obrigatório do SC4 da Phase 2) (wave 3)
 - [ ] 01-13-PLAN.md — `PENDENCIAS`/`CONTEXT`/`COVERAGE` coerentes, rotação de chave datada e os quatro deferimentos por escrito (gap 3 / WR-05) (wave 4)
 - [ ] 01-15-PLAN.md — Default privilege passa a cobrir FUNCTIONS e o harness anônimo para de dar verde sem provar nada (WR-02 + WR-08) (wave 5)
 - [ ] 01-14-PLAN.md — Namespace do slug público deixa de ser sequestrável: UNIQUE, checagem cruzada e resolução não-ambígua (CR-03) (wave 6, depende de 01-15)
@@ -502,7 +502,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | Etapa preparatória. Fundação operacional | 0/1 | Not started | - |
-| 1. Hardening da superfície pública | 11/16 | In Progress|  |
+| 1. Hardening da superfície pública | 12/16 | In Progress|  |
 | 2. Integridade da agenda | 0/TBD | Not started | - |
 | 3. Anti-abuso no booking público | 0/TBD | Not started | - |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |

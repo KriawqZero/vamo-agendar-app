@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: executing
-stopped_at: Completed 01-11-PLAN.md
-last_updated: "2026-07-22T17:48:54.182Z"
+stopped_at: Completed 01-12-PLAN.md
+last_updated: "2026-07-22T18:12:52.227Z"
 last_activity: 2026-07-22
-last_activity_desc: "plano 01-11 executado: a chave HMAC saiu da URL publicada e o corpo dos gateways saiu do log; rotação da chave pendente com o owner"
+last_activity_desc: "plano 01-12 executado: o caminho de ESCRITA do booking devolve valor discriminado e a recuperação de double-booking voltou a acontecer em build de produção; bloqueador 2 fechado no código"
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 16
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -28,20 +28,20 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 ## Current Position
 
 Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTANDO a 2ª rodada de fechamento de gaps
-Plan: 11 de 16 concluídos (01-01 a 01-11). Próximo: **01-12**
-Status: **a fase continua incompleta.** Dos dois bloqueadores da reverificação, o primeiro teve a metade de código fechada e o segundo segue meio vivo:
+Plan: 12 de 16 concluídos (01-01 a 01-12). Próximo: **01-13**
+Status: **a fase continua incompleta.** Os dois bloqueadores da reverificação estão fechados NO CÓDIGO; o que resta em cada um não é código:
 
   1. `whatsapp-helper.ts` publicava `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — a mesma chave HMAC com que o webhook autentica desde o 01-03. **METADE DE CÓDIGO FECHADA no 01-11**: a URL publicada é agora a rota limpa, e quatro `console.error` deixaram de despejar corpo de gateway no log (o da Evolution ecoava telefone e texto personalizado — CR-04). Cinco testes travam os dois defeitos, provados vermelhos na reversão. **CONTINUA ABERTO o que código não conserta**: a chave já circulou por log de acesso e pelo console da Upstash, e a rotação é ação do owner no painel, depois de a fila secar (≤ 14 dias) — **item datado no 01-13**. Por isso SEG-05 NÃO foi marcado como concluído em REQUIREMENTS.md
-  2. Em build de produção o React só transporta o `digest` do erro da Server Action, então a copy contratada no `01-UI-SPEC` e a recuperação de double-booking (`includes('já foi preenchido')`) estão mortas na tela. **METADE FECHADA no 01-10**: o caminho de LEITURA (`obterSlotsPublicos`) devolve `{ ok: false, motivo }`, e `scripts/verificar-travessia-server-action.sh` prova a travessia contra `next start` (reprovava antes, aprova depois). O caminho de ESCRITA continua lançando e `includes('já foi preenchido')` continua sempre `false` em produção — **fecha em 01-12**. Insumo obrigatório do SC4 da Phase 2
+  2. Em build de produção o React só transporta o `digest` do erro da Server Action, então a copy contratada no `01-UI-SPEC` e a recuperação de double-booking estavam mortas na tela. **FECHADO NO CÓDIGO** — metade de LEITURA no 01-10, metade de ESCRITA no **01-12**: `criarAgendamentoPublico` devolve `{ ok: false, motivo }`, o `BookingApp` decide por `res.motivo === 'slot_indisponivel'` (a comparação por substring saiu do arquivo, `grep` devolve `0`) e o harness ganhou o quinto veredito `ESCRITA_VALIDACAO`, provado por contrafactual (reprova com `1:E{"digest":"3871214289"}` quando a guarda volta a `throw`). **O SC4 da Phase 2 deixou de ser insatisfazível por construção.** Continua aberto o que código não fecha: ninguém VIU o aviso âmbar na tela — é item do UAT humano e só o owner marca
 
 Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code review: CR-03 (`slug_gratuito` sem UNIQUE → sequestro de link público entre tenants, com PII de cliente final) em 01-14; WR-02 (default privileges não cobre FUNCTIONS) e WR-08 (harness de superfície com falso verde) em 01-15; WR-07 (`assinaturas.ts` degrada tenant pago a gratuito) em 01-16. WR-01, WR-03, WR-04 e WR-06 ficaram fora, diferidos com razão e gatilho escritos no 01-13.
 
 Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
 
-Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar) — dois deles com prognóstico negativo até o bloqueador 2 fechar
-Last activity: 2026-07-22 — plano 01-11 executado: a chave HMAC saiu da URL publicada e o corpo dos gateways saiu do log; rotação da chave pendente com o owner
+Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
+Last activity: 2026-07-22 — plano 01-12 executado: o caminho de ESCRITA do booking devolve valor discriminado e a recuperação de double-booking voltou a acontecer em build de produção
 
-Progress: [███████░░░] 69% (11/16 planos executados; verificação ainda reprovada, correção em andamento)
+Progress: [████████░░] 75% (12/16 planos executados; verificação ainda reprovada, correção em andamento)
 
 ## Performance Metrics
 
@@ -78,6 +78,7 @@ Progress: [███████░░░] 69% (11/16 planos executados; verific
 | Phase 01 P09 | ~35min | 3 tasks | 5 files |
 | Phase 01 P10 | ~33min | 2 tasks | 6 files |
 | Phase 01 P11 | ~35min | 2 tasks | 2 files |
+| Phase 01 P12 | 17min | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -131,6 +132,9 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: Harness de fronteira de flight: o id da Server Action e sempre derivado de .next/server/server-reference-manifest.json, nunca literal — id colado a mao sobrevive a refatoracao que o invalida e deixa o harness verde para sempre
 - [Phase ?]: 01-11: a guarda de QSTASH_CURRENT_SIGNING_KEY foi preservada com papel novo — não monta mais a URL, só recusa publicar lembrete que o webhook depois não conseguiria autenticar
 - [Phase ?]: 01-11: SEG-05 NÃO foi marcado como concluído — a metade criptográfica está fechada, mas a chave já circulou e a rotação é ação do owner rastreada no 01-13
+- [Phase ?]: 01-12: duas superficies de UI com copias diferentes para o mesmo discriminante exigem DOIS mapeadores exaustivos — um mapeador so obrigaria a reescrever copia travada
+- [Phase ?]: 01-12: erro_interno colapsa as tres falhas de infra numa copia so para o visitante; a distincao sobrevive no etapa do reportarExcecao, que e quem precisa dela
+- [Phase ?]: 01-12: veredito novo de harness so entra depois de provado por contrafactual — reverter o conserto e ver REPROVADO com o digest opaco
 
 ### Pending Todos
 
@@ -180,6 +184,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T17:47:54.993Z
-Stopped at: Completed 01-11-PLAN.md
+Last session: 2026-07-22T18:12:52.217Z
+Stopped at: Completed 01-12-PLAN.md
 Resume file: None
