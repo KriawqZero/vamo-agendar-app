@@ -948,19 +948,35 @@ Cada um com o **gatilho** que o traz de volta — nenhum é "esquecido", todos s
   **Por que isso importa mais que a distinção semântica:** um crash loop é *ruidoso* —
   o Railway marca o deploy como falho e faz rollback. Um processo vivo servindo 500 é
   *silencioso*: healthcheck baseado em "o processo está de pé" reporta saudável, o
-  deploy é dado como bem-sucedido e o produto fica no ar com 100% de erro. *Gatilho:*
-  ao configurar o deploy de produção, **exigir healthcheck por HTTP** (um path que
-  precise devolver 2xx), nunca por liveness de processo. Alternativa, se o owner
-  preferir a falha dura: fazer o `register()` chamar `process.exit(1)` depois de
-  lançar — **decisão de arquitetura de boot, não tocada pela Phase 1 de propósito**.
+  deploy é dado como bem-sucedido e o produto fica no ar com 100% de erro.
 
-  ✅ **O critério 5 do ROADMAP continua satisfeito na substância**, e por duas camadas
-  independentes: (a) a aplicação não serve nada sem as chaves — o webhook responde 500
-  e nunca alcança o handler; (b) `verificarAssinaturaQstash`
-  (`src/lib/qstash-assinatura.ts:42`) **lança** se qualquer das duas chaves estiver
-  ausente, então não existe caminho permissivo mesmo que a camada (a) fosse contornada.
-  Não há default inseguro em lugar nenhum. O que falha é a *forma* de "a aplicação não
-  sobe", não a garantia de segurança.
+  ✅ **RESOLVIDO (Phase 1, plano 01-06, 2026-07-22): o processo morre de verdade.** O
+  owner escolheu a falha dura em vez do healthcheck HTTP como controle compensatório.
+  `src/instrumentation.ts` envolve `validarEnvObrigatorio()` em `try/catch` e, no
+  runtime `nodejs`, chama `encerrarBootPorEnvAusente` (`src/lib/env.ts`), que escreve a
+  causa em `stderr` e sai com **código 1**. No runtime `edge` o comportamento anterior
+  (relançar) é preservado — lá não existe `process.exit`. `pnpm dev` e `pnpm build`
+  continuam livres: o encerramento fica atrás do gate `NODE_ENV === 'production'` que
+  `validarEnvObrigatorio()` já aplicava, e o hook não roda em `phase-production-build`.
+
+  A prova é comando, não relato: `bash scripts/verificar-fail-fast-boot.sh` sobe um
+  `next start` real na porta 3991 e emite quatro vereditos — `BUILD`, `MORTE`,
+  `CONTROLE` e `WEBHOOK` —, saindo 0 só quando os quatro passam. Rodado **antes** do
+  conserto, ele reprovava `MORTE` (processo vivo, HTTP 500); depois, aprova os quatro.
+  *Gatilho:* rodar o harness sempre que `src/lib/env.ts`, `src/instrumentation.ts` ou a
+  lista de obrigatórias mudarem.
+
+  ⚠️ **A ordem do deploy continua valendo, e agora com consequência maior.** Com o boot
+  morrendo, uma obrigatória mal provisionada no Railway derruba o deploy inteiro em vez
+  de servir 500 — que é o comportamento desejado (habilita rollback automático), mas
+  torna o checklist acima obrigatório e não opcional: conferir que as quatorze existem
+  no Railway **antes** de subir, ou remover nomes da lista no mesmo commit do deploy.
+
+  ✅ **O critério 5 do ROADMAP passa a ser literalmente verdadeiro**, e continua
+  coberto por duas camadas independentes: (a) a aplicação **não sobe** sem as chaves;
+  (b) `verificarAssinaturaQstash` (`src/lib/qstash-assinatura.ts:42`) **lança** se
+  qualquer das duas chaves estiver ausente, então não existe caminho permissivo mesmo
+  que a camada (a) fosse contornada. Não há default inseguro em lugar nenhum.
 - **A sanitização do Sentry é allowlist só onde é viável (CR-02).** São
   allowlist: `request`, `request.headers` e `extra` — campo novo do SDK cai fora
   por construção. **Não** são filtrados `message`, `exception.values[].value`,
@@ -984,6 +1000,36 @@ Cada um com o **gatilho** que o traz de volta — nenhum é "esquecido", todos s
   `pnpm build` continua livre (o `register()` não roda em `phase-production-build`)
   e `pnpm dev` também. Para inspecionar o build local, use `--env-file=.env.local`
   ou `NODE_ENV=development pnpm start`.
+
+  🔎 **Atualização (plano 01-06): "morre no boot" agora é literal.** Antes o processo
+  ficava vivo servindo 500; hoje ele sai com código 1. As duas saídas de inspeção
+  acima continuam valendo sem mudança.
+
+- **Três diagnósticos de Edge Runtime no `pnpm build` (achado do plano 01-06, decisão
+  do owner pendente).** `src/lib/env.ts` passou a usar `process.stderr.write` (linhas
+  91 e 92) e `process.exit` (linha 96), e o arquivo é importado por
+  `src/instrumentation.ts`, que também é empacotado para o runtime **edge**. O
+  Turbopack então imprime, a cada build, três blocos do tipo:
+
+  ```
+  A Node.js API is used (process.exit at line: 96) which is not supported in the Edge Runtime.
+  Import trace:  Edge Instrumentation: ./src/lib/env.ts → ./src/instrumentation.ts
+  ```
+
+  **Não é falha:** medido num build bem-sucedido, `pnpm build` sai **0** (o resumo de
+  rotas é impresso normalmente), `pnpm dev` sobe e responde 200, e o código nunca
+  executa no edge — `encerrarBootPorEnvAusente` só é chamado atrás da guarda
+  `NEXT_RUNTIME === 'nodejs'`. O analisador é estático e não enxerga essa guarda.
+
+  **É ruído, e ruído rotulado como "error" é dívida:** três blocos por build treinam
+  quem lê a saída a ignorá-la — o mesmo padrão de janela quebrada que esta fase
+  combateu. As saídas possíveis, nenhuma delas tomada aqui porque contrariam o
+  contrato do plano 01-06 (que fixa os dois símbolos em `src/lib/env.ts` e pina
+  `process.stderr.write` em teste): (a) mover `encerrarBootPorEnvAusente` para um
+  módulo próprio que só o caminho nodejs importe; (b) aceitar o ruído e documentá-lo
+  como esperado. Aliasar `process` por `globalThis` para calar o analisador **não** é
+  uma saída: esconderia o sinal em vez de resolvê-lo. *Gatilho:* decisão do owner
+  antes do go-live, ou na primeira vez que a saída do build for usada como gate de CI.
 
 - **Checkout Asaas + webhooks completos de cobrança** (`/api/webhooks/asaas`) —
   necessário **se o lançamento já pretender cobrar automaticamente**: roadmap técnico

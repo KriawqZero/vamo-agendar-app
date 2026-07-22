@@ -1,13 +1,21 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-import { validarEnvObrigatorio, OBRIGATORIAS_EM_PRODUCAO } from '../env'
+import {
+    validarEnvObrigatorio,
+    OBRIGATORIAS_EM_PRODUCAO,
+    encerrarBootPorEnvAusente,
+    CODIGO_SAIDA_ENV_AUSENTE,
+} from '../env'
 
 /**
  * `vi.stubEnv` por teste (Vitest 4) — nunca constante de módulo, para que
- * nenhuma variável nova precise entrar no `vitest.config.ts`.
+ * nenhuma variável nova precise entrar no `vitest.config.ts`. As espiãs de
+ * `process` do bloco de encerramento são restauradas aqui pelo mesmo motivo:
+ * nada de setup global.
  */
 afterEach(() => {
     vi.unstubAllEnvs()
+    vi.restoreAllMocks()
 })
 
 function preencherTodas(exceto: string[] = []): void {
@@ -87,5 +95,45 @@ describe('OBRIGATORIAS_EM_PRODUCAO', () => {
     it('não inclui as chaves do Clerk (falham alto e imediato por conta própria)', () => {
         const nomes = OBRIGATORIAS_EM_PRODUCAO.join(',')
         expect(nomes).not.toContain('CLERK')
+    })
+})
+
+/**
+ * Trava do modo de falha que a `01-VERIFICATION.md` reprovou: sem encerramento
+ * de verdade, o Next 16.2.10 segue escutando com todo o tráfego em 500 e o
+ * healthcheck de liveness marca o deploy como verde. Este bloco existe para que
+ * uma refatoração futura não troque o `process.exit(1)` por um log com
+ * `process.exitCode = 0` e devolva o produto àquele estado sem ninguém notar.
+ */
+describe('encerrarBootPorEnvAusente', () => {
+    /** `process.exit` de verdade mataria o vitest no meio da suíte. */
+    const SENTINELA = 'saida-do-processo-interceptada-pelo-teste'
+
+    it('escreve a mensagem em stderr ANTES de encerrar, com o código combinado', () => {
+        const espiaStderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
+        const espiaExit = vi.spyOn(process, 'exit').mockImplementation(() => {
+            throw new Error(SENTINELA)
+        })
+
+        const mensagem = 'Variáveis obrigatórias ausentes em produção: QSTASH_NEXT_SIGNING_KEY'
+        expect(() => encerrarBootPorEnvAusente(mensagem)).toThrow(SENTINELA)
+
+        const escrito = espiaStderr.mock.calls.map(([texto]) => String(texto)).join('')
+        expect(escrito).toContain(mensagem)
+        expect(espiaExit).toHaveBeenCalledWith(CODIGO_SAIDA_ENV_AUSENTE)
+
+        // A ordem é o ponto: invertida, o log do deploy perde a causa e o
+        // operador descobre a variável por bissecção. Comparada por índice de
+        // invocação, não por inspeção visual.
+        expect(espiaStderr.mock.invocationCallOrder[0]).toBeLessThan(
+            espiaExit.mock.invocationCallOrder[0],
+        )
+    })
+
+    it('usa código de saída 1 — zero devolveria o falso verde por outro caminho', () => {
+        // Um orquestrador de deploy reprova a release por código ≠ 0. `0`
+        // significaria "encerrou com sucesso" e o rollback automático nunca
+        // dispararia.
+        expect(CODIGO_SAIDA_ENV_AUSENTE).toBe(1)
     })
 })
