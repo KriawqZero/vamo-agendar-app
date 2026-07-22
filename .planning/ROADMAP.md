@@ -151,7 +151,7 @@ precisa ser sabido antes.
   4. Uma tabela nova criada no schema `public` não aparece na Data API sem GRANT explícito
   5. POST sem assinatura válida do QStash no webhook de lembrete é rejeitado, e a aplicação não sobe se as chaves de assinatura não estiverem configuradas
 
-**Plans**: 5/5 plans executed
+**Plans**: 9 planos — 5/5 da execução original + 4 de fechamento de gaps (`gaps_found` na verificação de 2026-07-22)
 
 Plans:
 **Wave 1**
@@ -170,6 +170,13 @@ Plans:
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [x] 01-05-PLAN.md — Verificação integrada dos 5 critérios + UAT obrigatório de booking e dashboard (wave 4)
+
+**Fechamento de gaps** *(planejado em 2026-07-22 a partir de `01-VERIFICATION.md`; waves próprias, os cinco planos acima já estão concluídos)*
+
+- [ ] 01-06-PLAN.md — Boot que morre de verdade sem as chaves + harness que prova (gap 1, SEG-05) (wave 1)
+- [ ] 01-07-PLAN.md — Suíte de integração do caminho de ESCRITA do booking contra o Supabase de dev (gap 2, SC2b) (wave 1)
+- [ ] 01-08-PLAN.md — DROP das duas policies residuais de `servicos`/`horarios_funcionamento` (gap 3) (wave 1)
+- [ ] 01-09-PLAN.md — Gate de reexecução das provas + reparo de REQUIREMENTS/ROADMAP/PENDENCIAS (wave 2)
 
 **Notas de execução:**
 
