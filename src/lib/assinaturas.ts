@@ -55,9 +55,14 @@ export const obterAssinaturaVigente = cache(
  * Variante enxuta para contextos públicos: retorna somente o plano vigente.
  *
  * ⚠️ Exige o cliente PRIVILEGIADO (`createAdminClient()`). A role anon perdeu
- * todo privilégio em `assinaturas` — passar o cliente anônimo aqui não estoura
- * erro: a leitura falha, o catch degrada para 'gratuito' e todo tenant pago
- * perde slug customizado e personalização em silêncio.
+ * todo privilégio em `assinaturas` — o GRANT por coluna que servia esta função
+ * foi revogado na Phase 1. Passar o cliente anônimo aqui não estoura erro: a
+ * leitura falha, o catch degrada para 'gratuito' e todo tenant pago perde slug
+ * customizado e personalização em silêncio.
+ *
+ * Com o RLS fora do caminho, o `tenantId` é responsabilidade do CHAMADOR: só
+ * passe valor resolvido no servidor (no booking público ele sai do perfil
+ * encontrado pelo slug da URL), nunca um identificador vindo do navegador.
  */
 export async function obterPlanoVigentePublico(
     supabase: SupabaseClient,
