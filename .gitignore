@@ -45,7 +45,11 @@ next-env.d.ts
 supabase/.temp/
 supabase/.branches/
 
-# obsidian — só o estado efêmero do editor (layout de painéis/abas);
+# obsidian — só o estado efêmero do editor (layout de painéis/abas e câmera do grafo);
 # o resto de .obsidian/ (aparência, plugins, snippets) é config versionada
 .obsidian/workspace.json
 .obsidian/workspace-mobile.json
+.obsidian/graph.json
+
+# Sentry Config File
+.env.sentry-build-plugin

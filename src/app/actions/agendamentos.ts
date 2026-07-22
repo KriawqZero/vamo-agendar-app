@@ -4,15 +4,20 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { auth } from '@clerk/nextjs/server'
 import { diaLocal, limitesDoDia, TIMEZONE_PADRAO } from '@/lib/timezone'
-import { agendarLembreteQStash, cancelarLembreteQStash, registrarDisparo } from '@/lib/whatsapp-helper'
+import {
+    agendarLembreteQStash,
+    cancelarLembreteQStash,
+    registrarDisparo,
+} from '@/lib/whatsapp-helper'
 import { obterSlotsDisponiveis } from '@/lib/booking-engine'
 import { dispararNotificacoesAgendamento } from '@/lib/notificacoes-agendamento'
 import { PLANOS } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
+import { capturarEventoTenant } from '@/lib/analytics/server'
 
 interface ListarParams {
-    dataFiltro?: string; // YYYY-MM-DD (um único dia)
-    periodo?: { inicio: string; fim: string }; // YYYY-MM-DD inclusivos, no fuso local
+    dataFiltro?: string // YYYY-MM-DD (um único dia)
+    periodo?: { inicio: string; fim: string } // YYYY-MM-DD inclusivos, no fuso local
 }
 
 /**
@@ -38,7 +43,8 @@ export async function listarAgendamentos(params?: ListarParams) {
 
     let query = supabase
         .from('agendamentos')
-        .select(`
+        .select(
+            `
             id,
             data_hora,
             status,
@@ -54,7 +60,8 @@ export async function listarAgendamentos(params?: ListarParams) {
                 preco,
                 duracao_minutos
             )
-        `)
+        `,
+        )
         .eq('tenant_id', orgId)
 
     if (params?.dataFiltro) {
@@ -83,7 +90,7 @@ export async function listarAgendamentos(params?: ListarParams) {
  */
 export async function atualizarStatusAgendamento(
     id: string,
-    status: 'confirmado' | 'concluido' | 'cancelado'
+    status: 'confirmado' | 'concluido' | 'cancelado',
 ) {
     const { orgId } = await auth()
     if (!orgId) {
@@ -96,7 +103,7 @@ export async function atualizarStatusAgendamento(
         .from('agendamentos')
         .update({
             status,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
         })
         .eq('id', id)
         .eq('tenant_id', orgId) // Segurança extra RLS
@@ -132,12 +139,21 @@ export async function atualizarStatusAgendamento(
                     tenantId: orgId,
                     agendamentoId: id,
                     tipo: 'lembrete',
-                    status: 'cancelado'
+                    status: 'cancelado',
                 })
             }
         } catch (err) {
             console.error('Falha ao cancelar lembrete no QStash (ignorada):', err)
         }
+    }
+
+    // Funil: é o único evento que mede taxa de cancelamento e se o
+    // profissional de fato fecha o ciclo marcando "concluído" — sinal de uso
+    // real do dashboard. `status` é enum do banco, nunca PII.
+    try {
+        capturarEventoTenant('booking_status_changed', orgId, { status })
+    } catch (analyticsErr) {
+        console.error('[analytics] booking_status_changed não capturado (ignorado):', analyticsErr)
     }
 
     revalidatePath('/dashboard')
@@ -163,7 +179,7 @@ async function timezoneDoTenant(supabase: Awaited<ReturnType<typeof createClient
 export async function obterSlotsDashboard(
     dateStr: string,
     duracaoMinutos: number,
-    ignorarAgendamentoId?: string
+    ignorarAgendamentoId?: string,
 ) {
     const { orgId } = await auth()
     if (!orgId) {
@@ -183,17 +199,17 @@ export async function obterSlotsDashboard(
         duracaoServicoMinutos: duracaoMinutos,
         supabase,
         timezone,
-        ignorarAgendamentoId
+        ignorarAgendamentoId,
     })
 }
 
 interface CriarAgendamentoManualParams {
-    servicoId: string;
-    dataHora: string; // ISO string em UTC (datetime exato do slot)
-    clienteId?: string;
-    clienteNome?: string;
-    clienteTelefone?: string;
-    enviarWhatsApp?: boolean;
+    servicoId: string
+    dataHora: string // ISO string em UTC (datetime exato do slot)
+    clienteId?: string
+    clienteNome?: string
+    clienteTelefone?: string
+    enviarWhatsApp?: boolean
 }
 
 /**
@@ -207,7 +223,7 @@ export async function criarAgendamentoManual({
     clienteId,
     clienteNome,
     clienteTelefone,
-    enviarWhatsApp
+    enviarWhatsApp,
 }: CriarAgendamentoManualParams) {
     const { orgId } = await auth()
     if (!orgId) {
@@ -286,7 +302,7 @@ export async function criarAgendamentoManual({
                 .insert({
                     tenant_id: orgId,
                     nome: clienteNome!.trim(),
-                    telefone: telefoneLimpo
+                    telefone: telefoneLimpo,
                 })
                 .select('id, nome, telefone')
                 .single()
@@ -306,10 +322,10 @@ export async function criarAgendamentoManual({
         dateStr,
         duracaoServicoMinutos: servico.duracao_minutos,
         supabase,
-        timezone
+        timezone,
     })
 
-    if (!slotsLivres.some(sl => sl.datetime === dataHora)) {
+    if (!slotsLivres.some((sl) => sl.datetime === dataHora)) {
         throw new Error('Este horário conflita com outro agendamento. Escolha outro horário.')
     }
 
@@ -321,7 +337,7 @@ export async function criarAgendamentoManual({
             cliente_id: clienteFinal.id,
             servico_id: servicoId,
             data_hora: dataHora,
-            status: 'confirmado'
+            status: 'confirmado',
         })
         .select('id, data_hora, status')
         .single()
@@ -339,8 +355,21 @@ export async function criarAgendamentoManual({
             clienteNome: clienteFinal.nome,
             clienteTelefone: clienteFinal.telefone,
             dataHora,
-            timezone
+            timezone,
         })
+    }
+
+    // Funil: agendamento criado pelo PROFISSIONAL, o contraponto B2B do
+    // `booking_completed` público. `registro_cliente` responde se ele escolhe
+    // da lista ou digita na hora — nome e telefone nunca entram.
+    try {
+        capturarEventoTenant('manual_booking_created', orgId, {
+            servico_duracao_minutos: servico.duracao_minutos,
+            whatsapp_solicitado: Boolean(enviarWhatsApp),
+            registro_cliente: clienteId ? 'existente' : 'novo_ou_reaproveitado',
+        })
+    } catch (analyticsErr) {
+        console.error('[analytics] manual_booking_created não capturado (ignorado):', analyticsErr)
     }
 
     revalidatePath('/dashboard')
@@ -398,10 +427,10 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
         duracaoServicoMinutos: duracaoMinutos,
         supabase,
         timezone,
-        ignorarAgendamentoId: id
+        ignorarAgendamentoId: id,
     })
 
-    if (!slotsLivres.some(sl => sl.datetime === novaDataHora)) {
+    if (!slotsLivres.some((sl) => sl.datetime === novaDataHora)) {
         throw new Error('Este horário conflita com outro agendamento. Escolha outro horário.')
     }
 
@@ -409,7 +438,7 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
         .from('agendamentos')
         .update({
             data_hora: novaDataHora,
-            updated_at: new Date().toISOString()
+            updated_at: new Date().toISOString(),
         })
         .eq('id', id)
         .eq('tenant_id', orgId)
@@ -446,7 +475,7 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
                 agendamentoId: id,
                 tipo: 'lembrete',
                 status: 'cancelado',
-                motivo: 'remarcacao'
+                motivo: 'remarcacao',
             })
 
             const { data: config } = await supabase
@@ -455,14 +484,18 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
                 .eq('tenant_id', orgId)
                 .maybeSingle()
 
-            const plano = await obterPlanoVigentePublico(supabase, orgId)
-            const whatsappAtivo = config
-                && PLANOS[plano].recursos.whatsapp
-                && config.status === 'conectado'
-                && config.instance_token
+            // Caminho B2B autenticado: o profissional está na tela e o plano
+            // indeterminado apenas deixa de reagendar o lembrete desta
+            // remarcação. A falha já foi reportada dentro da função.
+            const { plano } = await obterPlanoVigentePublico(supabase, orgId)
+            const whatsappAtivo =
+                config &&
+                PLANOS[plano].recursos.whatsapp &&
+                config.status === 'conectado' &&
+                config.instance_token
 
             if (whatsappAtivo) {
-                const targetTime = dataObj.getTime() - (config.tempo_lembrete_minutos * 60 * 1000)
+                const targetTime = dataObj.getTime() - config.tempo_lembrete_minutos * 60 * 1000
                 if (targetTime > Date.now()) {
                     const agendado = await agendarLembreteQStash(id, orgId, targetTime)
                     if (agendado.ok) {
@@ -471,7 +504,7 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
                             agendamentoId: id,
                             tipo: 'lembrete',
                             status: 'agendado',
-                            qstashMessageId: agendado.messageId
+                            qstashMessageId: agendado.messageId,
                         })
                     } else {
                         await registrarDisparo(supabase, {
@@ -479,7 +512,7 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
                             agendamentoId: id,
                             tipo: 'lembrete',
                             status: 'falha',
-                            motivo: agendado.motivo
+                            motivo: agendado.motivo,
                         })
                     }
                 }
@@ -487,6 +520,16 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
         }
     } catch (err) {
         console.error('Falha ao realinhar lembrete na remarcação (ignorada):', err)
+    }
+
+    // Funil: remarcação é retrabalho do profissional — volume alto aqui é
+    // sinal de agenda mal configurada, não de uso saudável.
+    try {
+        capturarEventoTenant('booking_rescheduled', orgId, {
+            servico_duracao_minutos: duracaoMinutos,
+        })
+    } catch (analyticsErr) {
+        console.error('[analytics] booking_rescheduled não capturado (ignorado):', analyticsErr)
     }
 
     revalidatePath('/dashboard')

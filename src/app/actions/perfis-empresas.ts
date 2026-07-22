@@ -1,11 +1,28 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { auth, clerkClient } from '@clerk/nextjs/server'
 import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
 import { obterAssinaturaVigente } from '@/lib/assinaturas'
 import { ehTimezoneValida, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { ehHexValida } from '@/lib/cores'
+
+/**
+ * Cópia única de "este link já é de outro estabelecimento", no DASHBOARD.
+ *
+ * Vive aqui, junto das outras mensagens desta action, e deliberadamente NÃO em
+ * `src/app/book/[slug]/mensagens.ts` — aquele módulo é o vocabulário do fluxo
+ * público (cliente final), e misturar as duas telas acoplaria superfícies que
+ * não têm nada em comum.
+ *
+ * As duas rotas que chegam nela são o mesmo fato para o profissional: colisão
+ * com o `slug` de outro tenant (erro `23505` da constraint `perfis_empresas_slug_key`)
+ * e colisão com o `slug_gratuito` de outro tenant (a checagem cruzada abaixo).
+ * A mensagem é a mesma de propósito: o profissional não precisa saber que
+ * existem duas colunas, e o texto não pode revelar nada do outro tenant.
+ */
+const COPY_SLUG_EM_USO = 'Este link (slug) já está sendo utilizado por outro estabelecimento.'
 
 interface PerfilEmpresaInput {
     slug: string
@@ -167,6 +184,42 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
         slugGratuito = gerarSlugAleatorio()
     }
 
+    // Checagem cruzada do NAMESPACE público, antes de gravar (CR-03).
+    //
+    // `slug` e `slug_gratuito` são lidos pela MESMA URL (/book/<slug>): são dois
+    // membros de um namespace só. O `UNIQUE` de cada coluna não enxerga o
+    // cruzamento — a colisão é entre LINHAS de colunas diferentes, e nenhuma
+    // constraint a expressa. Sem esta guarda, o tenant A gravava em `slug` o
+    // `slug_gratuito` do tenant B (que é o link que B divulga depois de um
+    // downgrade) e passava a receber os agendamentos de B, com nome e telefone
+    // dos clientes finais dele.
+    //
+    // ⚠️ Por que `createAdminClient()` e não o client sob RLS: a policy de SELECT
+    // de `perfis_empresas` é `tenant_id = org_id do JWT`, então uma consulta a
+    // linhas de OUTROS tenants voltaria SEMPRE vazia e a checagem seria decorativa
+    // — verde e inútil, que é a pior forma de falha. Confiar no `23505` da
+    // constraint também não resolve: a constraint é `slug_gratuito` contra
+    // `slug_gratuito`, e esta colisão é `slug` contra `slug_gratuito`.
+    // O privilégio é usado no escopo mínimo: projeção de UMA coluna (`tenant_id`),
+    // `head: true` (nenhuma linha do outro tenant trafega), e o que sai daqui é o
+    // veredito — nunca um dado do vizinho.
+    if (slugFinal !== slugGratuito) {
+        const { count: colisoes, error: colisaoError } = await createAdminClient()
+            .from('perfis_empresas')
+            .select('tenant_id', { count: 'exact', head: true })
+            .eq('slug_gratuito', slugFinal)
+            .neq('tenant_id', orgId)
+
+        if (colisaoError) {
+            console.error('Erro ao checar colisão de slug entre tenants:', colisaoError.message)
+            throw new Error('Erro ao validar o link do estabelecimento. Tente novamente.')
+        }
+
+        if ((colisoes ?? 0) > 0) {
+            throw new Error(COPY_SLUG_EM_USO)
+        }
+    }
+
     // Gating de personalização visual
     const corMarcaNova = input.corMarca?.trim().toLowerCase() || null
 
@@ -240,7 +293,9 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
     if (error) {
         console.error('Erro ao salvar perfil da empresa:', error.message)
         if (error.code === '23505') {
-            throw new Error('Este link (slug) já está sendo utilizado por outro estabelecimento.')
+            // Cobre as DUAS constraints do namespace público:
+            // `perfis_empresas_slug_key` e `perfis_empresas_slug_gratuito_key`.
+            throw new Error(COPY_SLUG_EM_USO)
         }
         throw new Error('Erro ao salvar configurações do perfil.')
     }

@@ -1,0 +1,101 @@
+-- Escrita à MÃO por obrigação, não por preferência: `supabase db diff` NÃO emite
+-- GRANT/REVOKE nem ALTER DEFAULT PRIVILEGES (exceção documentada em
+-- docs/SUPABASE_DECLARATIVE-DATABASE-SCHEMA.md; mesmos precedentes de
+-- 20260709193156, 20260722044858 e 20260722060000). Forçado a diffar privilégio,
+-- o migra chega a gerar o CONTRÁRIO do desejado. Privilégio mora AQUI.
+--
+-- ── (i) O buraco que esta migration fecha ─────────────────────────────────
+-- A migration irmã 20260722060000_fecha_data_api_para_anon.sql promete no
+-- cabeçalho que "a default privilege torna o futuro seguro por padrão", mas as
+-- suas linhas 55-68 cobrem apenas TABLES e SEQUENCES. FUNCTIONS ficou de fora.
+-- No Postgres, função nova nasce com EXECUTE concedido a PUBLIC — ou seja, a
+-- promessa valia para duas categorias de objeto e não para a terceira.
+--
+-- ── (ii) Por que isso é superfície de REDE, não detalhe interno ───────────
+-- O PostgREST expõe as funções do schema `public` como RPC: qualquer função ali
+-- é chamável por `POST /rest/v1/rpc/<nome>` com a chave publicável do bundle do
+-- navegador, sem que nenhuma policy nem GRANT novo precise existir. Uma função
+-- criada numa fase futura (Phase 2 prevê trigger e possivelmente função de
+-- exclusão; Phase 7 fala em perfis_cobranca; Phase 9 em eventos_asaas) nasceria
+-- exposta. É a mesma "armadilha carregada" descrita na 20260722145948, por outra
+-- porta. MEDIDO, não suposto: uma função descartável criada ANTES desta migration
+-- respondeu `HTTP 200` com o próprio retorno a um POST /rest/v1/rpc/<nome> feito
+-- com a chave publicável.
+--
+-- ── (iii) 🚨 A revogação é de PUBLIC e é GLOBAL — sem `IN SCHEMA` ─────────
+-- Dois detalhes, e errar qualquer um dos dois produz um no-op que PARECE conserto:
+--
+--   1. A concessão padrão do Postgres para função nova é a PUBLIC (pseudo-role que
+--      abarca toda role existente e futura), não a `anon`. Revogar de `anon` não
+--      tem efeito nenhum: `anon` continua herdando o EXECUTE por PUBLIC.
+--
+--   2. A revogação NÃO pode ser por schema. A documentação do PostgreSQL 17
+--      (sql-alterdefaultprivileges.html) traz o caso exato como exemplo de comando
+--      INEFICAZ: `ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON
+--      FUNCTIONS FROM PUBLIC` "has no effect unless it is undoing a matching GRANT,
+--      as per-schema default privileges can only add, not remove, global
+--      privileges". A forma que funciona é a de escopo global — `FOR ROLE postgres`
+--      sem `IN SCHEMA`.
+--
+-- A versão por schema chegou a ser aplicada neste banco durante a execução do
+-- plano 01-15 e a prova empírica a REPROVOU: com a entrada em pg_default_acl já
+-- sem PUBLIC, a função descartável criada em seguida ainda nascia com `=X`
+-- (PUBLIC) e `has_function_privilege('anon', …, 'EXECUTE')` devolvia `true`.
+-- Quem for "simplificar" esta migration depois, leia este parágrafo antes:
+-- acrescentar `in schema public` à linha 1 reabre a porta em silêncio.
+--
+-- O projeto já aplicava o remédio à mão, uma função por vez —
+-- supabase/schemas/00_funcoes_sistema.sql:37 (REVOKE ... FROM PUBLIC) e
+-- 03_horarios_funcionamento.sql:101 (REVOKE ... FROM public, anon). Esta
+-- migration transforma o remédio manual em padrão.
+--
+-- ── (iv) 🚨 service_role NUNCA entra em linha de revoke ───────────────────
+-- O snippet que a documentação da Supabase publica inclui service_role no
+-- ALTER DEFAULT PRIVILEGES ... REVOKE, porque assume o modelo "zero client DB
+-- access" (backend por conexão direta). Aqui o backend usa a Data API com a
+-- secret key: desde a D-02, TODO o caminho público (perfil, plano, serviços,
+-- engine de disponibilidade, lookup de cliente, escrita do agendamento) roda com
+-- createAdminClient(). Revogar sem conceder a service_role não quebra nada HOJE
+-- — quebra a PRÓXIMA função criada, que nasceria inacessível ao cliente que
+-- atende o booking inteiro, com um `permission denied` que ninguém associa à
+-- causa. A 20260709161817 existe porque um ALTER DEFAULT PRIVILEGES amplo demais
+-- já derrubou o acesso via PostgREST neste repositório uma vez.
+--
+-- ── Custo aceito, extensão da D-03 ────────────────────────────────────────
+-- Função nova passa a exigir `GRANT EXECUTE ON FUNCTION ... TO authenticated`
+-- escrito à mão quando o dashboard for chamá-la — exatamente como já vale para
+-- tabela desde a D-03. Mesmo custo, já aceito pelo owner, estendido a outra
+-- categoria de objeto. Como a revogação é global (ver iii.2), o custo vale para
+-- função criada pelo role postgres em QUALQUER schema, extensão inclusive: se uma
+-- fase futura instalar uma extensão cujas funções precisem ser chamadas por
+-- `anon`/`authenticated`, o GRANT terá de ser explícito. A falha é ALTA e clara
+-- (`permission denied for function ...`), nunca silenciosa. A regra está escrita
+-- em docs/03-PADROES_DE_BANCO_DE_DADOS.md §"Privilégios da Data API (portão antes
+-- do porteiro)", alíneas a, b e e.
+--
+-- ── Escopo do que NÃO é tocado ────────────────────────────────────────────
+-- ALTER DEFAULT PRIVILEGES vale SÓ para objetos FUTUROS. As duas funções que já
+-- existem — public.rls_auto_enable() e
+-- public.substituir_horarios_funcionamento(jsonb) — não são alteradas por esta
+-- migration, e não devem ser: ambas já estão fechadas nos schemas declarativos
+-- (ACL medido antes e depois de aplicar, idêntico: `postgres=X/postgres` na
+-- primeira, `postgres=X/postgres | authenticated=X/postgres` na segunda), e mexer
+-- nelas degradaria o dashboard em SILÊNCIO (a tela esvazia em vez de estourar
+-- erro).
+--
+-- Nota: em ALTER DEFAULT PRIVILEGES, FUNCTIONS e ROUTINES são equivalentes —
+-- a regra abaixo cobre funções, procedures e agregados criados pelo postgres.
+
+-- 1. Funções futuras criadas pelo role postgres (é o role que aplica migrations).
+--    O `for role postgres` é obrigatório: default privileges valem só para
+--    objetos criados pelo role indicado e NÃO são herdadas por membership.
+--    A revogação é de PUBLIC e SEM `in schema` — ver (iii) acima.
+alter default privileges for role postgres
+  revoke all on functions from public;
+
+-- 2. service_role continua com EXECUTE nos objetos futuros do schema public — o
+--    createAdminClient() depende disso, e é o item que o snippet oficial erra.
+--    Aqui `in schema public` é correto: por-schema só ADICIONA, e adicionar é
+--    exatamente o que se quer.
+alter default privileges for role postgres in schema public
+  grant execute on functions to service_role;

@@ -1,46 +1,60 @@
 import { after } from 'next/server'
+import { PostHog } from 'posthog-node'
+import { hostPostHog, opcoesServidorPostHog } from './opcoes-posthog'
 import { hashTenantId } from './tenant'
 
 /**
  * Captura de eventos de funil no servidor (SOMENTE servidor).
  *
- * Envia direto ao endpoint HTTP de captura do PostHog via `fetch` — sem
- * posthog-node. Sem `NEXT_PUBLIC_POSTHOG_KEY` tudo é no-op.
+ * Usa `posthog-node` com envio imediato: um cliente POR EVENTO, seguido de
+ * `await shutdown()`. Parece caro e é de propósito — route handler e Server
+ * Action do Next são derrubados por invocação, e o SDK enfileira em memória
+ * antes de mandar. Cliente compartilhado sem flush garantido perde o evento em
+ * silêncio, que é o modo de falha mais caro possível numa ferramenta de
+ * analytics: o número simplesmente fica menor e ninguém desconfia.
  *
- * Abordagem única de não-bloqueio (documentada em docs/08-ANALYTICS_E_FUNIL.md):
- * o `after()` de 'next/server' é chamado DENTRO deste helper — os chamadores
- * (server actions, route handlers) apenas invocam a função. Se `after()` não
- * estiver disponível (fora de contexto de request), cai para fetch
- * fire-and-forget. Nenhum caminho lança: analytics jamais quebra o produto.
+ * Abordagem de não-bloqueio (documentada em docs/08-ANALYTICS_E_FUNIL.md): o
+ * `after()` de 'next/server' é chamado DENTRO deste helper — os chamadores
+ * (server actions, route handlers) apenas invocam a função. Fora de contexto
+ * de request `after()` LANÇA, e é por isso que existe o fallback
+ * fire-and-forget: o webhook do lembrete é exatamente esse caso.
+ *
+ * Nenhum caminho lança: analytics jamais quebra o produto.
  */
 
 type PropsEvento = Record<string, string | number | boolean | null>
 
-const HOST_PADRAO = 'https://us.i.posthog.com'
-
-async function enviarAoPostHog(evento: string, props: PropsEvento | undefined, distinctId: string): Promise<void> {
+async function enviarAoPostHog(
+    evento: string,
+    props: PropsEvento | undefined,
+    distinctId: string,
+): Promise<void> {
     const key = process.env.NEXT_PUBLIC_POSTHOG_KEY
     if (!key) return
+
     try {
-        const host = process.env.NEXT_PUBLIC_POSTHOG_HOST || HOST_PADRAO
-        const res = await fetch(`${host.replace(/\/$/, '')}/i/v0/e/`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                api_key: key,
+        const posthog = new PostHog(key, {
+            host: hostPostHog(),
+            ...opcoesServidorPostHog,
+        })
+
+        try {
+            posthog.capture({
+                distinctId,
                 event: evento,
-                distinct_id: distinctId,
                 properties: {
                     ...props,
-                    // Eventos server-side não criam perfil de pessoa: a identidade
-                    // (tenant hash) é gerida no client via posthog.identify().
-                    $process_person_profile: false
+                    // Eventos server-side não criam perfil de pessoa: a
+                    // identidade (tenant hash) é gerida no client via
+                    // posthog.identify(). Decisão documentada em docs/08 — o
+                    // wizard já tentou remover esta linha uma vez.
+                    $process_person_profile: false,
                 },
-                timestamp: new Date().toISOString()
             })
-        })
-        if (!res.ok) {
-            console.error(`[analytics] PostHog respondeu ${res.status} para o evento "${evento}"`)
+        } finally {
+            // `finally` e não só o caminho feliz: se `capture` lançar, o
+            // cliente ficaria com o handle de rede pendurado na invocação.
+            await posthog.shutdown()
         }
     } catch (err) {
         console.error(`[analytics] falha ao enviar evento "${evento}" (ignorada):`, err)
@@ -55,7 +69,7 @@ async function enviarAoPostHog(evento: string, props: PropsEvento | undefined, d
 export function capturarEventoServidor(
     evento: string,
     props?: PropsEvento,
-    distinctId: string = 'server'
+    distinctId: string = 'server',
 ): void {
     if (!process.env.NEXT_PUBLIC_POSTHOG_KEY) return
     try {

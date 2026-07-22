@@ -75,6 +75,71 @@ Toda tabela criada no banco de dados deve ser protegida com Row Level Security (
 
 ---
 
+## 🚪 Privilégios da Data API (portão antes do porteiro)
+
+RLS **não** substitui `GRANT`. A role precisa do privilégio na tabela **e** de passar na política — sem privilégio, a policy nunca chega a ser avaliada. O `GRANT` é o portão; o RLS é o porteiro. Fechar no portão é o que impede uma policy permissiva criada por engano de reabrir a tabela inteira.
+
+**a) Objeto novo nasce FECHADO — tabela, sequence E function.** Duas migrations irmãs, ambas da Phase 1, cobrem as três categorias que o PostgREST expõe:
+
+| Categoria | Migration | Comando |
+|---|---|---|
+| tabela, sequence | `20260722060000_fecha_data_api_para_anon.sql` | `alter default privileges for role postgres in schema public revoke all on tables from anon, authenticated` |
+| function / RPC | `20260722183153_fecha_data_api_para_funcoes_futuras.sql` | `alter default privileges for role postgres revoke all on functions from public` |
+
+Toda tabela criada por migration não aparece na Data API para nenhuma das duas roles de API, e toda **function** criada pelo role `postgres` nasce sem `EXECUTE` para a chave publicável — o PostgREST expõe as funções do schema `public` como `POST /rest/v1/rpc/<nome>`, então function é superfície de rede igual a tabela. Isso é proposital: a superfície não cresce por acidente.
+
+🚨 **Duas armadilhas na linha de function, e cada uma produz um no-op que PARECE conserto:**
+
+1. **Revogar de `anon` em vez de `PUBLIC` não tem efeito nenhum.** A concessão padrão do Postgres para function nova é a `PUBLIC` (pseudo-role que abarca toda role existente e futura); `anon` só executa porque herda de `PUBLIC`. Revogar de `anon` deixa a herança intacta.
+2. **A revogação de function NÃO pode levar `in schema`.** A [documentação do PostgreSQL 17](https://www.postgresql.org/docs/17/sql-alterdefaultprivileges.html) traz esse caso como exemplo de comando ineficaz: `ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC` "has no effect […] as per-schema default privileges can only add, not remove, global privileges". Por isso a linha de function é **global** (`for role postgres`, sem `in schema`), enquanto a de tabela é por schema. Ambas as formas foram medidas na execução do plano 01-15: com a versão por schema aplicada, a function descartável criada em seguida ainda respondia `HTTP 200` a um `POST /rest/v1/rpc/<nome>` com a chave publicável.
+
+Consequência do escopo global: function criada pelo `postgres` em **qualquer** schema (extensão inclusive) nasce sem `EXECUTE` para `PUBLIC`. A falha é alta e clara (`permission denied for function ...`), nunca silenciosa — o conserto é o `GRANT` explícito do item b.
+
+**b) `supabase db diff` NÃO gera GRANT/REVOKE.** Se a tabela nova precisar ser lida/escrita pelo dashboard via Data API, escreva uma migration **manual** com o `GRANT` explícito. Sem ela, o sintoma é um `permission denied for table ...` que não tem nenhuma relação aparente com a feature em desenvolvimento.
+
+```sql
+-- supabase/migrations/<ts>_grant_data_api_<tabela>.sql
+grant select, insert, update, delete on public.<tabela> to authenticated;
+-- (a role anônima NÃO entra — ver item d)
+```
+
+O mesmo vale para **function/RPC nova**: desde o item a, ela nasce sem `EXECUTE` para ninguém além de `postgres` e `service_role`. Se o dashboard for chamá-la, o `GRANT` é escrito à mão — é o padrão que `substituir_horarios_funcionamento` já segue (`supabase/schemas/03_horarios_funcionamento.sql:101-102`):
+
+```sql
+-- supabase/migrations/<ts>_grant_execute_<funcao>.sql
+grant execute on function public.<funcao>(<tipos>) to authenticated;
+-- (a role anônima NÃO entra: RPC pública é chamada pelo servidor com createAdminClient())
+```
+
+Pior que "não gera": quando forçado a diffar privilégio, o migra gera o **contrário** do desejado. Ao gerar `20260722055941_fecha_policies_anon.sql`, ele emitiu `revoke ... from service_role` em todas as tabelas e `grant truncate to anon` — porque compara o banco real com um shadow construído só a partir de `supabase/schemas/`, que não contém `GRANT` nenhum. Aquele bloco foi podado à mão. **Privilégio mora em migration escrita à mão, nunca no diff.**
+
+**c) 🚨 `service_role` NUNCA entra em linha de `REVOKE`.** Nem em `revoke ... from`, nem em `ALTER DEFAULT PRIVILEGES ... revoke`. O snippet que a documentação da Supabase publica inclui `service_role` porque assume o modelo "zero client DB access" (backend por conexão direta); aqui o backend usa a Data API com a secret key. Copiar o snippet cru não quebra nada hoje — quebra a **próxima** tabela criada, que nasce inacessível ao `createAdminClient()` e derruba o booking público inteiro. A migration `20260709161817_restaura_privilegios_dml_roles_api.sql` existe porque isso já aconteceu neste repositório uma vez.
+
+**d) A role anônima não tem — e não volta a ter — privilégio nenhum.** Leitura pública é servida pelo servidor com `createAdminClient()`, com três contrapartidas obrigatórias, porque ali o RLS está bypassado e elas são a única defesa que resta:
+
+1. filtro de tenant resolvido **no servidor** (o browser manda `slug`, nunca `tenant_id`);
+2. projeção explícita de colunas (constante de módulo, nunca `select('*')` — coluna nova não entra sozinha no payload do browser);
+3. validação/sanitização na própria Server Action antes de escrever.
+
+**e) Checklist ao criar tabela nova:**
+
+- [ ] arquivo em `supabase/schemas/` (numerado para respeitar FKs)
+- [ ] `ENABLE ROW LEVEL SECURITY`
+- [ ] policies granulares por ação, com role explícita e `auth.jwt()` em subquery
+- [ ] `COMMENT ON TABLE` + `COMMENT ON POLICY` com a intenção de negócio
+- [ ] migration gerada por `supabase db diff` (DDL de tabela/policy)
+- [ ] **migration manual de `GRANT ... TO authenticated`** se o dashboard for usar a tabela pela Data API
+- [ ] se a página pública precisar do dado: ler pelo `createAdminClient()`, não conceder à role anônima
+
+**Checklist ao criar function/RPC nova no schema `public`:**
+
+- [ ] `REVOKE ALL ON FUNCTION public.<funcao>(<tipos>) FROM PUBLIC;` no próprio arquivo de `supabase/schemas/` — de **`PUBLIC`**, nunca de `anon` (ver a armadilha 1 do item a). A default privilege global já cobre a function nova, mas o revoke explícito é o que mantém o schema declarativo legível e sobrevive a um reset feito fora da ordem das migrations
+- [ ] `GRANT EXECUTE ... TO <role que vai chamar>` explícito — sem ele a function não é chamável por ninguém além de `postgres` e `service_role`, e o sintoma é `permission denied for function ...`
+- [ ] a role anônima **não** entra: RPC consumida pela página pública é chamada pelo servidor com `createAdminClient()`
+- [ ] `COMMENT ON FUNCTION` com a intenção de negócio e o modelo de segurança (`SECURITY INVOKER`/`DEFINER`, de onde sai o `tenant_id`)
+
+---
+
 ## 💬 Documentação Interna (Comentários no Banco)
 
 Adicione comentários descritivos tanto nas tabelas quanto nas políticas para documentar a intenção de negócio e as lógicas de segurança direto no Postgres.

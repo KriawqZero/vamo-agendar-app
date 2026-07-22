@@ -6,6 +6,12 @@ import { diaLocal, somarDias, formatarDataHoraLonga, TIMEZONE_PADRAO } from '@/l
 import { capturarEvento } from '@/lib/analytics/client'
 import LuzAmbiente from '@/app/LuzAmbiente'
 import { classesAcento } from './acento'
+import {
+    COPY_ERRO_SLOTS_FALLBACK,
+    COPY_FALLBACK_ENVIO,
+    mensagemDeEnvio,
+    mensagemDeMotivo,
+} from './mensagens'
 import { ORDEM_ETAPAS } from './passos'
 import CabecalhoEstabelecimento from './CabecalhoEstabelecimento'
 import PainelMarca from './PainelMarca'
@@ -17,7 +23,6 @@ import EtapaContato from './etapas/EtapaContato'
 import EtapaSucesso from './etapas/EtapaSucesso'
 
 export interface PerfilPublico {
-    tenant_id: string
     nome_estabelecimento: string
     descricao: string | null
     instagram: string | null
@@ -54,6 +59,8 @@ export interface DataDisponivel {
 export type EtapaBooking = 'servico' | 'data_hora' | 'contato' | 'sucesso'
 
 interface BookingAppProps {
+    /** Slug da URL — identificador do estabelecimento nas actions públicas. */
+    slug: string
     perfil: PerfilPublico
     personalizacao: PersonalizacaoPublica
     servicos: Servico[]
@@ -66,6 +73,7 @@ interface BookingAppProps {
  * data/hora → contato → sucesso. Tocar seleciona; o CTA da barra inferior avança.
  */
 export default function BookingApp({
+    slug,
     perfil,
     personalizacao,
     servicos,
@@ -145,21 +153,25 @@ export default function BookingApp({
             setErroSlots(null)
             try {
                 const res = await obterSlotsPublicos(
-                    perfil.tenant_id,
+                    slug,
                     dataSelecionada,
                     servicoSelecionado.duracao_minutos,
                 )
-                if (isMounted) {
-                    setSlots(res)
+                if (!isMounted) return
+                if (res.ok) {
+                    setSlots(res.slots)
+                } else {
+                    // Decisão pelo DISCRIMINANTE, nunca por `err.message`: em
+                    // build de produção a mensagem de uma exceção de Server
+                    // Action não atravessa a fronteira de flight (vira digest
+                    // opaco), e este `catch` recebia texto de framework em
+                    // inglês para renderizar verbatim ao cliente final.
+                    setErroSlots(mensagemDeMotivo(res.motivo))
                 }
-            } catch (err) {
-                if (isMounted) {
-                    setErroSlots(
-                        err instanceof Error
-                            ? err.message
-                            : 'Erro ao carregar horários disponíveis.',
-                    )
-                }
+            } catch {
+                // Só o INESPERADO de verdade chega aqui agora: a rede caiu no
+                // meio do POST e nenhum `motivo` voltou.
+                if (isMounted) setErroSlots(COPY_ERRO_SLOTS_FALLBACK)
             } finally {
                 if (isMounted) setCarregandoSlots(false)
             }
@@ -170,7 +182,7 @@ export default function BookingApp({
         return () => {
             isMounted = false
         }
-    }, [servicoSelecionado, dataSelecionada, perfil.tenant_id, tentativaSlots])
+    }, [servicoSelecionado, dataSelecionada, slug, tentativaSlots])
 
     const mudarEtapa = (nova: EtapaBooking) => {
         setJaNavegou(true)
@@ -258,30 +270,38 @@ export default function BookingApp({
             }
             try {
                 const res = await criarAgendamentoPublico({
-                    tenantId: perfil.tenant_id,
+                    slug,
                     servicoId: servicoSelecionado.id,
                     dataHora: slotSelecionado.datetime,
                     clienteNome: nomeInformado,
                     clienteTelefone: telefoneLimpo,
                 })
-                setAgendamentoCriado(res)
-                mudarEtapa('sucesso')
-            } catch (err) {
-                const mensagem =
-                    err instanceof Error
-                        ? err.message
-                        : 'Não foi possível confirmar o agendamento. Tente outro horário.'
-                if (mensagem.includes('já foi preenchido')) {
+                if (res.ok) {
+                    setAgendamentoCriado(res.agendamento)
+                    mudarEtapa('sucesso')
+                } else if (res.motivo === 'slot_indisponivel') {
                     // Recuperação de double-booking: solta o slot morto, refaz a
                     // grade e leva o cliente direto para escolher outro horário.
+                    //
+                    // A decisão é pelo DISCRIMINANTE, nunca por substring da
+                    // mensagem: até esta rodada ela era um `.includes()` sobre um
+                    // trecho da cópia de double-booking, e em build de produção
+                    // essa comparação era SEMPRE falsa — a `.message` da exceção
+                    // não atravessa a fronteira de flight (vira `digest`). O
+                    // efeito medido era o visitante que perdia a corrida ficar
+                    // preso nesta etapa, olhando um horário que já não existe.
                     setSlotSelecionado(null)
                     setTentativaSlots((t) => t + 1)
-                    setAvisoDataHora(mensagem)
+                    setAvisoDataHora(mensagemDeEnvio(res.motivo))
                     setDirecao('voltar')
                     mudarEtapa('data_hora')
                 } else {
-                    setErroEnvio(mensagem)
+                    setErroEnvio(mensagemDeEnvio(res.motivo))
                 }
+            } catch {
+                // Só o INESPERADO de verdade chega aqui: a rede caiu no meio do
+                // POST, ou o servidor devolveu 500 — nenhum `motivo` voltou.
+                setErroEnvio(COPY_FALLBACK_ENVIO)
             }
             return null
         },

@@ -12,10 +12,38 @@ pnpm dev          # servidor de desenvolvimento
 pnpm build        # build de produção
 pnpm lint         # eslint
 pnpm test         # testes unitários (vitest)
-supabase stop && supabase db diff -f <nome_da_migracao>   # gerar migration a partir dos schemas declarativos
+npx supabase db diff --linked -f <nome_da_migracao>   # gerar migration a partir dos schemas declarativos
 ```
 
 Gerenciador de pacotes: **pnpm**.
+
+## Infraestrutura: tudo é gerenciado, nada roda local
+
+**Não existe Docker neste projeto e não existe serviço local para subir.** Banco no
+Supabase **Cloud**, Evolution API na **Railway**, filas no **Upstash QStash**, e-mail no
+**Resend**, auth no **Clerk**, analytics/erros em **PostHog** e **Sentry**.
+
+Nunca rode: `supabase start`, `supabase stop`, `supabase db reset` sem `--linked`,
+`docker compose up`. Todos assumem uma stack local que não existe — e um
+`supabase db reset` sem `--linked` mira o banco errado.
+
+**Docker efêmero é exceção legítima, e só uma:** `supabase db diff` precisa de um shadow
+database em container para comparar os schemas declarativos. Isso é tooling descartável,
+não infraestrutura — não confunda com "o projeto tem banco local". Peça aprovação antes
+(o `permissions.ask` cobre `Bash(docker *)`), e prefira escrever a migration à mão quando
+o delta for pequeno: as três migrations de privilégio deste repo (`20260709193156`,
+`20260722044858`, e a de policies da fase 1) foram todas escritas manualmente.
+
+- **Migrations de DDL declarativo**: `npx supabase db diff --linked -f <nome>`.
+- **REVOKE/GRANT e outros privilégios**: `db diff` **não os emite** — escreva a migration à
+  mão (precedentes: `20260709193156`, `20260722044858`) e aplique via `mcp__supabase__apply_migration`.
+- ⚠️ **`apply_migration` não preserva a version do arquivo.** Ele carimba o instante da
+  chamada e joga o nome inteiro do arquivo no campo `name`, desalinhando repo e ledger —
+  o que quebra todo `db diff` futuro. Depois de **cada** apply, confira
+  `mcp__supabase__list_migrations` e realinhe por DML:
+  `update supabase_migrations.schema_migrations set version='<timestamp-do-arquivo>', name='<parte-descritiva>' where version='<a-que-o-mcp-inventou>';`
+- A stack Docker da Evolution API foi movida para `../obsoleto-docker-evolution/` em
+  2026-07-22 (contexto em `OBSOLETO.md` lá).
 
 ## Definition of Done
 
@@ -30,7 +58,11 @@ Uma tarefa só está concluída quando:
 
 ## Stack oficial (e proibições)
 
-Next.js 16 (App Router) + React 19 + Tailwind CSS v4 + Clerk (auth/multi-tenant via Organizations) + Supabase (`@supabase/ssr`, SQL puro, **sem ORM**) + Asaas (pagamentos) + Upstash QStash (filas/lembretes) + Evolution API (WhatsApp) + Resend (e-mails) + PostHog (analytics, no-op sem credenciais).
+Next.js 16 (App Router) + React 19 + Tailwind CSS v4 + Clerk (auth/multi-tenant via Organizations) + Supabase (`@supabase/ssr`, SQL puro, **sem ORM**) + Asaas (pagamentos) + Upstash QStash (filas/lembretes) + Evolution API (WhatsApp) + Resend (SDK `resend`, e-mails) + PostHog (analytics, no-op sem credenciais) + Sentry (`@sentry/nextjs`, error tracking, no-op sem DSN).
+
+**⛔ Nunca rode `npx @sentry/wizard` nem `npx @posthog/wizard`** — ambas as integrações já existem e os defaults dos wizards (Session Replay, `autocapture`, `dataCollection` permissivo, `tunnelRoute`) são exatamente o que foi desligado de propósito. Do painel, copie só a credencial. Detalhes e o histórico da mesclagem em `docs/09-OBSERVABILIDADE_E_EMAIL.md`.
+
+**Observabilidade e e-mail (etapa preparatória "Fundação operacional"):** todo envio de e-mail passa por `enviarEmail` (`src/lib/email/enviar.ts`) — nunca instanciar `new Resend()` direto, o construtor lança sem chave. Falha inesperada vai ao Sentry por `reportarExcecao`/`reportarFalhaSilenciosa` (`src/lib/observabilidade/reportar.ts`); condição esperada de negócio **não** vai. As travas anti-PII do Sentry são asserção de teste sobre `opcoesBaseSentry`, não configuração de painel. Em produção, variável obrigatória ausente derruba o boot (`src/lib/env.ts`) — ao adicionar variável nova que falhe em silêncio, acrescente-a àquela lista.
 
 **Tecnologias descartadas no pivô — nunca instalar ou referenciar**: Prisma/Drizzle, better-auth, Mercado Pago. Qualquer resquício delas em código legado deve ser refatorado para a stack oficial.
 
@@ -68,6 +100,12 @@ Storage: bucket público `imagens-perfis` (logo/capa dos tenants, paths `<org_id
 - Hook de imutabilidade de migrations existe pronto em `.claude/hooks/migrations-prod.md`; ativar no go-live (passos no checklist de `docs/PENDENCIAS.md`, seção "Obrigatório antes do lançamento público").
 - ⚠️ Ao entrar em prod, esta seção será substituída por regras de imutabilidade.
 
+### Segredos (fase atual: DEV)
+
+- **`.env.local` pode ser lido livremente neste projeto.** Autorização explícita do owner que sobrepõe, apenas aqui, a regra global "nunca ler `.env` e secrets". As chaves são de ambiente de desenvolvimento e serão trocadas antes do lançamento público.
+- Continua proibido, mesmo em DEV: escrever no `.env.local`, ecoar valores em log ou saída de comando, e reproduzir qualquer chave em commit, doc, PR, issue ou mensagem.
+- ⚠️ Ao entrar em prod, esta seção sai e a proibição global volta a valer integralmente.
+
 ### Engine de disponibilidade (`src/lib/booking-engine.ts`)
 
 `obterSlotsDisponiveis()` calcula slots livres com **grade anti-buraco** (funções puras testáveis): N janelas de funcionamento do dia − exceções/bloqueios − agendamentos ativos = intervalos livres (`calcularIntervalosLivres`); em cada intervalo `[a, b)`, `gerarSlotsAntiBuraco` gera candidatos de 15 em 15 min ancorados em `a` + o candidato colado no fim (`b − duração`) e só oferece quem não cria sobra invendável: `gapAntes === 0 || gapAntes >= menorDuraçãoAtivaDoTenant || gapDepois === 0`. Regras de acesso via param opcional `regrasAcesso { antecedenciaMinutos, horizonteDias }`: os fluxos públicos passam as configs do tenant; o fluxo manual do dashboard **omite** (walk-in permitido, sem horizonte — decisão de produto). Antecedência é comparada por instante (funciona atravessando dias); horizonte é inclusivo (`hoje + N`). **Timezone**: banco em UTC, interpretação no fuso do tenant (`perfis_empresas.timezone`). A action pública re-executa a engine antes do INSERT e valida o horário por igualdade exata de `datetime` — prevenção de double-booking; mudar o formato da saída quebra esse contrato.
@@ -103,6 +141,7 @@ Se o WhatsApp do tenant estiver desconectado, o fluxo falha **silenciosamente** 
 | `06-MENSAGERIA_E_WHATSAPP.md` | Fluxos e payloads Evolution API + QStash |
 | `07-PLANOS_E_MONETIZACAO.md` | Planos Gratuito/Plus/Pro e roadmap Asaas |
 | `08-ANALYTICS_E_FUNIL.md` | Eventos de funil com PostHog |
+| `09-OBSERVABILIDADE_E_EMAIL.md` | Sentry (travas anti-PII), fail-fast de env e wrapper do Resend — **inclui a regra de nunca rodar os wizards** |
 | `PENDENCIAS.md` | Lista viva de tarefas e bugs — **consultar antes de cada nova etapa** |
 | `ASSINATURAS.md` | Snippets para testes/simulação de assinaturas em dev |
 | `RESET_AMBIENTE_DEV.md` | Procedimento de reset total do ambiente dev |

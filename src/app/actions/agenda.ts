@@ -166,6 +166,21 @@ export async function salvarExcecaoAgenda(input: ExcecaoInput) {
         updated_at: new Date().toISOString(),
     }
 
+    // Funil: um único evento para criação e edição — a pergunta que ele
+    // responde é "o profissional usa bloqueio de agenda?", e distinguir os
+    // dois casos não muda a resposta. Sem data, sem motivo: o texto livre de
+    // `motivo` é digitado pelo profissional e não vai para analytics.
+    const registrarFunil = () => {
+        try {
+            capturarEventoTenant('schedule_exception_saved', orgId)
+        } catch (analyticsErr) {
+            console.error(
+                '[analytics] schedule_exception_saved não capturado (ignorado):',
+                analyticsErr,
+            )
+        }
+    }
+
     if (input.id) {
         // UPDATE
         const { data, error } = await supabase
@@ -181,6 +196,8 @@ export async function salvarExcecaoAgenda(input: ExcecaoInput) {
             throw new Error('Erro ao salvar modificação da exceção.')
         }
 
+        registrarFunil()
+
         return data
     } else {
         // INSERT
@@ -194,6 +211,8 @@ export async function salvarExcecaoAgenda(input: ExcecaoInput) {
             console.error('Erro ao criar exceção:', error.message)
             throw new Error('Erro ao salvar novo bloqueio na agenda.')
         }
+
+        registrarFunil()
 
         return data
     }
@@ -219,6 +238,17 @@ export async function excluirExcecaoAgenda(id: string) {
     if (error) {
         console.error('Erro ao remover exceção:', error.message)
         throw new Error('Erro ao remover exceção da agenda.')
+    }
+
+    // Funil: contraponto do `schedule_exception_saved` — bloqueio criado e
+    // removido no mesmo dia é sinal de erro de operação, não de uso.
+    try {
+        capturarEventoTenant('schedule_exception_deleted', orgId)
+    } catch (analyticsErr) {
+        console.error(
+            '[analytics] schedule_exception_deleted não capturado (ignorado):',
+            analyticsErr,
+        )
     }
 
     return true

@@ -1,0 +1,62 @@
+-- Escrita à MÃO por preferência de projeto, não por limitação da ferramenta: o
+-- delta é de duas instruções de DROP POLICY. Forçar `supabase db diff` aqui sobe
+-- um shadow database em Docker — única exceção de container do projeto, que exige
+-- aprovação prévia — e, pior, emite privilégio invertido (`revoke ... from
+-- service_role`, `grant truncate to anon`), porque compara o banco real com um
+-- shadow construído só a partir de supabase/schemas/, que não contém GRANT nenhum.
+-- Foi exatamente o que aconteceu no plano 01-04, e o bloco teve de ser podado à mão.
+-- Mesmo precedente de escrita manual: 20260709193156, 20260722044858 e 20260722060000.
+--
+-- ── Por que esta migration existe ─────────────────────────────────────────
+-- As duas tabelas carregavam uma policy de SELECT concedida a `anon` E
+-- `authenticated` com a expressão `ativo = true`, sem cláusula de tenant.
+-- Policies são PERMISSIVAS e se somam por OR: para qualquer conta logada o
+-- predicado efetivo era `(ativo = true) OR (tenant_id = próprio)`. Ou seja,
+-- qualquer conta Clerk self-service — e o cadastro é aberto — lia o catálogo de
+-- serviços e a agenda de funcionamento de TODOS os tenants, junto do `tenant_id`
+-- de cada um. Não expõe cliente, agendamento nem telefone; expõe a operação
+-- comercial da concorrência.
+--
+-- Medido antes de aplicar, com role `authenticated` e claim `org_id` de um tenant
+-- real dentro de transação revertida: 2 tenants distintos visíveis em `servicos`
+-- para uma conta que só deveria enxergar 1.
+--
+-- ── A armadilha carregada (o dano de horizonte mais longo) ────────────────
+-- Para a role `anon` estas policies já eram INERTES desde a 20260722060000: sem
+-- privilégio, a policy nunca chega a ser avaliada. Mas o cabeçalho daquela mesma
+-- migration argumenta que o portão precisa ser fechado no privilégio porque "uma
+-- policy criada por engano em qualquer fase futura reabre tudo". Aqui a policy já
+-- existia, pré-escrita, com a cláusula `TO anon` no lugar. Um único
+-- `GRANT ... TO anon` futuro — inclusive acidental, ou copiado de um snippet —
+-- reexporia toda linha com `ativo = true`, sem que nenhuma policy nova precisasse
+-- ser criada. Removendo a policy, não sobra o que o GRANT errado destrave.
+--
+-- ── Por que é DROP puro, sem substituta (a D-07 NÃO se aplica) ────────────
+-- A regra "nenhuma policy compartilhada é dropada sem CREATE substituto" existe
+-- porque dropar sem recriar deixa o dashboard com tela vazia e sem erro. Nestas
+-- duas tabelas a substituta JÁ EXISTE e é anterior a esta fase:
+--   "Permitir SELECT do próprio tenant para autenticados"
+--   TO authenticated USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'))
+-- criada pela 20260709165703. Ela cobre as linhas do próprio tenant INCLUSIVE as
+-- inativas — é o que permite reativar um serviço ou um dia de funcionamento, e o
+-- que faz o `INSERT/UPDATE ... RETURNING` do `.select()` do supabase-js funcionar.
+-- Escrever outra policy aqui seria redundância pura.
+--
+-- ── Raio de alcance real ──────────────────────────────────────────────────
+-- Só o dashboard autenticado, onde estreitar para o próprio tenant é exatamente o
+-- comportamento pretendido. O caminho público NÃO é afetado: desde o plano 01-02,
+-- `src/app/actions/public-booking.ts` lê `servicos` e `horarios_funcionamento`
+-- pelo `createAdminClient()` (service role, RLS bypassado) e passa esse cliente
+-- para a engine de disponibilidade.
+--
+-- ── 🚨 O que esta migration explicitamente NÃO toca ───────────────────────
+-- NENHUM privilégio. Não há `grant` nem `revoke` de espécie alguma neste arquivo,
+-- e `service_role` não aparece em lugar nenhum. O `ALTER DEFAULT PRIVILEGES for
+-- role postgres` da 20260722060000 — que faz tabela nova nascer fora da Data API —
+-- continua valendo intacto; uma linha de privilégio aqui poderia revertê-lo sem
+-- que ninguém notasse. As policies de INSERT/UPDATE/DELETE, os `COMMENT ON` e a
+-- função `substituir_horarios_funcionamento` também ficam como estão.
+
+drop policy if exists "Permitir SELECT público para todos" on public.servicos;
+
+drop policy if exists "Permitir SELECT público para todos" on public.horarios_funcionamento;

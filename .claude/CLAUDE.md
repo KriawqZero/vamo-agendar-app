@@ -31,7 +31,16 @@ cair na agenda do profissional sem que nada quebre no caminho.
 - **Dependência externa**: verificação do domínio no Resend (SPF/DKIM) exige mudança de
   DNS e propagação — tarefa do owner, bloqueia os e-mails transacionais
 
-- **Orçamento**: Supabase permanece no plano Free (sem custo mensal de banco)
+- **Orçamento**: Supabase no plano Free durante a construção; upgrade para Pro (~US$ 25/mês,
+  traz backup diário e elimina a pausa por inatividade) é intenção do owner condicionada à
+  aprovação do sócio, sem data — não bloqueia nenhuma fase, mas é a condição para haver dado
+  de terceiro no banco
+
+- **Banco atual não é produção**: sem profissional real, sem agendamento de cliente final;
+  migration destrutiva autorizada pelo owner e hard reset permitido. Não propor backup,
+  `pg_dump` ou keep-alive enquanto isso valer — a condição que reverte está em
+  `.planning/ROADMAP.md`
+
 - **Tech stack**: Next.js 16 + React 19 + Tailwind v4 + Clerk + Supabase (SQL puro, sem
   ORM) + Asaas + QStash + Evolution API + Resend + PostHog. Prisma/Drizzle, better-auth e
   Mercado Pago são proibidos (descartados no pivô)

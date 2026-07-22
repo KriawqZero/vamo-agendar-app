@@ -1,5 +1,7 @@
 {
   "readableLineLength": true,
   "strictLineBreaks": false,
-  "foldHeading": true
+  "foldHeading": true,
+  "showUnsupportedFiles": false,
+  "alwaysUpdateLinks": false
 }

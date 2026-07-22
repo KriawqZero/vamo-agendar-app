@@ -554,31 +554,63 @@ Garantir que **todos os dados usados numa operação pertencem ao mesmo tenant**
 a role `anon` (= a internet inteira) só alcança o mínimo necessário. (O bug funcional
 do booking anônimo foi destacado para o P0.2 — o restante do redesenho fica aqui.)
 
+> ### ✅ A parte "hardening da Data API" foi executada na **Phase 1** (2026-07-22)
+>
+> Toda a superfície `anon` descrita abaixo foi **fechada no privilégio**, não estreitada
+> por policy. `revoke all` para a role `anon` nas nove tabelas do schema `public`, mais
+> `alter default privileges` revogando `anon` **e** `authenticated` em objetos futuros
+> (`service_role` preservado de propósito — ele é quem serve o booking público).
+>
+> **Como foi verificado, e por que a forma da prova importa:** `bash
+> scripts/verificar-superficie-anon.sh` → exit 0, **11 checagens, 0 reprovadas, 0
+> inconclusivas**, todas em `HTTP 401 / 42501 permission denied`. A linha de base de
+> 2026-07-22, antes das migrations, era **6 reprovadas + 5 inconclusivas**. O número que
+> fecha o item não é o `0 reprovadas` — é o **`0 inconclusivas`**: cinco checagens
+> *pareciam* passar antes (três `200 []` porque a tabela estava vazia num banco de dev,
+> duas `409/23503` porque a FK barrou a escrita antes do portão). Nenhuma delas provava
+> nada. **Afirmação de fechamento sem `curl` rodado não conta.**
+>
+> A leitura pública migrou para `createAdminClient()` com lista de colunas explícita e
+> `tenant_id` resolvido **no servidor a partir do slug** — o `org_id` do Clerk saiu do
+> payload do browser. Detalhes em
+> `.planning/phases/01-hardening-da-superf-cie-p-blica/01-0{1,2,4}-SUMMARY.md`.
+>
+> **O que NÃO foi resolvido pela Phase 1 e continua aberto neste item:** o pertencimento
+> **conjunto** ao mesmo tenant no banco (FK composta / trigger) — o segundo bullet abaixo.
+> A Phase 1 fechou o acesso anônimo; não introduziu integridade referencial por tenant.
+
 **Estado atual verificado (2026-07-11, código + `pg_policies` no banco):**
 
 - ~~`criarAgendamentoPublico` busca o serviço apenas por `id`, sem `tenant_id`~~ —
   **fechado no P0.2 (2026-07-13)**: a action agora exige serviço ativo **e do mesmo
   tenant**, e valida tenant existente antes de qualquer escrita.
-- As FKs de `agendamentos` validam `cliente_id` e `servico_id` individualmente, mas
-  **não o pertencimento conjunto** ao mesmo `tenant_id`.
-- Políticas de INSERT `anon` em `agendamentos` e `clientes` exigem apenas
-  `tenant_id IS NOT NULL` → **qualquer visitante escreve direto pela Data API**,
-  contornando a Server Action (engine de disponibilidade, validações, gating de plano),
-  inclusive forjando `status` e `data_hora` arbitrários.
-- SELECT `anon` em `agendamentos` é `USING (true)` com todas as colunas — qualquer um
-  lista a agenda completa de todos os tenants, incluindo `cliente_id`. A engine só
-  precisa de `tenant_id, data_hora, status, servico_id` → GRANT por coluna (mesmo
-  padrão já usado em `assinaturas`).
-- `excecoes_agenda` SELECT `anon` `USING (true)` expõe `motivo` dos bloqueios de todos
-  os tenants (a engine só precisa de `tenant_id, data, hora_inicio, hora_fim,
-  bloqueado`).
-- `assinaturas`: falta `revoke insert, update, delete ... from anon, authenticated`
-  (RLS já bloqueia escrita; o revoke fecha a segunda camada). A exposição anônima de
-  `tenant_id/plano/status` continua necessária ao slug efetivo do booking
-  (`obterPlanoVigentePublico`) — aceita conscientemente até este item redesenhar o
-  acesso público.
-- `perfis_empresas`: avaliar esconder `telefone_contato` de `anon` por GRANT de coluna,
-  se a página pública não o exibir.
+- ⚠️ **CONTINUA ABERTO** — as FKs de `agendamentos` validam `cliente_id` e `servico_id`
+  individualmente, mas **não o pertencimento conjunto** ao mesmo `tenant_id`. A Phase 1
+  não tocou nisto.
+- ~~Políticas de INSERT `anon` em `agendamentos` e `clientes` exigem apenas
+  `tenant_id IS NOT NULL` → qualquer visitante escreve direto pela Data API,
+  contornando a Server Action, inclusive forjando `status` e `data_hora`~~ —
+  **fechado na Phase 1 (2026-07-22)**: as policies foram substituídas por versões
+  `TO authenticated` tenant-scoped **e** o privilégio de `anon` foi revogado. POST
+  anônimo nas duas tabelas devolve `401 / 42501`.
+- ~~SELECT `anon` em `agendamentos` é `USING (true)` com todas as colunas — qualquer um
+  lista a agenda completa de todos os tenants, incluindo `cliente_id`~~ —
+  **fechado na Phase 1**. A direção "GRANT por coluna" recomendada aqui foi
+  **descartada com motivo técnico** (decisão D-01): o Postgres exige `SELECT` em
+  qualquer coluna referenciada **inclusive no `WHERE`**, e o caminho público filtra por
+  `tenant_id`. Liberar coluna manteria `tenant_id` legível e `?select=tenant_id`
+  continuaria devolvendo a lista de todos os tenants. Fechou-se tudo.
+- ~~`excecoes_agenda` SELECT `anon` `USING (true)` expõe `motivo` dos bloqueios de todos
+  os tenants~~ — **fechado na Phase 1** (revoke total, não estreitamento de colunas).
+- ~~`assinaturas`: falta `revoke insert, update, delete ... from anon, authenticated`~~
+  — **fechado na Phase 1 (plano 01-01)** com `revoke all ... from anon`. A ressalva
+  escrita aqui ("a exposição anônima de `tenant_id/plano/status` continua necessária ao
+  slug efetivo do booking") **deixou de ser verdadeira**: `obterPlanoVigentePublico`
+  passou a receber o cliente privilegiado. Não reintroduzir GRANT nenhum nessa tabela
+  para `anon` com esse argumento.
+- ~~`perfis_empresas`: avaliar esconder `telefone_contato` de `anon` por GRANT de
+  coluna~~ — **resolvido por consequência na Phase 1**: `anon` perdeu a tabela inteira,
+  então não há coluna a esconder.
 - Lembrete externo: **Asaas e Clerk nunca acessam a Data API** (Asaas chama nosso
   webhook; Clerk só emite JWTs) — nada precisa ser aberto para eles.
 
@@ -612,6 +644,72 @@ exemplo conceitual de INSERT público precisa acompanhar a decisão).
 no servidor" (muda o exemplo de política pública do docs/05); refazer a auditoria da
 Data API depois (ver item de billing abaixo).
 
+### ~~Superfície remanescente depois do hardening da Phase 1~~ — ✅ Fechada (plano 01-08, 2026-07-22)
+
+**As duas policies abaixo não existem mais.** A análise fica registrada porque é o motivo
+pelo qual elas foram removidas — sem isso, a próxima pessoa que ler os schemas pode
+recriá-las achando que faltou alguma coisa. O registro de fechamento está no fim da seção.
+
+Duas policies de SELECT sobreviveram à Phase 1 **por escopo, não por descuido**. Auditadas
+em `pg_policies` depois do plano 01-04:
+
+| Tabela | Policy | Cmd | Roles | Expressão |
+|---|---|---|---|---|
+| `servicos` | "Permitir SELECT público para todos" | SELECT | `{anon,authenticated}` | `(ativo = true)` |
+| `horarios_funcionamento` | "Permitir SELECT público para todos" | SELECT | `{anon,authenticated}` | `(ativo = true)` |
+
+O plano 01-04 mirava a decisão **D-07**: substituir as policies compartilhadas que **não
+tinham par autenticado** (dropar sem recriar quebraria o dashboard em silêncio). Estas
+duas **têm** par autenticado, então ficaram legitimamente fora daquele escopo.
+
+**Risco 1 — leitura cross-tenant por usuário autenticado (valia até 2026-07-22).** A expressão é
+`ativo = true`, sem cláusula de tenant. Qualquer profissional logado consegue ler os
+serviços e os horários ativos de **todos os outros tenants** da plataforma via Data API.
+Não expõe cliente, agendamento nem telefone — expõe catálogo e agenda de funcionamento
+da concorrência. É **pré-existente**, não foi introduzido nem agravado pela Phase 1.
+
+**Risco 2 — a policy morta era uma armadilha carregada (desarmada em 2026-07-22).** Para a role
+`anon` estas duas policies são inertes *hoje*: sem privilégio, uma policy nunca chega a
+ser avaliada. Mas o cabeçalho da própria migration `20260722060000_fecha_data_api_para_anon.sql`
+argumenta que o portão precisa ser fechado no privilégio justamente porque "uma policy
+criada por engano em qualquer fase futura reabre tudo". **Aqui a policy já existe,
+pré-carregada.** Um único `GRANT ... TO anon` futuro nessas tabelas — inclusive
+acidental, ou copiado de um snippet — reexpõe toda linha com `ativo = true` a quem
+tiver a chave publicável. **Nenhuma policy nova precisa ser escrita para o buraco
+reabrir.**
+
+**A D-07 NÃO se aplicava aqui — o `DROP` era seguro, e isso foi verificado antes de
+executar.** A regra "nenhuma policy compartilhada é dropada sem substituta" existe porque
+dropar sem recriar deixa o dashboard com tela vazia e sem erro. Nestas duas tabelas a
+substituta **já existia**: a policy `1b`, "Permitir SELECT do próprio tenant para
+autenticados", `TO authenticated USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'))`, em
+`supabase/schemas/02_servicos.sql` e `03_horarios_funcionamento.sql`. Ela cobre as linhas do
+próprio tenant **inclusive as inativas** (é o que permite reativar um serviço e o que faz o
+`RETURNING` do `.select()` funcionar). Policies são permissivas e se somam por `OR`:
+removendo a compartilhada, sobrou exatamente o escopo desejado. **Nenhuma substituta nova
+foi escrita — seria uma segunda policy redundante fazendo o que a `1b` já faz.** Quem for
+mexer nesses schemas: não recrie a policy removida.
+
+**✅ Registro de fechamento — plano 01-08, 2026-07-22**
+
+| Item | Valor |
+|---|---|
+| Migration | `supabase/migrations/20260722145948_fecha_policies_residuais_servicos_horarios.sql` |
+| Version no ledger | `20260722145948` / `fecha_policies_residuais_servicos_horarios` (18 versions = 18 arquivos) |
+| Corpo executável | dois `drop policy if exists "Permitir SELECT público para todos"`, um por tabela. **Zero `grant`/`revoke`** — a default privilege da `20260722060000` ficou intacta |
+| `pg_policies` depois | 8 linhas nas duas tabelas, **todas** com roles `{authenticated}`; nenhuma com o nome da policy removida, nenhuma com a role `anon` |
+| Dano encerrado | sob `set local role authenticated` + claim `org_id` de tenant real, com um tenant vizinho descartável criado na mesma transação: `tenants_distintos_visiveis` **2 → 1** em `servicos`; **1** em `horarios_funcionamento` |
+| Não-regressão do dashboard | a linha **inativa** do próprio tenant continua visível (1 em `servicos`, 2 em `horarios_funcionamento`) — é o caso que a `1b` cobre a mais e o que sustenta reativar um serviço |
+| Superfície `anon` | `bash scripts/verificar-superficie-anon.sh` → exit 0, 11 checagens, 0 reprovadas, 0 inconclusivas, depois do DROP |
+
+A migration foi **escrita à mão**, não gerada por `supabase db diff`. O procedimento
+anteriormente escrito nesta seção mandava gerar pelo diff; para um delta de duas instruções
+o caminho correto é o item (b) de `docs/03-PADROES_DE_BANCO_DE_DADOS.md` — escrever à mão —,
+porque forçar o diff sobe shadow database em Docker e, quando há privilégio no caminho, emite
+o inverso do desejado (precedente do plano 01-04). Aplicada por `execute_sql` com o `INSERT`
+no ledger **na mesma chamada**, portanto na mesma transação: não houve janela entre o DDL e o
+registro da version. `apply_migration` continua proibido — não preserva a version do arquivo.
+
 ### Prevenção atômica de double-booking
 
 O recálculo da engine antes do INSERT (`public-booking.ts` passo 3) **não elimina a
@@ -622,10 +720,32 @@ concorrência, obrigatória antes de expor o produto a tráfego real.
 
 **Estado atual verificado:** nenhuma constraint de exclusão/lock no banco
 (`07_agendamentos.sql`); a janela de corrida vai da leitura da engine ao INSERT.
-Além disso, o INSERT `anon` direto pela Data API ignora a engine por completo (ver
-item de integridade acima). Detalhe correlato: quando o join `servicos(duracao_minutos)`
-não retorna (serviço desativado é invisível para `anon`), a engine assume 30 min — a
-janela ocupada pode ficar menor que a real (`booking-engine.ts:143`).
+~~Além disso, o INSERT `anon` direto pela Data API ignora a engine por completo~~ —
+esse contorno **foi fechado na Phase 1** (revoke total de `anon`); a corrida que resta
+é entre duas chamadas legítimas da Server Action.
+
+> 🔁 **Handoff da Phase 1 para a Phase 2 — o repro do "assume 30 minutos" MUDOU DE
+> LUGAR. Ler antes de escrever teste.**
+>
+> A nota antiga deste item dizia: quando o join `servicos(duracao_minutos)` não retorna
+> (serviço desativado é invisível para `anon`), a engine assume 30 min e a janela ocupada
+> fica menor que a real. O ponteiro correto hoje é **`src/lib/booking-engine.ts:303`**
+> (`const duracao = ag.servicos?.duracao_minutos || 30`) — a referência antiga a
+> `booking-engine.ts:143` está desatualizada.
+>
+> **O que a Phase 1 mudou:** a leitura pública passou a usar `createAdminClient()`
+> (service role), que **bypassa o RLS**. O embed `servicos(duracao_minutos)` agora
+> devolve a duração real **também para serviço desativado**, então o fallback de 30
+> minutos **deixou de disparar no caminho público**. É uma melhoria, mas não foi
+> planejada — e ela invalida qualquer teste da Phase 2 escrito para reproduzir o sintoma
+> pelo fluxo público.
+>
+> **Consequência prática:** AGE-01/AGE-02 continuam necessários — a duração ainda vem por
+> join e ainda muda quando o profissional edita o serviço; só o *sintoma* mudou de lugar
+> (o fallback continua valendo se o join falhar por outro motivo). **O plano da Phase 2
+> não pode escrever repro que dependa de desativar um serviço e passar pelo booking
+> público** — nesse caminho o bug não aparece mais. *Sinal de alerta:* teste que tenta
+> provar o bug desativando serviço no fluxo público.
 
 **Resultado esperado:**
 
@@ -683,7 +803,383 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
 **Dependências/decisões:** item de integridade primeiro; escolher limites iniciais
 (ex.: N tentativas por IP/telefone por hora) e revisá-los nos pilotos.
 
+### 🔑 Rotação das signing keys do QStash — ação do owner, prazo 2026-08-05
+
+**Só o owner fecha este item.** A rotação acontece no painel da Upstash; nenhum
+executor tem acesso a ele e nenhum pode marcar este item como feito — mesma regra da
+lista de UAT logo abaixo.
+
+**Por que existe.** Até o plano 01-11, `agendarLembreteQStash` publicava a URL de
+destino de **todo** lembrete carregando a chave de assinatura em texto claro na query
+string. Desde o plano 01-03 essa é a **mesma** chave com que o webhook autentica via
+`Receiver`, e HMAC é simétrico: quem leu o valor forja um `Upstash-Signature` válido e
+dispara WhatsApp em nome de qualquer tenant. Parar de publicar não desfaz o que já
+circulou. Três vetores concretos (CR-01 do `01-REVIEW.md` da Phase 1), todos fora do
+alcance da sanitização do Sentry — que cobre breadcrumb e `request.url`, não log de
+infraestrutura nem de terceiro:
+
+1. **Log de acesso HTTP de cada hop** entre o QStash e a Railway: a linha de
+   requisição inclui a query string.
+2. **Console e armazenamento do QStash**: a URL de destino fica visível na listagem de
+   mensagens por até 14 dias.
+3. **Log da aplicação**: os `console.error` de `whatsapp-helper.ts` despejavam o corpo
+   de erro devolvido pelo QStash, que costuma ecoar a URL de destino. Também fechado
+   no plano 01-11.
+
+**Etapa 1 — ✅ FEITA (plano 01-11, 2026-07-22).** A publicação passou a ser limpa:
+`${APP_URL}/api/webhooks/lembrete`, sem query string nenhuma, em
+`src/lib/whatsapp-helper.ts`. Prova reexecutável:
+`grep -vE '^\s*(//|\*|/\*)' src/lib/whatsapp-helper.ts | grep -c '?secret'` → `0`, mais
+três casos em `src/lib/__tests__/whatsapp-helper.test.ts` que reprovam se o parâmetro
+voltar. **Isso não mata lembrete em voo:** `route.ts` verifica a assinatura contra
+`req.url`, então cada mensagem valida contra a URL com que ela própria foi publicada —
+a antiga com o parâmetro, a nova sem. Não existem "duas gerações" em conflito.
+
+**Etapa 2 — 🔴 ABERTA, do owner. Data-limite: 2026-08-05.** Rotacionar
+`QSTASH_CURRENT_SIGNING_KEY` e `QSTASH_NEXT_SIGNING_KEY` no painel da Upstash,
+**depois que a fila secar**.
+
+- **Por que a espera é necessária.** O horizonte de agendamento de lembrete no QStash
+  é de até 14 dias, e 2026-08-05 é 14 dias depois de 2026-07-22 — a data em que a
+  última publicação com o parâmetro pode ter ocorrido. Rotacionar com a fila cheia
+  invalida a assinatura de todo lembrete já publicado, o webhook passa a recusá-los
+  com 401 e a mensageria deste projeto falha **em silêncio por desenho**: ninguém
+  reclama de mensagem que não chegou. Esperar não é cautela genérica, é evitar
+  exatamente o modo de falha característico deste produto.
+- **Depois de rotacionar, nesta ordem:** (1) atualizar as duas variáveis no Railway e
+  no `.env.local`; (2) reexecutar `bash scripts/verificar-fail-fast-boot.sh` e conferir
+  exit 0 com os quatro vereditos; (3) confirmar na prática que um lembrete novo chega —
+  é o item "Lembrete do QStash ponta a ponta" da lista de UAT abaixo.
+- **Nomes de variável, nunca valores.** Nenhum valor de chave entra neste documento,
+  em commit, PR ou mensagem: publicar um valor foi precisamente o que criou este item.
+
+**Critério de fechamento:** as duas variáveis com valor novo em todos os ambientes, o
+harness verde depois da troca e um lembrete real entregue com a chave nova.
+
+### 🧪 UAT humano pendente da Phase 1 (não executado — bloqueia o "fechou de verdade")
+
+A Phase 1 provou por comando tudo o que é provável por comando. **O que sobra exige olho
+humano e não foi feito** — o executor do plano 01-05 rodou sem o owner presente e
+registrou em vez de fingir. Nada abaixo foi aprovado; nada abaixo deve ser assumido como
+aprovado. O `CONTEXT` da fase chama isto de "regressão obrigatória e não negociável".
+
+**Por que não dá para dispensar:** as regressões prováveis desta fase **degradam em
+silêncio**. Policy substituta errada não estoura erro — a agenda aparece **vazia**.
+Sanitização de plano quebrada não estoura erro — o tenant gratuito passa a exibir
+personalização paga. Lembrete rejeitado não estoura erro — mensageria falha em silêncio
+por design. Nenhum desses modos de falha aparece em `lint`, `test`, `build` ou `curl`.
+
+**Reduzido pelo plano 01-07 (2026-07-22):** o **lado servidor** de três destes itens saiu
+da lista de olho humano e virou comando — `pnpm test:integracao` exercita, contra o
+Supabase de dev, a criação de agendamento pelo slug (cliente novo, `RETURNING`), o
+reaproveitamento de cliente por telefone, a rejeição de horário ocupado com a mensagem que
+a UI reconhece e a cópia exata da caixa de erro de slots. O que continua aqui é
+estritamente o que acontece **na tela** — e continua não aprovado.
+
+⚠️ **"Parcialmente coberto" não é "pode pular".** A cobertura automatizada cresceu com os
+planos 01-07 e 01-08 e isso **reduz** a probabilidade de cada regressão; não fecha nenhum
+item. Os sete continuam abertos, e só o owner pode fechá-los — nenhum executor tem como
+observar uma tela. Cada item marcado como parcialmente coberto diz, em primeiro lugar, o
+que a automação **não** cobre; é essa frase que define o que falta fazer.
+
+- [ ] **Wizard completo de `/book/[slug]`** — *parcialmente coberto.* **Não cobre:** as
+      telas do navegador, a ausência de fricção nova, a transição para "Horário
+      confirmado!" e a linha aparecendo na agenda do dashboard. O que fazer: serviço →
+      data/hora → nome + WhatsApp → confirmar → tela de sucesso, conferindo o agendamento
+      na agenda e que nenhuma etapa, campo ou atraso novo apareceu (Fricção Zero).
+      *Agravado pelo plano 01-02*, que trocou o identificador que as duas Server Actions
+      públicas recebem (`tenantId` → `slug`). Provado por automação até aqui: que a página
+      responde 200, que o payload monta com dados reais e — desde o plano 01-07 — que o
+      caminho de **escrita** funciona ponta a ponta pelo servidor (resolução por slug,
+      criação de cliente, sanitização de telefone, INSERT com `RETURNING`).
+- [ ] **Recuperação de double-booking** — *parcialmente coberto.* **Não cobre:** o aviso
+      âmbar renderizado, a grade refeita e o cliente voltando à etapa de data/hora. O que
+      fazer: duas abas no mesmo slot; a segunda deve voltar à etapa de data/hora com o
+      aviso âmbar e a grade refeita, nunca uma caixa vermelha estática no formulário de
+      contato. O plano 01-07 pinou o acoplamento de string nas duas pontas (a action
+      produz "já foi preenchido", `BookingApp.tsx` casa exatamente essa substring) e prova
+      que a action rejeita o horário ocupado sem gravar nada.
+- [ ] **Dashboard sob as policies tenant-scoped novas, tela a tela** — *reforçado, não
+      coberto.* Agenda carrega os agendamentos; agendamento manual salva **e a linha
+      volta** (o `RETURNING` depende de passar na policy de SELECT); bloqueio/exceção
+      salva; aba Perfil salva; serviços listam — incluindo **reativar um serviço inativo**,
+      caso que passou a importar depois do `DROP` do plano 01-08. O 01-08 provou por SQL
+      que, sob a role autenticada, o próprio tenant enxerga inclusive as linhas inativas
+      depois do DROP (1 em `servicos`, 2 em `horarios_funcionamento`), o que torna a falha
+      "tela vazia sem erro" ainda mais improvável. Improvável não é verificado; o item
+      continua aberto.
+- [ ] **Personalização por plano** — comparar um tenant Pro (cor/logo/capa aparecem) com
+      um gratuito (não aparecem). Com o RLS bypassado no caminho público, a sanitização
+      por plano deixou de ser defesa em profundidade e virou **defesa única**.
+- [ ] **Lembrete do QStash ponta a ponta** — criar agendamento com lembrete próximo e
+      confirmar que a mensagem chega. Um `401` no log ("Assinatura QStash inválida")
+      indica mismatch de URL atrás de proxy; plano B: montar a URL de `APP_URL` depois
+      que a fila drenar.
+- [ ] **Caixa de erro de slots** — *parcialmente coberto.* **Não cobre:** a cópia
+      aparecendo na caixa vermelha com `role="alert"` e o botão "Tentar de novo"
+      funcionando — nunca foram vistos na tela. O que fazer: forçar a falha de slots e
+      olhar a caixa renderizada com a copy do plano 01-02 ("Não foi possível carregar os
+      horários. Tente de novo."). ~~Teste barato: chamar
+      `obterSlotsPublicos('slug-inexistente', …)`~~ — **feito no plano 01-07**: a suíte de
+      integração assere a string por igualdade estrita e que ela não vaza slug, `tenant`,
+      `org_` nem `PGRST`.
+- [ ] **Backstops visuais com dado extremo** — 20+ serviços ativos na lista da etapa;
+      `horizonte_maximo_dias = 30` alongando a fileira de datas; nome de serviço, nome de
+      cliente, `nome_estabelecimento`, descrição e endereço longos no resumo, na tela de
+      sucesso e no painel de marca.
+
+### Achados do code review da Phase 1 diferidos (2026-07-22)
+
+Quatro achados do `01-REVIEW.md` da Phase 1 **não** foram aprovados para a rodada de
+fechamento de gaps. Nenhum é esquecimento: cada um está aqui com a consequência concreta
+de não ser feito e o gatilho que o traz de volta. Os que foram feitos (CR-01, CR-02,
+CR-04) estão registrados nos itens acima e nos SUMMARYs dos planos 01-11 e 01-12.
+
+- **WR-01 — a Server Action pública devolve `tenant_id` e `slug_gratuito` ao chamador**
+  (`src/app/actions/public-booking.ts:20-21,348-352`). `COLUNAS_PERFIL_PUBLICO` inclui
+  `tenant_id`, e `obterDadosBookingPublico` devolve o perfil inteiro. O `page.tsx` tem o
+  cuidado explícito de mandar `hashTenantId(...)` ao browser, mas a action é, por
+  definição, um endpoint de rede: quem a invocar direto com um slug válido recebe o
+  `org_id` do Clerk daquele tenant. **Consequência:** é exatamente a informação que o
+  critério 1 desta fase protegeu na superfície da Data API, obtida por outra porta. Não
+  permite enumeração em massa (exige o action id e um slug conhecido), mas é vazamento
+  dirigido.
+  💡 **É o mais barato dos quatro e o mais aderente ao tema da fase.** O conserto é
+  desestruturar o retorno mantendo `tenant_id` na projeção — o filtro por tenant depende
+  dele — e não devolvê-lo: `const { tenant_id, slug_gratuito, ...perfilPublico } = perfil`.
+  Não entrou porque **não foi aprovado nesta rodada**, não porque seja difícil.
+  *Gatilho:* a próxima rodada de hardening — ou antes disso, se o owner quiser puxá-lo.
+- **WR-03 — caminho de escrita público sem limite de tamanho nem validação de formato**
+  (`src/app/actions/public-booking.ts:103-115,217-227`). `criarAgendamentoPublico` valida
+  presença e sanitiza o telefone, mas `clienteNome` não tem limite de comprimento e
+  `clienteEmail` não tem validação de formato nem de tamanho; as colunas `clientes.nome`
+  e `.email` são `text` sem CHECK. **Consequência:** linha de tamanho arbitrário na
+  tabela `clientes` de qualquer tenant, e o nome entra direto no template do WhatsApp
+  (`whatsapp-helper.ts`) — um nome de 100 kB vira uma mensagem de 100 kB disparada na
+  instância Evolution do profissional. **Distinto do rate limiting** registrado acima:
+  ali o problema é o volume de requisições, aqui é o conteúdo de uma requisição só.
+  *Gatilho:* Phase 3 (anti-abuso) ou Phase 5 (contato flexível), o que vier primeiro.
+- **WR-04 — a verificação por `req.url` pode recusar tudo atrás do proxy da Railway**
+  (`src/app/api/webhooks/lembrete/route.ts:27-36`, `src/lib/qstash-assinatura.ts:57`). A
+  claim `sub` do JWT casa contra a URL que o Next reconstrói a partir de `host` e
+  `x-forwarded-proto`; qualquer divergência de protocolo, host ou barra final em relação
+  ao que o QStash assinou faz `receiver.verify` recusar **todas** as requisições.
+  **Consequência:** lembrete nenhum sai e ninguém fica sabendo — o caminho de recusa é um
+  `console.warn` mais um 401, sem linha em `disparos_whatsapp`, sem reporte ao Sentry, e o
+  cliente final não reclama de mensagem que não chegou. O harness só prova as negativas
+  (401 para sonda inválida); nenhum artefato automatizado prova o positivo.
+  *Gatilho:* o item de UAT "Lembrete do QStash ponta a ponta". Um 401 no log torna este
+  item urgente, e o plano B já registrado lá é montar a URL de `APP_URL` depois que a fila
+  drenar.
+- **WR-06 — falha de transporte do WhatsApp devolve 500 e o QStash reenvia, sem checagem
+  de idempotência** (`src/app/api/webhooks/lembrete/route.ts:170-192`). O 500 é
+  deliberado (força o retry), mas `{ok:false}` cobre também `erro_rede`, isto é, timeout —
+  o caso em que a Evolution pode ter entregado a mensagem e só a resposta ter se perdido.
+  Nada consulta `disparos_whatsapp` por um lembrete já `executado` para o mesmo
+  `agendamento_id` antes de disparar. **Consequência:** o cliente final recebe o mesmo
+  lembrete duas ou três vezes — num produto cujo diferencial é o WhatsApp, isso custa
+  reputação do profissional. O comentário no código antecipa a duplicidade apenas no log
+  ("linhas duplicadas de log entre tentativas são aceitáveis"), não na mensagem.
+  *Gatilho:* primeiro piloto com volume real, ou a Phase 11 (observabilidade).
+
+#### Duas afirmações desatualizadas, fora do escopo desta rodada
+
+Encontradas ao escrever este registro, medidas, e **não corrigidas** porque caem fora dos
+três arquivos que o plano 01-13 declara modificar — e a segunda está sob `src/`, que esse
+plano se proíbe de tocar. Ficam aqui para não sumirem:
+
+1. `docs/09-OBSERVABILIDADE_E_EMAIL.md:124-125` afirma que `notificacoes-agendamento.ts`
+   loga a URL do QStash carregando o parâmetro de secret. **Falso, medido:**
+   `grep -n 'console\.' src/lib/notificacoes-agendamento.ts` devolve uma única linha (155),
+   que loga só o `err` de um `catch`; `grep -nE 'QSTASH|webhookUrl|publishUrl|secret'` no
+   mesmo arquivo volta vazio. A outra metade da frase, sobre `whatsapp-helper.ts`, era
+   verdadeira e deixou de ser no plano 01-11.
+2. `src/lib/observabilidade/sanitizacao.ts:99-100` e
+   `src/lib/observabilidade/opcoes-sentry.ts:31` descrevem, no presente, uma URL de destino
+   que embute a chave de assinatura em query string. Deixou de ser verdade no plano 01-11.
+
+**Nada disso muda comportamento:** as travas anti-PII continuam corretas e cobertas por
+teste. O que está errado é a justificativa escrita ao lado delas — e justificativa falsa é
+o que faz o próximo leitor tomar a decisão errada. *Gatilho:* a próxima mudança em qualquer
+dos três arquivos, ou a próxima passada da skill `docs-vivas`.
+
 ### Demais preparações de lançamento
+
+#### Diferidos da etapa preparatória "Fundação operacional" (2026-07-21)
+
+Cada um com o **gatilho** que o traz de volta — nenhum é "esquecido", todos são
+"decididos e adiados".
+
+- ~~**Seis eventos de funil do dashboard (B2B), propostos pelo wizard do
+  PostHog.**~~ **RESOLVIDO em 2026-07-21** — deixou de ser diferido. O wizard
+  foi rodado de novo, commitado cru (`5df0671`) e **reendurecido por cima**, no
+  mesmo fluxo do wizard do Sentry. Entraram sete eventos (os seis previstos mais
+  `booking_status_changed`, único que mede taxa de cancelamento). Grafia
+  decidida: **nome em inglês, propriedade em pt-BR**, consistente com os 20+
+  eventos que já existiam — contrato completo em `docs/08-ANALYTICS_E_FUNIL.md`.
+- **Session Replay no `/book/[slug]`.** *Gatilho:* **Phase 10 publicar os termos de uso
+  e a política de privacidade** — só aí existe base legal declarada para gravar sessão
+  de terceiro. Decidido pelo owner em 2026-07-21 (manter desligado até lá).
+  Não confundir com **captura de erro no navegador**, que está **ligada** no booking
+  público por decisão do owner e não é afetada por este item. Replay é o vídeo da
+  sessão: outro produto, outro risco.
+  Vale reavaliar porque é genuinamente útil — ver o cliente travar na escolha de
+  horário diz mais que um stack trace. Ao ligar, avaliar duas variantes: só no
+  `/dashboard` (o profissional tem conta e aceitou termos) ou no booking com
+  mascaramento total de inputs. ⚠️ O mascaramento é por **seletor de CSS**: campo novo
+  sem a classe certa passa a ser gravado e **nada avisa** — o defeito só aparece
+  assistindo a uma gravação. Se ligar, cobrir com teste de seletor.
+- **`tunnelRoute` do Sentry.** *Gatilho:* constatar perda relevante de evento de
+  client por ad blocker. Ad blockers barram requisição para `*.sentry.io`, e
+  `/book/[slug]` é público e recebe tráfego de campanha. Custo: a doc do Sentry
+  exige **excluir** a rota do matcher, e o projeto só tem `isPublicRoute` em
+  `src/proxy.ts` — mexer ali arrisca o gate do Clerk por um ganho de fração de
+  eventos. Exige teste manual com ad blocker ligado.
+- ~~**Source maps do Sentry.**~~ **RESOLVIDO em 2026-07-21** — deixou de ser
+  diferido. O owner rodou o wizard do Sentry, que trouxe org e projeto reais
+  (`kriawq-tests` / `javascript-nextjs`); a mesclagem manteve o upload de source
+  map e descartou o resto do que o wizard propôs. Configurado em `next.config.ts`
+  com `sourcemaps.deleteSourcemapsAfterUpload: true` — sem essa opção os `.map`
+  ficariam servidos em `/_next/` e o código-fonte do produto seria reconstruível
+  a partir do bundle. **Pendências do owner:** `SENTRY_AUTH_TOKEN` no ambiente de
+  build do Railway (sem ele o plugin apenas avisa e o build segue — não quebra), e
+  permitir o build do `@sentry/cli` em `pnpm-workspace.yaml`, hoje `false`.
+  Motivo de ter mudado de ideia: a decisão de manter o Sentry no client existe
+  para pegar erro de JS e de hidratação em `/book/[slug]`, e stack minificado
+  esvazia exatamente esse ganho.
+- **Custo do Sentry no bundle de `/book/[slug]`: +73 KB gzip** (168,8 → 241,8 KB),
+  medido no build, bem acima dos 20–30 KB que a pesquisa estimou — sob Turbopack
+  o `treeshake` do `withSentryConfig` é no-op, então não há configuração que
+  reduza isso. *Gatilho:* se a conversão do booking público mostrar sensibilidade
+  a peso de página, reavaliar Sentry client-side (a alternativa é server-only,
+  que era a recomendação inicial e foi descartada pelo owner com justificativa).
+- **Instrumentação da causa raiz nos demais `throw new Error` das actions B2B**
+  (~105 pontos). Hoje cada um já produz evento via `onRequestError`; o ganho de
+  instrumentar é "mensagem melhor", não "evento existe ou não". *Gatilho:* cada
+  fase que tocar a action acrescenta onde a causa raiz importar.
+- **Fila do Asaas pausada como modo de falha silencioso.** Não tem código hoje —
+  é herança explícita da **Phase 9**, não lacuna desta etapa.
+- **Cache Components + Sentry têm issue aberta** (`getsentry/sentry-javascript#21333`):
+  `captureException` quebra o prerender com Cache Components ligado. **Não se
+  aplica hoje** — `cacheComponents` é opt-in e não está no `next.config.ts`.
+  *Gatilho:* ligar Cache Components exige revisitar o Sentry antes.
+
+#### Diferidos da revisão de código da "Fundação operacional" (2026-07-21)
+
+- **⚠️ ORDEM DO PRÓXIMO DEPLOY DE PRODUÇÃO (WR-02).** `NEXT_PUBLIC_SENTRY_DSN`,
+  `RESEND_API_KEY`, `NEXT_PUBLIC_POSTHOG_KEY` e `ANALYTICS_TENANT_SALT` entraram
+  na lista de obrigatórias de `src/lib/env.ts` (hoje quatorze, com
+  `QSTASH_NEXT_SIGNING_KEY` acrescentada pela Phase 1), e os gates manuais (criar
+  projeto no Sentry/PostHog, inserir os secrets no Railway) **ainda não foram
+  executados**. Deploy antes disso derruba o produto inteiro **por falta de
+  credencial de observabilidade** — o oposto do invariante "observabilidade nunca
+  quebra o produto". *Gatilho:* antes do próximo deploy de produção, conferir que as
+  quatro existem no Railway; se for preciso subir antes, remover as quatro da
+  lista no mesmo commit do deploy.
+
+  🔬 **CORREÇÃO MEDIDA (Phase 1, plano 01-05, 2026-07-22): não é crash loop.** Este
+  item afirmava que `register()` lançando faz "o boot morrer e o produto cair em crash
+  loop". Medido empiricamente contra o build de produção (`next start`, Next 16.2.10),
+  o comportamento real é **outro e pior de detectar**:
+
+  ```
+  ✓ Ready in 87ms
+  Failed to prepare server Error: An error occurred while loading instrumentation hook:
+  Variáveis obrigatórias ausentes em produção: QSTASH_NEXT_SIGNING_KEY
+  ⨯ unhandledRejection: ...
+  ```
+
+  O processo **não morre**. Ele imprime `✓ Ready`, continua **escutando na porta** e
+  responde **HTTP 500 em absolutamente toda rota** (`/`, `/book/[slug]`,
+  `/api/webhooks/lembrete`) — indefinidamente, repetindo o erro a cada requisição.
+  Contrafactual rodado no mesmo build: com as quatorze presentes, as mesmas rotas
+  respondem 200.
+
+  **Por que isso importa mais que a distinção semântica:** um crash loop é *ruidoso* —
+  o Railway marca o deploy como falho e faz rollback. Um processo vivo servindo 500 é
+  *silencioso*: healthcheck baseado em "o processo está de pé" reporta saudável, o
+  deploy é dado como bem-sucedido e o produto fica no ar com 100% de erro.
+
+  ✅ **RESOLVIDO (Phase 1, plano 01-06, 2026-07-22): o processo morre de verdade.** O
+  owner escolheu a falha dura em vez do healthcheck HTTP como controle compensatório.
+  `src/instrumentation.ts` envolve `validarEnvObrigatorio()` em `try/catch` e, no
+  runtime `nodejs`, chama `encerrarBootPorEnvAusente` (`src/lib/env.ts`), que escreve a
+  causa em `stderr` e sai com **código 1**. No runtime `edge` o comportamento anterior
+  (relançar) é preservado — lá não existe `process.exit`. `pnpm dev` e `pnpm build`
+  continuam livres: o encerramento fica atrás do gate `NODE_ENV === 'production'` que
+  `validarEnvObrigatorio()` já aplicava, e o hook não roda em `phase-production-build`.
+
+  A prova é comando, não relato: `bash scripts/verificar-fail-fast-boot.sh` sobe um
+  `next start` real na porta 3991 e emite quatro vereditos — `BUILD`, `MORTE`,
+  `CONTROLE` e `WEBHOOK` —, saindo 0 só quando os quatro passam. Rodado **antes** do
+  conserto, ele reprovava `MORTE` (processo vivo, HTTP 500); depois, aprova os quatro.
+  *Gatilho:* rodar o harness sempre que `src/lib/env.ts`, `src/instrumentation.ts` ou a
+  lista de obrigatórias mudarem.
+
+  ⚠️ **A ordem do deploy continua valendo, e agora com consequência maior.** Com o boot
+  morrendo, uma obrigatória mal provisionada no Railway derruba o deploy inteiro em vez
+  de servir 500 — que é o comportamento desejado (habilita rollback automático), mas
+  torna o checklist acima obrigatório e não opcional: conferir que as quatorze existem
+  no Railway **antes** de subir, ou remover nomes da lista no mesmo commit do deploy.
+
+  ✅ **O critério 5 do ROADMAP passa a ser literalmente verdadeiro**, e continua
+  coberto por duas camadas independentes: (a) a aplicação **não sobe** sem as chaves;
+  (b) `verificarAssinaturaQstash` (`src/lib/qstash-assinatura.ts:42`) **lança** se
+  qualquer das duas chaves estiver ausente, então não existe caminho permissivo mesmo
+  que a camada (a) fosse contornada. Não há default inseguro em lugar nenhum.
+- **A sanitização do Sentry é allowlist só onde é viável (CR-02).** São
+  allowlist: `request`, `request.headers` e `extra` — campo novo do SDK cai fora
+  por construção. **Não** são filtrados `message`, `exception.values[].value`,
+  `contexts` e `tags`, porque reduzi-los quebraria o agrupamento e a utilidade do
+  evento; a proteção deles é na origem (nenhum call site manda objeto de erro
+  cru — ver `erroSinteticoSupabase`). *Gatilho:* quando o projeto passar a usar
+  `setTag`/`setContext`, ou quando algum call site precisar mandar erro de
+  terceiro cru, `contexts`/`tags` entram na allowlist e `exception.values[].value`
+  ganha truncamento por padrão. Enquanto isso, todo `reportarExcecao` novo tem
+  que passar erro sintético, não objeto de erro de biblioteca.
+- **`import 'server-only'` em `src/lib/observabilidade/reportar.ts` (WR-10) não
+  foi aplicado.** O pacote resolve para um módulo que **lança** fora da condição
+  `react-server`, e `reportar.ts` é importado transitivamente por
+  `whatsapp-helper.test.ts` — a suíte inteira quebraria, e o conserto seria
+  acrescentar `resolve.conditions: ['react-server']` ao `vitest.config.ts`, o que
+  muda a resolução de react/next em todos os testes por um ganho pequeno (o DSN
+  do Sentry é identificador público por design, não secret). *Gatilho:* se
+  `vitest.config.ts` ganhar `resolve.conditions` por outro motivo, aplicar junto.
+- **`pnpm build && pnpm start` local sem secrets agora morre no boot (IN-03).**
+  `next start` roda com `NODE_ENV=production`, então o fail-fast de `env.ts` vale.
+  `pnpm build` continua livre (o `register()` não roda em `phase-production-build`)
+  e `pnpm dev` também. Para inspecionar o build local, use `--env-file=.env.local`
+  ou `NODE_ENV=development pnpm start`.
+
+  🔎 **Atualização (plano 01-06): "morre no boot" agora é literal.** Antes o processo
+  ficava vivo servindo 500; hoje ele sai com código 1. As duas saídas de inspeção
+  acima continuam valendo sem mudança.
+
+- **Três diagnósticos de Edge Runtime no `pnpm build` (achado do plano 01-06, decisão
+  do owner pendente).** `src/lib/env.ts` passou a usar `process.stderr.write` (linhas
+  91 e 92) e `process.exit` (linha 96), e o arquivo é importado por
+  `src/instrumentation.ts`, que também é empacotado para o runtime **edge**. O
+  Turbopack então imprime, a cada build, três blocos do tipo:
+
+  ```
+  A Node.js API is used (process.exit at line: 96) which is not supported in the Edge Runtime.
+  Import trace:  Edge Instrumentation: ./src/lib/env.ts → ./src/instrumentation.ts
+  ```
+
+  **Não é falha:** medido num build bem-sucedido, `pnpm build` sai **0** (o resumo de
+  rotas é impresso normalmente), `pnpm dev` sobe e responde 200, e o código nunca
+  executa no edge — `encerrarBootPorEnvAusente` só é chamado atrás da guarda
+  `NEXT_RUNTIME === 'nodejs'`. O analisador é estático e não enxerga essa guarda.
+
+  **É ruído, e ruído rotulado como "error" é dívida:** três blocos por build treinam
+  quem lê a saída a ignorá-la — o mesmo padrão de janela quebrada que esta fase
+  combateu. As saídas possíveis, nenhuma delas tomada aqui porque contrariam o
+  contrato do plano 01-06 (que fixa os dois símbolos em `src/lib/env.ts` e pina
+  `process.stderr.write` em teste): (a) mover `encerrarBootPorEnvAusente` para um
+  módulo próprio que só o caminho nodejs importe; (b) aceitar o ruído e documentá-lo
+  como esperado. Aliasar `process` por `globalThis` para calar o analisador **não** é
+  uma saída: esconderia o sinal em vez de resolvê-lo. *Gatilho:* decisão do owner
+  antes do go-live, ou na primeira vez que a saída do build for usada como gate de CI.
 
 - **Checkout Asaas + webhooks completos de cobrança** (`/api/webhooks/asaas`) —
   necessário **se o lançamento já pretender cobrar automaticamente**: roadmap técnico
@@ -701,11 +1197,33 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
     banner, sem prazo).
 - Cobrança self-service; experiência definitiva de upgrade/downgrade.
 - Revisão de segurança geral (secrets, headers, webhooks, superfícies públicas).
-  - Webhook de lembrete (achado da revisão final de 2026-07-14, pré-existente):
-    o secret trafega em query string e o fallback `'secret-key'` vale nos dois
-    lados quando `QSTASH_CURRENT_SIGNING_KEY` não está setada — em produção a
-    env é OBRIGATÓRIA; o ideal é migrar para verificação da assinatura real do
-    QStash (header `Upstash-Signature`).
+  - ~~Webhook de lembrete: secret em query string e fallback `'secret-key'` valendo
+    nos dois lados~~ — ✅ **Fechado na Phase 1 (planos 01-03 e 01-06, 2026-07-22).**
+    O achado original, da revisão final de 2026-07-14, dizia: "o secret trafega em
+    query string e o fallback `'secret-key'` vale nos dois lados quando
+    `QSTASH_CURRENT_SIGNING_KEY` não está setada — em produção a env é OBRIGATÓRIA".
+    A análise fica registrada porque é o motivo de o webhook ter a forma que tem hoje;
+    as três metades foram fechadas assim:
+    - **A autenticação passou a ser criptográfica.** O webhook verifica o header
+      `Upstash-Signature` pelo `Receiver` de `@upstash/qstash`, em
+      `src/lib/qstash-assinatura.ts`, chamado por
+      `src/app/api/webhooks/lembrete/route.ts` **antes** de o corpo ser parseado
+      (corpo não verificado nunca vira JSON). Entregue pelo plano 01-03. Prova
+      reexecutável: `bash scripts/verificar-fail-fast-boot.sh`, veredito `WEBHOOK` →
+      `sem assinatura 401 | secret em query 401 | assinatura forjada 401 | GET / 200`.
+      O caso do meio é o que prova que o parâmetro legado não autentica mais nada.
+    - **O fallback inseguro embutido no código foi extinto.** Comando que prova:
+      `grep -rn "secret-key" src/ scripts/` → saída vazia (reconferido em 2026-07-22
+      no HEAD desta rodada, antes de este item ser reescrito).
+    - **As chaves de assinatura viraram obrigatórias no boot** (plano 01-06): faltando
+      qualquer uma, o processo sai com **código 1** em vez de subir e servir 500 em
+      toda rota. Prova: veredito `MORTE` do mesmo harness.
+
+    ⚠️ **O que não fechou junto:** a chave de assinatura circulou em texto claro na
+    URL publicada de todo lembrete até o plano 01-11, e por isso precisa ser
+    rotacionada. Item próprio, com dono e prazo: **"🔑 Rotação das signing keys do
+    QStash"**, nesta mesma seção. É por causa dele que **SEG-05 não está marcado como
+    concluído** em `.planning/REQUIREMENTS.md`.
 - Política de privacidade e termos finais; revisão final de LGPD; fluxo de
   exclusão/exportação de dados.
 - Testes críticos de segurança e concorrência (ver seção "Qualidade e testes").
@@ -787,8 +1305,9 @@ além do banner atual — até validação com clientes reais.
 
 ## 🧪 Qualidade e testes (requisito transversal)
 
-Não há framework de testes configurado no repositório. Adotar testes como requisito
-**proporcional**, nas áreas de maior risco — comportamento crítico, não cobertura:
+O runner é **Vitest** (`vitest.config.ts`), e a decisão de adotá-lo já foi tomada e
+executada. Testes continuam sendo requisito **proporcional**, nas áreas de maior risco —
+comportamento crítico, não cobertura:
 
 - Junto do trabalho de produto (P0): engine de disponibilidade (`booking-engine.ts`)
   — slots, exceções, colisões; fuso horário (P0.4) — limites de dia em pelo menos SP
@@ -798,8 +1317,29 @@ Não há framework de testes configurado no repositório. Adotar testes como req
 - Antes do lançamento: pertencimento multi-tenant e políticas RLS — IDs cruzados
   rejeitados; criação concorrente — corrida nunca gera sobreposição.
 
-Decisão pendente: escolher o runner (Vitest é o candidato natural na stack) quando o
-primeiro item P0 com testes for implementado.
+### ⚠️ `pnpm test` é hermético por desenho — leia antes de mexer no `vitest.config.ts`
+
+Regra viva, não pendência. Estabelecida no plano 01-07 e registrada aqui porque o lugar
+onde alguém tropeça nela é o `vitest.config.ts`, não o SUMMARY de um plano.
+
+- `pnpm test` **não toca rede nem banco**, e assim deve continuar. É o comando da
+  Definition of Done do projeto e roda em toda fase, na máquina de qualquer um.
+- A suíte `src/app/actions/__tests__/public-booking-escrita.test.ts` **escreve e apaga no
+  Supabase de dev** (cria o tenant `org_teste_integracao_booking`, agenda, e limpa antes e
+  depois). Ela fica **fora do glob padrão** do vitest: o `exclude` do `vitest.config.ts` a
+  remove sempre que `EXIGIR_INTEGRACAO !== '1'`.
+- **Único ponto de entrada:** `pnpm test:integracao` (que é `EXIGIR_INTEGRACAO=1 vitest run
+  <a suíte>`). Sem credenciais o comando **reprova** em vez de pular — pulo silencioso
+  devolveria verde sobre prova que não rodou.
+- **Consequência de reincluí-la no glob padrão:** toda execução da Definition of Done, em
+  toda fase futura, passaria a escrever no banco de dev — e duas execuções concorrentes
+  apagariam a fixture uma da outra, produzindo falha intermitente que parece bug de
+  produto. Se a contagem de `pnpm test` crescer para incluir esses casos, é regressão.
+- A variável `CAMINHO_ENV_LOCAL` existe **apenas** para provar que o comando reprova sem
+  credenciais, apontando para um arquivo inexistente. Ela nunca move, renomeia ou escreve
+  no `.env.local` real.
+- Contagem de referência hoje: `pnpm test` → **13 arquivos / 198 testes**;
+  `pnpm test:integracao` → **6 testes** (5 de integração + a sentinela), 0 pulados.
 
 ---
 
@@ -1180,3 +1720,48 @@ primeiro item P0 com testes for implementado.
 - Exposição anônima de `tenant_id/plano/status` de `assinaturas`: aceita
   conscientemente (necessária para a defesa do WhatsApp no fluxo público) **até** o
   redesenho do acesso público (item de integridade, pré-lançamento).
+
+### ~~🔴 Enumeração de `org_id` por conta autenticada~~ — ✅ Fechada (plano 01-08, 2026-07-22)
+
+Descoberto ao auditar `pg_policies` depois do fechamento da Data API. **Não foi introduzido
+pela Phase 1 — é pré-existente e ficou visível quando o vetor anônimo fechou.** O relato
+abaixo descreve o estado que existia até 2026-07-22; o fechamento está no fim do bloco.
+
+`servicos` e `horarios_funcionamento` têm DUAS policies de SELECT aplicáveis a
+`authenticated`, ambas `PERMISSIVE`:
+
+| policy | roles | expressão |
+|---|---|---|
+| Permitir SELECT público para todos | `{anon,authenticated}` | `ativo = true` |
+| Permitir SELECT do próprio tenant para autenticados | `{authenticated}` | `tenant_id = org_id` |
+
+O Postgres soma policies permissivas por `OR`. Logo, para qualquer conta autenticada a
+visibilidade efetiva é `(ativo = true) OR (tenant_id = meu)` — ou seja, **todos os serviços
+e horários ativos de todos os tenants, com a coluna `tenant_id` junto**. Como o cadastro no
+Clerk é self-service, qualquer pessoa cria uma conta grátis e enumera o `org_id` de todos os
+profissionais da plataforma.
+
+A Phase 1 fechou o vetor `anon` por completo (as duas policies são inertes para essa role,
+que perdeu todo privilégio). O vetor `authenticated` continua aberto — no mesmo dado que a
+fase existia para proteger. Arranha o espírito de SEG-02, não a letra, que fala em "chave
+publicável".
+
+**Conserto**: `drop policy` puro nas duas, sem substituta. A D-07 (nunca dropar sem recriar)
+**não se aplica**: a policy `1b` tenant-scoped já cobre as linhas do próprio tenant nas duas
+tabelas, inclusive as inativas (`supabase/schemas/02_servicos.sql:27`,
+`03_horarios_funcionamento.sql:29`). A leitura pública já roda com cliente privilegiado desde
+o plano 01-02, então nada do booking depende delas.
+
+**Por que não foi feito no plano 01-05**: o executor não tinha acesso ao banco, e a
+migration ficaria no repo sem ser aplicada — 18 arquivos contra 17 versions no ledger. Trocar
+risco documentado por drift real no pipeline, no plano que fecha a fase, seria mau negócio.
+
+✅ **Feito no plano 01-08 (2026-07-22), pelo executor que tinha o MCP do Supabase.** As duas
+policies foram removidas pela migration
+`20260722145948_fecha_policies_residuais_servicos_horarios.sql`, aplicada com o `INSERT` no
+ledger na mesma transação. O dano foi medido antes e depois, não deduzido: sob
+`set local role authenticated` com o claim `org_id` de um tenant real e um tenant vizinho
+descartável criado dentro da transação revertida, `tenants_distintos_visiveis` caiu de **2
+para 1**. Detalhes e as demais evidências na seção "Superfície remanescente depois do
+hardening da Phase 1", acima.
+

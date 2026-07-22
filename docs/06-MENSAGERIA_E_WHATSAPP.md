@@ -13,7 +13,7 @@ sequenceDiagram
     participant Cliente as Cliente Final (B2C)
     participant Next as Next.js Server Actions
     participant Supabase as Supabase DB
-    participant Evo as Evolution API (Docker)
+    participant Evo as Evolution API (Railway)
     participant QStash as Upstash QStash (Queues)
     
     Cliente->>Next: Solicita Agendamento (Nome, WhatsApp, Data/Hora)
