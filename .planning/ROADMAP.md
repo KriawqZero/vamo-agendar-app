@@ -173,10 +173,12 @@ Plans:
 
 **Fechamento de gaps** *(planejado em 2026-07-22 a partir de `01-VERIFICATION.md`; waves próprias, os cinco planos acima já estão concluídos)*
 
-- [ ] 01-06-PLAN.md — Boot que morre de verdade sem as chaves + harness que prova (gap 1, SEG-05) (wave 1)
+⛔ **Serialização estrita — um plano por wave, nunca em paralelo.** Os três primeiros rodam `pnpm build` e/ou tocam o Supabase de dev; qualquer par concorrente faz a prova medir a árvore errada (`.next/` compartilhado, fixture do tenant de teste apagada no meio, contagem cross-tenant da linha de base poluída). Foi o BLOCKER da revisão 1.
+
 - [ ] 01-07-PLAN.md — Suíte de integração do caminho de ESCRITA do booking contra o Supabase de dev (gap 2, SC2b) (wave 1)
-- [ ] 01-08-PLAN.md — DROP das duas policies residuais de `servicos`/`horarios_funcionamento` (gap 3) (wave 1)
-- [ ] 01-09-PLAN.md — Gate de reexecução das provas + reparo de REQUIREMENTS/ROADMAP/PENDENCIAS (wave 2)
+- [ ] 01-06-PLAN.md — Boot que morre de verdade sem as chaves + harness que prova (gap 1, SEG-05) (wave 2, depende de 01-07)
+- [ ] 01-08-PLAN.md — DROP das duas policies residuais de `servicos`/`horarios_funcionamento` (gap 3) (wave 3, depende de 01-06 e 01-07)
+- [ ] 01-09-PLAN.md — Gate de reexecução das provas + reparo de REQUIREMENTS/ROADMAP/PENDENCIAS (wave 4, depende dos três)
 
 **Notas de execução:**
 

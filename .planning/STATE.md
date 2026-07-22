@@ -4,15 +4,15 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
-status: gaps_found
-stopped_at: "Phase 1 executada (5/5 planos) e verificada: gaps_found, 5/7 must-haves. Dois itens abertos + 7 UAT visuais nao executados. Proximo: /gsd-plan-phase 1 --gaps"
-last_updated: "2026-07-22T06:45:42.975Z"
+status: ready_to_execute
+stopped_at: "Gaps da Phase 1 planejados: 01-06 a 01-09, verificados pelo plan-checker (PASSED na 3a iteracao). Serializacao estrita 01-07 -> 01-06 -> 01-08 -> 01-09. Proximo: /gsd-execute-phase 01"
+last_updated: "2026-07-22T14:05:00.000Z"
 last_activity: 2026-07-22
-last_activity_desc: "Phase 1 executada e verificada — gaps_found (SEG-05 fail-fast de boot nao derruba o processo; caminho de escrita do booking sem teste)"
+last_activity_desc: "Fechamento de gaps da Phase 01 planejado (4 planos) a partir de 01-VERIFICATION.md"
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 5
+  total_plans: 9
   completed_plans: 5
 ---
 
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
-Plan: 5 of 5
-Status: Phase complete — ready for verification
-Last activity: 2026-07-22 — Phase 01 execution started
+Phase: 01 (hardening-da-superf-cie-p-blica) — GAP CLOSURE PLANNED
+Plan: 5 of 9 concluídos (01-01 a 01-05); 4 de fechamento de gaps aguardando execução
+Status: Ready to execute — serialização estrita 01-07 → 01-06 → 01-08 → 01-09
+Last activity: 2026-07-22 — planejamento do fechamento de gaps (01-06 a 01-09)
 
-Progress: [██████████] 100%
+Progress: [█████░░░░░] 56%
 
 ## Performance Metrics
 
