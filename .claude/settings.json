@@ -24,6 +24,8 @@
     "deny": [
       "Read(./.env)",
       "Read(**/.env)",
+      "Read(./.env.sentry-build-plugin)",
+      "Read(**/.env.sentry-build-plugin)",
       "Bash(rm -rf *)",
       "Bash(rm -fr *)"
     ]
