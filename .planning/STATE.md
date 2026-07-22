@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-07-22T05:54:09.482Z"
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-07-22T06:24:10.814Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 5
-  completed_plans: 3
+  completed_plans: 4
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 ## Current Position
 
 Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
-Plan: 4 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-07-22 — Phase 01 execution started
 
-Progress: [██████░░░░] 60%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Progress: [██████░░░░] 60%
 | Phase 01 P01 | 46min | 2 tasks | 4 files |
 | Phase 01 P03 | ~25min | 3 tasks | 9 files |
 | Phase 01 P02 | ~12min | 3 tasks | 5 files |
+| Phase 01 P04 | ~35min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,10 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: Projecao explicita por constante de modulo no caminho publico: com service role no caminho, pedir a linha inteira e vazamento por omissao (coluna nova entra sozinha no payload)
 - [Phase ?]: tenantHash continua derivado do org_id cru no servidor — derivar do slug trocaria a chave do funil e partiria a serie do PostHog
 - [Phase ?]: Fallback silencioso em leitura publica e bug: obterSlotsPublicos com slug nao resolvido lanca, em vez de calcular grade com fuso e regras padrao
+- [Phase ?]: Default privileges revogadas para anon E authenticated: tabela nova nasce fora da Data API; custo aceito é migration manual de GRANT por tabela, a partir da Phase 7
+- [Phase ?]: Saída de supabase db diff é rascunho, não artefato: forçado a diffar privilégio o migra gera o CONTRÁRIO (revoke service_role em tudo, grant truncate a anon) — privilégio mora em migration escrita à mão
+- [Phase ?]: mcp__supabase__apply_migration está proibido: o método correto é execute_sql para o DDL + INSERT manual no ledger com a version do arquivo (duas confirmações, 01-01 e 01-04)
+- [Phase ?]: supabase db diff sobe shadow database em Docker — única exceção de container do projeto, exige aprovação prévia (CLAUDE.md §Infraestrutura)
 
 ### Pending Todos
 
@@ -101,6 +106,7 @@ Nenhum ainda.
 - ✅ **RESOLVIDO no 01-02 — `pnpm build` não rodado no 01-01.** Os três comandos da Definition of Done rodaram verdes sobre o HEAD do 01-02: lint exit 0, 196 testes, build exit 0 com 14 páginas
 - UAT do wizard completo de /book/avantis pendente (regressão obrigatória do CONTEXT §specifics); o contrafactual de slug prova só a leitura do plano — **agravado pelo 01-02**, que trocou o identificador recebido pelas duas actions públicas (`tenantId` → `slug`). Escopo do 01-05
 - Caixa de erro de slots nunca vista renderizando a copy nova do 01-02 ("Não foi possível carregar os horários. Tente de novo."); teste barato no UAT do 01-05: chamar `obterSlotsPublicos('slug-inexistente', …)`
+- UAT do dashboard sob as policies tenant-scoped novas do 01-04 (agenda, agendamento manual com RETURNING, exceção de agenda, perfil) — Pitfall 3: policy substituta errada deixa a tela VAZIA sem estourar erro. Escopo do 01-05
 
 ### Quick Tasks Completed
 
@@ -127,6 +133,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T05:54:09.475Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-07-22T06:23:45.185Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None
