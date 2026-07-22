@@ -4,15 +4,15 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
-status: gaps_found
-stopped_at: "Os 9 planos executaram, mas a reverificação REPROVOU (7/9 must-haves). Dois bloqueadores novos, levantados pelo code review e confirmados de forma independente pelo verificador: a chave HMAC do QStash publicada em query string, e a mensagem de erro da Server Action que não atravessa a fronteira em build de produção. Próximo: /gsd-plan-phase 01 --gaps"
-last_updated: "2026-07-22T15:23:39.118Z"
+status: ready_to_execute
+stopped_at: "2ª rodada de fechamento de gaps PLANEJADA: 7 planos (01-10 a 01-16) escritos, verificados pelo plan-checker e aprovados. A fase continua reprovada até que executem — os dois bloqueadores da reverificação seguem vivos no código. Próximo: /gsd-execute-phase 01"
+last_updated: "2026-07-22T17:01:02.391Z"
 last_activity: 2026-07-22
-last_activity_desc: "Fechamento de gaps executado (01-07, 01-06, 01-08, 01-09) — os três gaps antigos fecharam e foram reproduzidos; a reverificação encontrou dois bloqueadores novos e a fase segue aberta"
+last_activity_desc: "2ª rodada de fechamento de gaps planejada (01-10 a 01-16), aprovada pelo plan-checker após duas iterações de revisão"
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 9
+  total_plans: 16
   completed_plans: 9
 ---
 
@@ -27,15 +27,21 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — 9/9 PLANOS EXECUTADOS, VERIFICAÇÃO REPROVOU
-Plan: 9 de 9 concluídos (01-01 a 01-09)
-Status: **gaps_found — a fase NÃO está completa.** Os três gaps da verificação anterior fecharam e foram reproduzidos (incluindo o lado banco do gap 3, confirmado por `pg_policies` via MCP). Mas a reverificação sobre o HEAD final abriu **dois bloqueadores novos**, ambos originados no code review e confirmados de forma independente:
-  1. `whatsapp-helper.ts:147` publica `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — é a mesma chave HMAC com que o webhook autentica desde o 01-03. Ataca diretamente a segunda metade do goal da fase
-  2. Em build de produção o React só transporta o `digest` do erro da Server Action, então a copy contratada no `01-UI-SPEC` e a recuperação de double-booking (`includes('já foi preenchido')`) estão mortas na tela. A suíte do 01-07 dá verde porque chama a action em processo
-Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar) — dois deles com prognóstico negativo por causa do bloqueador 2
-Last activity: 2026-07-22 — fechamento de gaps executado e reverificado; fase reprovada com dois bloqueadores novos
+Phase: 01 (hardening-da-superf-cie-p-blica) — 9/16 PLANOS EXECUTADOS, 7 PLANEJADOS E PRONTOS
+Plan: 9 de 16 concluídos (01-01 a 01-09); 01-10 a 01-16 planejados, nenhum executado
+Status: **a fase NÃO está completa e os dois bloqueadores continuam vivos no código.** Confirmei no HEAD `1685496` antes de planejar: `whatsapp-helper.ts:147` ainda concatena a chave, e os 11 `throw` de `public-booking.ts` ainda estão lá. O que mudou nesta sessão foi só o planejamento:
 
-Progress: [█████████░] 90% (execução completa, verificação reprovada)
+  1. `whatsapp-helper.ts:147` publica `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — é a mesma chave HMAC com que o webhook autentica desde o 01-03. Ataca diretamente a segunda metade do goal da fase. **Fecha em 01-11** (código) + **01-13** (rotação datada como item do owner, PENDENCIAS, e correção dos dois documentos cuja premissa o verificador refutou)
+  2. Em build de produção o React só transporta o `digest` do erro da Server Action, então a copy contratada no `01-UI-SPEC` e a recuperação de double-booking (`includes('já foi preenchido')`) estão mortas na tela. A suíte do 01-07 dá verde porque chama a action em processo. **Fecha em 01-10** (tracer: uma travessia real, com harness que sonda `next start` pela fronteira de flight) + **01-12** (expansão). É insumo obrigatório do SC4 da Phase 2
+
+Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code review: CR-03 (`slug_gratuito` sem UNIQUE → sequestro de link público entre tenants, com PII de cliente final) em 01-14; WR-02 (default privileges não cobre FUNCTIONS) e WR-08 (harness de superfície com falso verde) em 01-15; WR-07 (`assinaturas.ts` degrada tenant pago a gratuito) em 01-16. WR-01, WR-03, WR-04 e WR-06 ficaram fora, diferidos com razão e gatilho escritos no 01-13.
+
+Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
+
+Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar) — dois deles com prognóstico negativo até o bloqueador 2 fechar
+Last activity: 2026-07-22 — 2ª rodada de fechamento de gaps planejada e aprovada pelo plan-checker
+
+Progress: [█████░░░░░] 56% (9/16 planos executados; verificação reprovada, correção planejada)
 
 ## Performance Metrics
 
