@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
-status: executing
-stopped_at: Completed 01-16-PLAN.md
-last_updated: "2026-07-22T19:33:20.316Z"
+status: needs_gap_closure
+stopped_at: "2ª rodada EXECUTADA por inteiro (01-10 a 01-16) e VERIFICADA: os 3 gaps anteriores fecharam, mas a verificação reprova de novo com 2 gaps bloqueantes NOVOS, vindos do code review e reproduzidos empiricamente. Próximo: /gsd-plan-phase 01 --gaps"
+last_updated: "2026-07-22T20:30:00.000Z"
 last_activity: 2026-07-22
-last_activity_desc: "plano 01-16 executado (ÚLTIMO da fase): a degradação por falha de leitura de `assinaturas` virou distinguível e reportada, e o link público de tenant pagante deixou de cair"
+last_activity_desc: "2ª rodada de fechamento de gaps executada (7 planos), revisada em profundidade (2 blockers) e verificada (gaps_found, 11/13) — a fase segue reprovada"
 progress:
   total_phases: 1
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 16
   completed_plans: 16
 ---
@@ -27,9 +27,19 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — 2ª rodada de fechamento de gaps EXECUTADA por inteiro
-Plan: 16 de 16 concluídos (01-01 a 01-16). Não há plano seguinte — **a verificação da fase é o próximo passo, e ela ainda não rodou sobre este HEAD**
-Status: **a fase continua incompleta, e nenhum executor pode marcá-la como completa.** Os bloqueadores da reverificação estão fechados NO CÓDIGO; o que resta em cada um não é código:
+Phase: 01 (hardening-da-superf-cie-p-blica) — 2ª rodada EXECUTADA, REVISADA e VERIFICADA
+Plan: 16 de 16 concluídos (01-01 a 01-16). A verificação **rodou** sobre o HEAD `8edb32d` e **reprovou**: 11/13 must-haves, `status: gaps_found` em `01-VERIFICATION.md`
+
+### Resultado da 3ª passagem de verificação (2026-07-22)
+
+**Os 3 gaps da passagem anterior fecharam** — cada um remedido por caminho independente, não herdado de SUMMARY. SC1, SC2 e SC3 foram medidos anonimamente com controle positivo de alvo (9/9 tabelas e 2/2 RPCs em 401/42501, depois de provar que a URL é o banco deste projeto). SC4 ficou como "presente, não exercitado" no relatório principal porque o verificador não recebeu o MCP do Supabase; o **adendo do orquestrador** o remediu por `pg_default_acl` (ver `01-VERIFICATION.md` §Adendo).
+
+**Dois gaps NOVOS entram, ambos bloqueantes.** Vieram do code review em profundidade da rodada (`01-REVIEW.md`, commit `8edb32d`, 2 blockers + 10 warnings) e foram **reproduzidos empiricamente** pelo verificador, não confirmados por leitura:
+
+- **`scripts/verificar-superficie-anon.sh` certifica fechamento sem ter medido.** Com o alvo inalcançável, as 11 checagens registram `HTTP 000`, a COBERTURA passa, e a saída é `0 reprovada(s) — a role anon não devolveu linha nenhuma` com **exit 0**. Causa em `:398-401`: o exit code é decidido só por `REPROVADAS -eq 0`; `INCONCLUSIVAS` é impresso e descartado. É o instrumento que o `ROADMAP.md:195` nomeia como prova de SEG-01/02/03. O conserto do WR-08 (01-15) foi real e fechou o eixo do NOME da tabela — o falso verde apenas mudou para o eixo da IDENTIDADE DO ALVO
+- **`obterSlotsPublicos` não valida entrada.** `duracaoMinutos` chega cru de chamador anônimo e alimenta o limite do laço síncrono de `gerarSlotsAntiBuraco` (`booking-engine.ts:144`). Medido por HTTP contra build de produção, slug real, sem sessão: `-5000000` → **26.751 ms e 19,29 MB numa única requisição**, com o event loop parado para todas as outras em voo. Não é regressão (o `master` tem a mesma ausência), mas a fase É o hardening da superfície pública, a Fricção Zero proíbe CAPTCHA, e a Phase 3 não cobre — rate limit deixa a primeira requisição passar, e uma basta. A inversão que mostra ser acidental: o fluxo **autenticado** `obterSlotsDashboard` valida `dateStr` por regex (`agendamentos.ts:189`); o **anônimo** não valida nada
+
+O que a rodada de fato fechou no código, e o que em cada item não é código:
 
   1. `whatsapp-helper.ts` publicava `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — a mesma chave HMAC com que o webhook autentica desde o 01-03. **METADE DE CÓDIGO FECHADA no 01-11**: a URL publicada é agora a rota limpa, e quatro `console.error` deixaram de despejar corpo de gateway no log (o da Evolution ecoava telefone e texto personalizado — CR-04). Cinco testes travam os dois defeitos, provados vermelhos na reversão. **CONTINUA ABERTO o que código não conserta**: a chave já circulou por log de acesso e pelo console da Upstash, e a rotação é ação do owner no painel, depois de a fila secar (≤ 14 dias). **O 01-13 transformou isso em item escrito**: `docs/PENDENCIAS.md` §"🔑 Rotação das signing keys do QStash" — dono nomeado (só o owner fecha), data-limite **2026-08-05**, etapa 1 registrada como feita e etapa 2 nascida aberta, com o passo-a-passo de depois da troca. Por isso SEG-05 continua NÃO marcado como concluído em REQUIREMENTS.md
   2. Em build de produção o React só transporta o `digest` do erro da Server Action, então a copy contratada no `01-UI-SPEC` e a recuperação de double-booking estavam mortas na tela. **FECHADO NO CÓDIGO** — metade de LEITURA no 01-10, metade de ESCRITA no **01-12**: `criarAgendamentoPublico` devolve `{ ok: false, motivo }`, o `BookingApp` decide por `res.motivo === 'slot_indisponivel'` (a comparação por substring saiu do arquivo, `grep` devolve `0`) e o harness ganhou o quinto veredito `ESCRITA_VALIDACAO`, provado por contrafactual (reprova com `1:E{"digest":"3871214289"}` quando a guarda volta a `throw`). **O SC4 da Phase 2 deixou de ser insatisfazível por construção.** Continua aberto o que código não fecha: ninguém VIU o aviso âmbar na tela — é item do UAT humano e só o owner marca
