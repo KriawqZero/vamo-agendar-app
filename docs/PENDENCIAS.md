@@ -803,6 +803,59 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
 **Dependências/decisões:** item de integridade primeiro; escolher limites iniciais
 (ex.: N tentativas por IP/telefone por hora) e revisá-los nos pilotos.
 
+### 🔑 Rotação das signing keys do QStash — ação do owner, prazo 2026-08-05
+
+**Só o owner fecha este item.** A rotação acontece no painel da Upstash; nenhum
+executor tem acesso a ele e nenhum pode marcar este item como feito — mesma regra da
+lista de UAT logo abaixo.
+
+**Por que existe.** Até o plano 01-11, `agendarLembreteQStash` publicava a URL de
+destino de **todo** lembrete carregando a chave de assinatura em texto claro na query
+string. Desde o plano 01-03 essa é a **mesma** chave com que o webhook autentica via
+`Receiver`, e HMAC é simétrico: quem leu o valor forja um `Upstash-Signature` válido e
+dispara WhatsApp em nome de qualquer tenant. Parar de publicar não desfaz o que já
+circulou. Três vetores concretos (CR-01 do `01-REVIEW.md` da Phase 1), todos fora do
+alcance da sanitização do Sentry — que cobre breadcrumb e `request.url`, não log de
+infraestrutura nem de terceiro:
+
+1. **Log de acesso HTTP de cada hop** entre o QStash e a Railway: a linha de
+   requisição inclui a query string.
+2. **Console e armazenamento do QStash**: a URL de destino fica visível na listagem de
+   mensagens por até 14 dias.
+3. **Log da aplicação**: os `console.error` de `whatsapp-helper.ts` despejavam o corpo
+   de erro devolvido pelo QStash, que costuma ecoar a URL de destino. Também fechado
+   no plano 01-11.
+
+**Etapa 1 — ✅ FEITA (plano 01-11, 2026-07-22).** A publicação passou a ser limpa:
+`${APP_URL}/api/webhooks/lembrete`, sem query string nenhuma, em
+`src/lib/whatsapp-helper.ts`. Prova reexecutável:
+`grep -vE '^\s*(//|\*|/\*)' src/lib/whatsapp-helper.ts | grep -c '?secret'` → `0`, mais
+três casos em `src/lib/__tests__/whatsapp-helper.test.ts` que reprovam se o parâmetro
+voltar. **Isso não mata lembrete em voo:** `route.ts` verifica a assinatura contra
+`req.url`, então cada mensagem valida contra a URL com que ela própria foi publicada —
+a antiga com o parâmetro, a nova sem. Não existem "duas gerações" em conflito.
+
+**Etapa 2 — 🔴 ABERTA, do owner. Data-limite: 2026-08-05.** Rotacionar
+`QSTASH_CURRENT_SIGNING_KEY` e `QSTASH_NEXT_SIGNING_KEY` no painel da Upstash,
+**depois que a fila secar**.
+
+- **Por que a espera é necessária.** O horizonte de agendamento de lembrete no QStash
+  é de até 14 dias, e 2026-08-05 é 14 dias depois de 2026-07-22 — a data em que a
+  última publicação com o parâmetro pode ter ocorrido. Rotacionar com a fila cheia
+  invalida a assinatura de todo lembrete já publicado, o webhook passa a recusá-los
+  com 401 e a mensageria deste projeto falha **em silêncio por desenho**: ninguém
+  reclama de mensagem que não chegou. Esperar não é cautela genérica, é evitar
+  exatamente o modo de falha característico deste produto.
+- **Depois de rotacionar, nesta ordem:** (1) atualizar as duas variáveis no Railway e
+  no `.env.local`; (2) reexecutar `bash scripts/verificar-fail-fast-boot.sh` e conferir
+  exit 0 com os quatro vereditos; (3) confirmar na prática que um lembrete novo chega —
+  é o item "Lembrete do QStash ponta a ponta" da lista de UAT abaixo.
+- **Nomes de variável, nunca valores.** Nenhum valor de chave entra neste documento,
+  em commit, PR ou mensagem: publicar um valor foi precisamente o que criou este item.
+
+**Critério de fechamento:** as duas variáveis com valor novo em todos os ambientes, o
+harness verde depois da troca e um lembrete real entregue com a chave nova.
+
 ### 🧪 UAT humano pendente da Phase 1 (não executado — bloqueia o "fechou de verdade")
 
 A Phase 1 provou por comando tudo o que é provável por comando. **O que sobra exige olho
@@ -1069,11 +1122,33 @@ Cada um com o **gatilho** que o traz de volta — nenhum é "esquecido", todos s
     banner, sem prazo).
 - Cobrança self-service; experiência definitiva de upgrade/downgrade.
 - Revisão de segurança geral (secrets, headers, webhooks, superfícies públicas).
-  - Webhook de lembrete (achado da revisão final de 2026-07-14, pré-existente):
-    o secret trafega em query string e o fallback `'secret-key'` vale nos dois
-    lados quando `QSTASH_CURRENT_SIGNING_KEY` não está setada — em produção a
-    env é OBRIGATÓRIA; o ideal é migrar para verificação da assinatura real do
-    QStash (header `Upstash-Signature`).
+  - ~~Webhook de lembrete: secret em query string e fallback `'secret-key'` valendo
+    nos dois lados~~ — ✅ **Fechado na Phase 1 (planos 01-03 e 01-06, 2026-07-22).**
+    O achado original, da revisão final de 2026-07-14, dizia: "o secret trafega em
+    query string e o fallback `'secret-key'` vale nos dois lados quando
+    `QSTASH_CURRENT_SIGNING_KEY` não está setada — em produção a env é OBRIGATÓRIA".
+    A análise fica registrada porque é o motivo de o webhook ter a forma que tem hoje;
+    as três metades foram fechadas assim:
+    - **A autenticação passou a ser criptográfica.** O webhook verifica o header
+      `Upstash-Signature` pelo `Receiver` de `@upstash/qstash`, em
+      `src/lib/qstash-assinatura.ts`, chamado por
+      `src/app/api/webhooks/lembrete/route.ts` **antes** de o corpo ser parseado
+      (corpo não verificado nunca vira JSON). Entregue pelo plano 01-03. Prova
+      reexecutável: `bash scripts/verificar-fail-fast-boot.sh`, veredito `WEBHOOK` →
+      `sem assinatura 401 | secret em query 401 | assinatura forjada 401 | GET / 200`.
+      O caso do meio é o que prova que o parâmetro legado não autentica mais nada.
+    - **O fallback inseguro embutido no código foi extinto.** Comando que prova:
+      `grep -rn "secret-key" src/ scripts/` → saída vazia (reconferido em 2026-07-22
+      no HEAD desta rodada, antes de este item ser reescrito).
+    - **As chaves de assinatura viraram obrigatórias no boot** (plano 01-06): faltando
+      qualquer uma, o processo sai com **código 1** em vez de subir e servir 500 em
+      toda rota. Prova: veredito `MORTE` do mesmo harness.
+
+    ⚠️ **O que não fechou junto:** a chave de assinatura circulou em texto claro na
+    URL publicada de todo lembrete até o plano 01-11, e por isso precisa ser
+    rotacionada. Item próprio, com dono e prazo: **"🔑 Rotação das signing keys do
+    QStash"**, nesta mesma seção. É por causa dele que **SEG-05 não está marcado como
+    concluído** em `.planning/REQUIREMENTS.md`.
 - Política de privacidade e termos finais; revisão final de LGPD; fluxo de
   exclusão/exportação de dados.
 - Testes críticos de segurança e concorrência (ver seção "Qualidade e testes").
