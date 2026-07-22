@@ -9,6 +9,8 @@ export default defineConfig({
         env: {
             QSTASH_TOKEN: 'token-teste',
             QSTASH_URL: 'https://qstash.local',
+            QSTASH_CURRENT_SIGNING_KEY: 'sig-atual-teste',
+            QSTASH_NEXT_SIGNING_KEY: 'sig-proxima-teste',
             EVOLUTION_API_URL: 'http://evolution.local'
         }
     }
