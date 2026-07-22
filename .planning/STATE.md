@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-07-22T05:19:46.113Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-07-22T05:31:07.662Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 5
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 ## Current Position
 
 Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-07-22 — Phase 01 execution started
 
-Progress: [██░░░░░░░░] 20%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [██░░░░░░░░] 20%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P01 | 46min | 2 tasks | 4 files |
+| Phase 01 P03 | ~25min | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -74,6 +75,9 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - **Hardening antes do checkout**: rate limit na Server Action é teatro enquanto o INSERT `anon` existir
 - [Phase ?]: apply_migration do MCP não preserva a version do arquivo — toda aplicação exige corrigir version/name por DML no ledger em seguida (01-04 aplica mais duas)
 - [Phase ?]: Prova de leitura privilegiada por contrafactual de slug: /book/<slug-pago> 200 E /book/<slug_gratuito> 404 — um 200 sozinho não distingue os dois mundos
+- [Phase ?]: Assinatura do QStash substitui conferencia de secret em query string no webhook de lembrete
+- [Phase ?]: Chaves de assinatura lidas na chamada, nunca em constante de modulo
+- [Phase ?]: url: req.url preserva os lembretes ja enfileirados com query string
 
 ### Pending Todos
 
@@ -117,6 +121,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T05:19:46.107Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-07-22T05:31:07.655Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None

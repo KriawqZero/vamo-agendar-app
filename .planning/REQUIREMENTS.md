@@ -14,7 +14,7 @@ requisitos que faltam para receber tráfego real com segurança.
 - [x] **SEG-02**: `perfis_empresas` deixa de ser enumerável — a lista de profissionais da plataforma não é obtível com a chave publicável
 - [ ] **SEG-03**: `agendamentos` e `excecoes_agenda` expõem a `anon` apenas as colunas que a engine de disponibilidade consome
 - [ ] **SEG-04**: Coluna nova em tabela com leitura pública nasce sem acesso `anon` por padrão (regra escrita e privilégio revogado por default)
-- [ ] **SEG-05**: Webhook de lembrete só aceita requisições com assinatura válida do QStash; a aplicação não sobe sem as chaves configuradas
+- [x] **SEG-05**: Webhook de lembrete só aceita requisições com assinatura válida do QStash; a aplicação não sobe sem as chaves configuradas
 
 ### Correção da agenda
 
@@ -148,7 +148,7 @@ um destino** de `.planning/ROADMAP.md` — uma das 12 fases ou a etapa preparat�
 | SEG-02 | Phase 1 | Complete |
 | SEG-03 | Phase 1 | Pending |
 | SEG-04 | Phase 1 | Pending |
-| SEG-05 | Phase 1 | Pending |
+| SEG-05 | Phase 1 | Complete |
 | AGE-01 | Phase 2 | Pending |
 | AGE-02 | Phase 2 | Pending |
 | AGE-03 | Phase 2 | Pending |
