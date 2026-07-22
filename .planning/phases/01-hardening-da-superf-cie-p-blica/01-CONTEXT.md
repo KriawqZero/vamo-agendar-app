@@ -174,6 +174,10 @@ Origem: `supabase/migrations/20260709161817_restaura_privilegios_dml_roles_api.s
 ## Deferred Ideas
 
 - **Trocar `?secret=` da URL de publicação do QStash** por publicação limpa (a assinatura torna o parâmetro redundante). Não fazer nesta fase: os lembretes em trânsito foram publicados com ele, e removê-lo agora exigiria lidar com duas gerações de URL. Reavaliar depois que a fila drenar (14 dias).
+
+  ⚠️ *Correção de 2026-07-22, pela reverificação da fase sobre o HEAD `4596463`:* **a premissa técnica deste deferimento foi medida como FALSA, e o deferimento foi revertido.**
+  **O que a medição mostrou:** `src/app/api/webhooks/lembrete/route.ts:30` passa `url: req.url` a `verificarAssinaturaQstash` — a URL que a requisição de fato traz, não uma constante montada de `APP_URL`. Cada lembrete valida a assinatura contra a própria URL com que foi publicado: o que já estava enfileirado, com o parâmetro; o novo, sem ele. As duas convivem sem conflito e não havia nada a "lidar". A D-05 acima já registrava `req.url` como a escolha certa — a inferência errada foi supor que a URL de publicação precisava ser a mesma entre mensagens.
+  **Consequência:** o item foi entregue no plano 01-11 (publicação limpa em `src/lib/whatsapp-helper.ts`, mais travas de teste que reprovam se o parâmetro voltar). O CR-01 do `01-REVIEW.md` mostrou que o custo de esperar era alto: enquanto o parâmetro era publicado, a chave HMAC com que o webhook autentica viajava em texto claro em toda entrega. O resíduo — rotacionar a chave que já circulou — é ação do owner, com prazo, registrada em `docs/PENDENCIAS.md`.
 - **Bug do "assume 30 minutos"** na duração de agendamento: a pesquisa nota que ele pode ser mascarado por mudanças desta fase. É escopo da Phase 2 (`data_hora_fim`), não daqui — mas o plano não deve "consertar de passagem", para não confundir a verificação da Phase 2.
 - **Revisar a permissão de `psql` liberada** no settings quando houver cliente real no banco. Registrado junto da condição de rede de proteção em `.planning/ROADMAP.md`.
 </deferred>

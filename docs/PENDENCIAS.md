@@ -928,6 +928,81 @@ que a automação **não** cobre; é essa frase que define o que falta fazer.
       cliente, `nome_estabelecimento`, descrição e endereço longos no resumo, na tela de
       sucesso e no painel de marca.
 
+### Achados do code review da Phase 1 diferidos (2026-07-22)
+
+Quatro achados do `01-REVIEW.md` da Phase 1 **não** foram aprovados para a rodada de
+fechamento de gaps. Nenhum é esquecimento: cada um está aqui com a consequência concreta
+de não ser feito e o gatilho que o traz de volta. Os que foram feitos (CR-01, CR-02,
+CR-04) estão registrados nos itens acima e nos SUMMARYs dos planos 01-11 e 01-12.
+
+- **WR-01 — a Server Action pública devolve `tenant_id` e `slug_gratuito` ao chamador**
+  (`src/app/actions/public-booking.ts:20-21,348-352`). `COLUNAS_PERFIL_PUBLICO` inclui
+  `tenant_id`, e `obterDadosBookingPublico` devolve o perfil inteiro. O `page.tsx` tem o
+  cuidado explícito de mandar `hashTenantId(...)` ao browser, mas a action é, por
+  definição, um endpoint de rede: quem a invocar direto com um slug válido recebe o
+  `org_id` do Clerk daquele tenant. **Consequência:** é exatamente a informação que o
+  critério 1 desta fase protegeu na superfície da Data API, obtida por outra porta. Não
+  permite enumeração em massa (exige o action id e um slug conhecido), mas é vazamento
+  dirigido.
+  💡 **É o mais barato dos quatro e o mais aderente ao tema da fase.** O conserto é
+  desestruturar o retorno mantendo `tenant_id` na projeção — o filtro por tenant depende
+  dele — e não devolvê-lo: `const { tenant_id, slug_gratuito, ...perfilPublico } = perfil`.
+  Não entrou porque **não foi aprovado nesta rodada**, não porque seja difícil.
+  *Gatilho:* a próxima rodada de hardening — ou antes disso, se o owner quiser puxá-lo.
+- **WR-03 — caminho de escrita público sem limite de tamanho nem validação de formato**
+  (`src/app/actions/public-booking.ts:103-115,217-227`). `criarAgendamentoPublico` valida
+  presença e sanitiza o telefone, mas `clienteNome` não tem limite de comprimento e
+  `clienteEmail` não tem validação de formato nem de tamanho; as colunas `clientes.nome`
+  e `.email` são `text` sem CHECK. **Consequência:** linha de tamanho arbitrário na
+  tabela `clientes` de qualquer tenant, e o nome entra direto no template do WhatsApp
+  (`whatsapp-helper.ts`) — um nome de 100 kB vira uma mensagem de 100 kB disparada na
+  instância Evolution do profissional. **Distinto do rate limiting** registrado acima:
+  ali o problema é o volume de requisições, aqui é o conteúdo de uma requisição só.
+  *Gatilho:* Phase 3 (anti-abuso) ou Phase 5 (contato flexível), o que vier primeiro.
+- **WR-04 — a verificação por `req.url` pode recusar tudo atrás do proxy da Railway**
+  (`src/app/api/webhooks/lembrete/route.ts:27-36`, `src/lib/qstash-assinatura.ts:57`). A
+  claim `sub` do JWT casa contra a URL que o Next reconstrói a partir de `host` e
+  `x-forwarded-proto`; qualquer divergência de protocolo, host ou barra final em relação
+  ao que o QStash assinou faz `receiver.verify` recusar **todas** as requisições.
+  **Consequência:** lembrete nenhum sai e ninguém fica sabendo — o caminho de recusa é um
+  `console.warn` mais um 401, sem linha em `disparos_whatsapp`, sem reporte ao Sentry, e o
+  cliente final não reclama de mensagem que não chegou. O harness só prova as negativas
+  (401 para sonda inválida); nenhum artefato automatizado prova o positivo.
+  *Gatilho:* o item de UAT "Lembrete do QStash ponta a ponta". Um 401 no log torna este
+  item urgente, e o plano B já registrado lá é montar a URL de `APP_URL` depois que a fila
+  drenar.
+- **WR-06 — falha de transporte do WhatsApp devolve 500 e o QStash reenvia, sem checagem
+  de idempotência** (`src/app/api/webhooks/lembrete/route.ts:170-192`). O 500 é
+  deliberado (força o retry), mas `{ok:false}` cobre também `erro_rede`, isto é, timeout —
+  o caso em que a Evolution pode ter entregado a mensagem e só a resposta ter se perdido.
+  Nada consulta `disparos_whatsapp` por um lembrete já `executado` para o mesmo
+  `agendamento_id` antes de disparar. **Consequência:** o cliente final recebe o mesmo
+  lembrete duas ou três vezes — num produto cujo diferencial é o WhatsApp, isso custa
+  reputação do profissional. O comentário no código antecipa a duplicidade apenas no log
+  ("linhas duplicadas de log entre tentativas são aceitáveis"), não na mensagem.
+  *Gatilho:* primeiro piloto com volume real, ou a Phase 11 (observabilidade).
+
+#### Duas afirmações desatualizadas, fora do escopo desta rodada
+
+Encontradas ao escrever este registro, medidas, e **não corrigidas** porque caem fora dos
+três arquivos que o plano 01-13 declara modificar — e a segunda está sob `src/`, que esse
+plano se proíbe de tocar. Ficam aqui para não sumirem:
+
+1. `docs/09-OBSERVABILIDADE_E_EMAIL.md:124-125` afirma que `notificacoes-agendamento.ts`
+   loga a URL do QStash carregando o parâmetro de secret. **Falso, medido:**
+   `grep -n 'console\.' src/lib/notificacoes-agendamento.ts` devolve uma única linha (155),
+   que loga só o `err` de um `catch`; `grep -nE 'QSTASH|webhookUrl|publishUrl|secret'` no
+   mesmo arquivo volta vazio. A outra metade da frase, sobre `whatsapp-helper.ts`, era
+   verdadeira e deixou de ser no plano 01-11.
+2. `src/lib/observabilidade/sanitizacao.ts:99-100` e
+   `src/lib/observabilidade/opcoes-sentry.ts:31` descrevem, no presente, uma URL de destino
+   que embute a chave de assinatura em query string. Deixou de ser verdade no plano 01-11.
+
+**Nada disso muda comportamento:** as travas anti-PII continuam corretas e cobertas por
+teste. O que está errado é a justificativa escrita ao lado delas — e justificativa falsa é
+o que faz o próximo leitor tomar a decisão errada. *Gatilho:* a próxima mudança em qualquer
+dos três arquivos, ou a próxima passada da skill `docs-vivas`.
+
 ### Demais preparações de lançamento
 
 #### Diferidos da etapa preparatória "Fundação operacional" (2026-07-21)
