@@ -23,11 +23,18 @@ Gerenciador de pacotes: **pnpm**.
 Supabase **Cloud**, Evolution API na **Railway**, filas no **Upstash QStash**, e-mail no
 **Resend**, auth no **Clerk**, analytics/erros em **PostHog** e **Sentry**.
 
-Nunca rode — todos tentam subir stack local por Docker que este projeto não usa:
-`supabase start`, `supabase stop`, `supabase db reset` (sem `--linked`), `supabase db diff`
-(sem `--linked`), `docker compose up`.
+Nunca rode: `supabase start`, `supabase stop`, `supabase db reset` sem `--linked`,
+`docker compose up`. Todos assumem uma stack local que não existe — e um
+`supabase db reset` sem `--linked` mira o banco errado.
 
-- **Migrations de DDL declarativo**: `npx supabase db diff --linked`.
+**Docker efêmero é exceção legítima, e só uma:** `supabase db diff` precisa de um shadow
+database em container para comparar os schemas declarativos. Isso é tooling descartável,
+não infraestrutura — não confunda com "o projeto tem banco local". Peça aprovação antes
+(o `permissions.ask` cobre `Bash(docker *)`), e prefira escrever a migration à mão quando
+o delta for pequeno: as três migrations de privilégio deste repo (`20260709193156`,
+`20260722044858`, e a de policies da fase 1) foram todas escritas manualmente.
+
+- **Migrations de DDL declarativo**: `npx supabase db diff --linked -f <nome>`.
 - **REVOKE/GRANT e outros privilégios**: `db diff` **não os emite** — escreva a migration à
   mão (precedentes: `20260709193156`, `20260722044858`) e aplique via `mcp__supabase__apply_migration`.
 - ⚠️ **`apply_migration` não preserva a version do arquivo.** Ele carimba o instante da
