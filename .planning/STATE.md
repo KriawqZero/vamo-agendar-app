@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: executing
-stopped_at: Completed 01-12-PLAN.md
-last_updated: "2026-07-22T18:12:52.227Z"
+stopped_at: Completed 01-13-PLAN.md
+last_updated: "2026-07-22T18:27:52.959Z"
 last_activity: 2026-07-22
-last_activity_desc: "plano 01-12 executado: o caminho de ESCRITA do booking devolve valor discriminado e a recuperação de double-booking voltou a acontecer em build de produção; bloqueador 2 fechado no código"
+last_activity_desc: "plano 01-13 executado: `docs/PENDENCIAS.md` descreve o webhook como ele é hoje (com comando que reproduz a prova), a rotação das signing keys do QStash virou item datado do owner e as duas premissas refutadas foram corrigidas sem apagar histórico"
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 16
-  completed_plans: 12
+  completed_plans: 13
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 ## Current Position
 
 Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTANDO a 2ª rodada de fechamento de gaps
-Plan: 12 de 16 concluídos (01-01 a 01-12). Próximo: **01-13**
+Plan: 13 de 16 concluídos (01-01 a 01-13). Próximo: **01-15**
 Status: **a fase continua incompleta.** Os dois bloqueadores da reverificação estão fechados NO CÓDIGO; o que resta em cada um não é código:
 
-  1. `whatsapp-helper.ts` publicava `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — a mesma chave HMAC com que o webhook autentica desde o 01-03. **METADE DE CÓDIGO FECHADA no 01-11**: a URL publicada é agora a rota limpa, e quatro `console.error` deixaram de despejar corpo de gateway no log (o da Evolution ecoava telefone e texto personalizado — CR-04). Cinco testes travam os dois defeitos, provados vermelhos na reversão. **CONTINUA ABERTO o que código não conserta**: a chave já circulou por log de acesso e pelo console da Upstash, e a rotação é ação do owner no painel, depois de a fila secar (≤ 14 dias) — **item datado no 01-13**. Por isso SEG-05 NÃO foi marcado como concluído em REQUIREMENTS.md
+  1. `whatsapp-helper.ts` publicava `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — a mesma chave HMAC com que o webhook autentica desde o 01-03. **METADE DE CÓDIGO FECHADA no 01-11**: a URL publicada é agora a rota limpa, e quatro `console.error` deixaram de despejar corpo de gateway no log (o da Evolution ecoava telefone e texto personalizado — CR-04). Cinco testes travam os dois defeitos, provados vermelhos na reversão. **CONTINUA ABERTO o que código não conserta**: a chave já circulou por log de acesso e pelo console da Upstash, e a rotação é ação do owner no painel, depois de a fila secar (≤ 14 dias). **O 01-13 transformou isso em item escrito**: `docs/PENDENCIAS.md` §"🔑 Rotação das signing keys do QStash" — dono nomeado (só o owner fecha), data-limite **2026-08-05**, etapa 1 registrada como feita e etapa 2 nascida aberta, com o passo-a-passo de depois da troca. Por isso SEG-05 continua NÃO marcado como concluído em REQUIREMENTS.md
   2. Em build de produção o React só transporta o `digest` do erro da Server Action, então a copy contratada no `01-UI-SPEC` e a recuperação de double-booking estavam mortas na tela. **FECHADO NO CÓDIGO** — metade de LEITURA no 01-10, metade de ESCRITA no **01-12**: `criarAgendamentoPublico` devolve `{ ok: false, motivo }`, o `BookingApp` decide por `res.motivo === 'slot_indisponivel'` (a comparação por substring saiu do arquivo, `grep` devolve `0`) e o harness ganhou o quinto veredito `ESCRITA_VALIDACAO`, provado por contrafactual (reprova com `1:E{"digest":"3871214289"}` quando a guarda volta a `throw`). **O SC4 da Phase 2 deixou de ser insatisfazível por construção.** Continua aberto o que código não fecha: ninguém VIU o aviso âmbar na tela — é item do UAT humano e só o owner marca
 
 Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code review: CR-03 (`slug_gratuito` sem UNIQUE → sequestro de link público entre tenants, com PII de cliente final) em 01-14; WR-02 (default privileges não cobre FUNCTIONS) e WR-08 (harness de superfície com falso verde) em 01-15; WR-07 (`assinaturas.ts` degrada tenant pago a gratuito) em 01-16. WR-01, WR-03, WR-04 e WR-06 ficaram fora, diferidos com razão e gatilho escritos no 01-13.
@@ -39,9 +39,9 @@ Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code rev
 Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
 
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
-Last activity: 2026-07-22 — plano 01-12 executado: o caminho de ESCRITA do booking devolve valor discriminado e a recuperação de double-booking voltou a acontecer em build de produção
+Last activity: 2026-07-22 — plano 01-13 executado: `docs/PENDENCIAS.md` descreve o webhook como ele é hoje (com comando que reproduz a prova), a rotação das signing keys do QStash virou item datado do owner e as duas premissas refutadas foram corrigidas sem apagar histórico
 
-Progress: [████████░░] 75% (12/16 planos executados; verificação ainda reprovada, correção em andamento)
+Progress: [████████░░] 81% (13/16 planos executados; verificação ainda reprovada, correção em andamento)
 
 ## Performance Metrics
 
@@ -79,6 +79,7 @@ Progress: [████████░░] 75% (12/16 planos executados; verific
 | Phase 01 P10 | ~33min | 2 tasks | 6 files |
 | Phase 01 P11 | ~35min | 2 tasks | 2 files |
 | Phase 01 P12 | 17min | 3 tasks | 6 files |
+| Phase 01 P13 | ~30min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -135,6 +136,9 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: 01-12: duas superficies de UI com copias diferentes para o mesmo discriminante exigem DOIS mapeadores exaustivos — um mapeador so obrigaria a reescrever copia travada
 - [Phase ?]: 01-12: erro_interno colapsa as tres falhas de infra numa copia so para o visitante; a distincao sobrevive no etapa do reportarExcecao, que e quem precisa dela
 - [Phase ?]: 01-12: veredito novo de harness so entra depois de provado por contrafactual — reverter o conserto e ver REPROVADO com o digest opaco
+- [Phase ?]: [Phase 01]: Risco que sobrevive a uma fase só existe se estiver escrito com dono e prazo — a rotação das signing keys do QStash virou item datado (2026-08-05) em docs/PENDENCIAS.md, nascido ABERTO, porque só o owner mexe no painel da Upstash
+- [Phase ?]: [Phase 01]: Correção de decisão registrada é anotação datada e atribuída, nunca reescrita — o deferimento do parâmetro na URL do QStash (01-CONTEXT.md) mantém o texto original e ganha ao lado a medição que o refuta (route.ts:30 verifica contra req.url)
+- [Phase ?]: [Phase 01]: Drift de documentação fora do files_modified do plano é REGISTRADO com a medição que o refuta, não corrigido em silêncio nem ignorado — docs/09:124-125 e os JSDoc de src/lib/observabilidade ficaram em docs/PENDENCIAS.md com gatilho
 
 ### Pending Todos
 
@@ -184,6 +188,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T18:12:52.217Z
-Stopped at: Completed 01-12-PLAN.md
+Last session: 2026-07-22T18:26:59.171Z
+Stopped at: Completed 01-13-PLAN.md
 Resume file: None
