@@ -137,9 +137,31 @@ const SLUG_GRATUITO_TESTE = 'teste-integracao-booking-gratuito'
 const TIMEZONE_TESTE = 'America/Sao_Paulo'
 const DURACAO_SERVICO_TESTE = 30
 
+/**
+ * Acoplamento por SUBSTRING entre produtor e consumidor, sem nenhum tipo que o
+ * sustente: `criarAgendamentoPublico` lança uma mensagem que CONTÉM este trecho
+ * e `BookingApp.tsx` decide a recuperação de double-booking com
+ * `mensagem.includes(...)` exatamente sobre ele.
+ *
+ * Intenção de negócio: sem o casamento, o cliente final fica preso numa caixa
+ * vermelha estática embaixo do formulário de contato, olhando para um horário
+ * que não existe mais — em vez de voltar para a grade refeita com o aviso âmbar.
+ *
+ * Uma constante ÚNICA usada nas duas asserções: reescrever qualquer uma das
+ * pontas deixa este teste vermelho, em vez de quebrar a UX em silêncio.
+ */
+const TRECHO_DOUBLE_BOOKING = 'já foi preenchido'
+const CAMINHO_BOOKING_APP = 'src/app/book/[slug]/BookingApp.tsx'
+const CAMINHO_ACTION_PUBLICA = 'src/app/actions/public-booking.ts'
+
+const TELEFONE_FORMATADO = '(11) 98888-7777'
+const TELEFONE_SANITIZADO = '11988887777'
+
 let admin: SupabaseClient
 let servicoIdTeste: string
 let dataAlvo: string
+let datetimeOcupado: string
+let clienteIdPrimeiro: string
 
 /** Ordem obrigatória: `agendamentos.servico_id` é ON DELETE RESTRICT. */
 async function limparTenantDeTeste(): Promise<void> {
@@ -259,8 +281,9 @@ describe.skipIf(!temCredenciais)(
                 dataHora: slots[0].datetime,
                 clienteNome: 'Cliente de Integração',
                 // Formatado de propósito: a sanitização é por remoção de não-dígitos.
-                clienteTelefone: '(11) 98888-7777',
+                clienteTelefone: TELEFONE_FORMATADO,
             })
+            datetimeOcupado = slots[0].datetime
 
             expect(agendamento.id).toBeTruthy()
             expect(agendamento.data_hora).toBeTruthy()
@@ -273,13 +296,14 @@ describe.skipIf(!temCredenciais)(
                 .single()
             expect(linhaAgendamento?.tenant_id).toBe(TENANT_TESTE)
             expect(linhaAgendamento?.servico_id).toBe(servicoIdTeste)
+            clienteIdPrimeiro = linhaAgendamento!.cliente_id
 
             const { data: clientes } = await admin
                 .from('clientes')
                 .select('id, telefone')
                 .eq('tenant_id', TENANT_TESTE)
             expect(clientes).toHaveLength(1)
-            expect(clientes![0].telefone).toBe('11988887777')
+            expect(clientes![0].telefone).toBe(TELEFONE_SANITIZADO)
             expect(clientes![0].telefone).toMatch(/^\d+$/)
 
             // Fiação da mensageria provada sem nada sair pela rede.
@@ -291,6 +315,79 @@ describe.skipIf(!temCredenciais)(
                     tenantId: TENANT_TESTE,
                 }),
             )
+        })
+
+        it('reaproveita o cliente existente pelo telefone, em vez de duplicar a linha', async () => {
+            // A grade é refeita depois do primeiro agendamento: o primeiro slot
+            // livre agora é necessariamente outro horário.
+            const slots = await obterSlotsPublicos(
+                SLUG_GRATUITO_TESTE,
+                dataAlvo,
+                DURACAO_SERVICO_TESTE,
+            )
+            expect(slots.length).toBeGreaterThan(0)
+            expect(slots[0].datetime).not.toBe(datetimeOcupado)
+
+            const segundo = await criarAgendamentoPublico({
+                slug: SLUG_GRATUITO_TESTE,
+                servicoId: servicoIdTeste,
+                dataHora: slots[0].datetime,
+                // Nome diferente de propósito: o lookup é por tenant + telefone.
+                clienteNome: 'Outro Nome Mesmo Telefone',
+                clienteTelefone: TELEFONE_FORMATADO,
+            })
+
+            const { data: clientes } = await admin
+                .from('clientes')
+                .select('id')
+                .eq('tenant_id', TENANT_TESTE)
+                .eq('telefone', TELEFONE_SANITIZADO)
+            expect(clientes).toHaveLength(1)
+
+            const { data: linhaSegundo } = await admin
+                .from('agendamentos')
+                .select('cliente_id')
+                .eq('id', segundo.id)
+                .single()
+            expect(linhaSegundo?.cliente_id).toBe(clienteIdPrimeiro)
+        })
+
+        it('rejeita horário já ocupado sem gravar nada, com a mensagem que a UI reconhece', async () => {
+            const contar = async () => {
+                const { count } = await admin
+                    .from('agendamentos')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('tenant_id', TENANT_TESTE)
+                return count
+            }
+
+            const antes = await contar()
+
+            const erro = await criarAgendamentoPublico({
+                slug: SLUG_GRATUITO_TESTE,
+                servicoId: servicoIdTeste,
+                dataHora: datetimeOcupado,
+                clienteNome: 'Cliente Atrasado',
+                clienteTelefone: '(11) 97777-6666',
+            }).then(
+                () => null,
+                (e: unknown) => e,
+            )
+
+            expect(erro).toBeInstanceOf(Error)
+            expect((erro as Error).message).toContain(TRECHO_DOUBLE_BOOKING)
+            expect(await contar()).toBe(antes)
+        })
+
+        it('mantém o acoplamento de string casando nas DUAS pontas (action ↔ BookingApp)', () => {
+            // O produtor é exercitado no caso acima. O consumidor mora no
+            // navegador e não é importável aqui — então a prova é por asserção
+            // de FONTE, derivada da mesma constante.
+            const fonteAction = readFileSync(CAMINHO_ACTION_PUBLICA, 'utf8')
+            expect(fonteAction).toContain(TRECHO_DOUBLE_BOOKING)
+
+            const fonteBookingApp = readFileSync(CAMINHO_BOOKING_APP, 'utf8')
+            expect(fonteBookingApp).toContain(`mensagem.includes('${TRECHO_DOUBLE_BOOKING}')`)
         })
     },
 )
