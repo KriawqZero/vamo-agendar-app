@@ -17,7 +17,6 @@ import EtapaContato from './etapas/EtapaContato'
 import EtapaSucesso from './etapas/EtapaSucesso'
 
 export interface PerfilPublico {
-    tenant_id: string
     nome_estabelecimento: string
     descricao: string | null
     instagram: string | null
@@ -54,6 +53,8 @@ export interface DataDisponivel {
 export type EtapaBooking = 'servico' | 'data_hora' | 'contato' | 'sucesso'
 
 interface BookingAppProps {
+    /** Slug da URL — identificador do estabelecimento nas actions públicas. */
+    slug: string
     perfil: PerfilPublico
     personalizacao: PersonalizacaoPublica
     servicos: Servico[]
@@ -66,6 +67,7 @@ interface BookingAppProps {
  * data/hora → contato → sucesso. Tocar seleciona; o CTA da barra inferior avança.
  */
 export default function BookingApp({
+    slug,
     perfil,
     personalizacao,
     servicos,
@@ -145,7 +147,7 @@ export default function BookingApp({
             setErroSlots(null)
             try {
                 const res = await obterSlotsPublicos(
-                    perfil.tenant_id,
+                    slug,
                     dataSelecionada,
                     servicoSelecionado.duracao_minutos,
                 )
@@ -170,7 +172,7 @@ export default function BookingApp({
         return () => {
             isMounted = false
         }
-    }, [servicoSelecionado, dataSelecionada, perfil.tenant_id, tentativaSlots])
+    }, [servicoSelecionado, dataSelecionada, slug, tentativaSlots])
 
     const mudarEtapa = (nova: EtapaBooking) => {
         setJaNavegou(true)
@@ -258,7 +260,7 @@ export default function BookingApp({
             }
             try {
                 const res = await criarAgendamentoPublico({
-                    tenantId: perfil.tenant_id,
+                    slug,
                     servicoId: servicoSelecionado.id,
                     dataHora: slotSelecionado.datetime,
                     clienteNome: nomeInformado,

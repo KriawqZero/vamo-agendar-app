@@ -61,8 +61,12 @@ export default async function BookingPage({ params }: PageProps) {
     return (
         <div style={estiloAcento} className="min-h-dvh bg-palco font-sans text-giz">
             <BookingApp
+                // Identificador que viaja para o browser é o slug da URL (já
+                // validado como efetivo do plano por obterDadosBookingPublico).
+                // O org_id do Clerk fica no servidor — as duas actions públicas
+                // resolvem o tenant a partir do slug.
+                slug={slug}
                 perfil={{
-                    tenant_id: perfil.tenant_id,
                     nome_estabelecimento: perfil.nome_estabelecimento,
                     descricao: perfil.descricao,
                     instagram: perfil.instagram,
