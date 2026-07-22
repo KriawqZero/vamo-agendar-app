@@ -94,7 +94,48 @@ export async function POST(req: NextRequest) {
         }
 
         // Tenant rebaixado após agendar: lembrete não é mais um recurso do plano dele
-        const plano = await obterPlanoVigentePublico(supabase, tenantId)
+        const { plano, degradadoPorErro } = await obterPlanoVigentePublico(supabase, tenantId)
+
+        // ⚠️ Os dois casos abaixo pedem tratamentos OPOSTOS, e confundi-los era o
+        // defeito: "o plano não inclui WhatsApp" é resposta DEFINITIVA — insistir
+        // é desperdício, e o 200 encerra a entrega corretamente. "Não consegui
+        // LER o plano" é TRANSITÓRIO — desistir com 200 apaga para sempre o
+        // lembrete de um cliente pagante, por causa de um soluço de trinta
+        // segundos. Até esta rodada os dois caíam no MESMO ramo (o de baixo) e
+        // eram registrados com o motivo do caso definitivo, com 200.
+        //
+        // O 500 é seguro exatamente aqui, e por uma razão específica: NENHUMA
+        // mensagem foi enviada ainda neste ponto do fluxo, então o retry do
+        // QStash não pode duplicar lembrete. O risco de duplicidade só existe
+        // depois de uma tentativa de envio (é o WR-06, deferido).
+        if (degradadoPorErro) {
+            console.error(
+                `Plano indeterminado para o tenant ${tenantId}: leitura de assinaturas falhou. Devolvendo 500 para retry do QStash.`,
+            )
+            await registrarDisparo(supabase, {
+                tenantId,
+                agendamentoId,
+                tipo: 'lembrete',
+                // `falha`, não `ignorado`: `ignorado` é o vocabulário do caso
+                // DEFINITIVO (cancelado, plano sem recurso, WhatsApp
+                // desconectado). Aqui nada foi decidido — só não foi possível
+                // decidir, e a tentativa vai se repetir.
+                status: 'falha',
+                motivo: 'plano_indeterminado',
+            })
+            // AGUARDADO: a resposta vai embora na linha seguinte. O flush drena
+            // a fila inteira, então este `await` também garante a saída do
+            // evento fire-and-forget que `obterPlanoVigentePublico` já enfileirou
+            // (`assinaturas:leitura_publica_falhou`) — os dois contam histórias
+            // diferentes: um diz que a leitura falhou, o outro diz que um
+            // lembrete foi adiado por causa disso.
+            await reportarExcecaoAguardando(new Error('lembrete:plano_indeterminado'), {
+                fluxo: 'webhook_lembrete',
+                etapa: 'gating_plano',
+            })
+            return NextResponse.json({ error: 'Plano indeterminado.' }, { status: 500 })
+        }
+
         if (!PLANOS[plano].recursos.whatsapp) {
             console.log(
                 `Lembrete ignorado. Tenant ${tenantId} não possui WhatsApp no plano vigente.`,

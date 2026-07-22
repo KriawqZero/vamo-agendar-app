@@ -60,7 +60,14 @@ export async function dispararNotificacoesAgendamento(
             .eq('tenant_id', tenantId)
             .maybeSingle()
 
-        const plano = await obterPlanoVigentePublico(client, tenantId)
+        // Plano indeterminado (falha de leitura) cai no ramo conservador junto
+        // com "plano sem WhatsApp", e aqui isso é o comportamento CERTO, não
+        // uma confusão como era no webhook: esta fase é síncrona ao agendamento
+        // e não tem canal de retry — a alternativa a não enviar seria segurar a
+        // confirmação do cliente final, que o invariante do produto proíbe
+        // ("mensageria jamais quebra a criação de um agendamento"). O sinal da
+        // falha não se perde: `obterPlanoVigentePublico` já reportou.
+        const { plano } = await obterPlanoVigentePublico(client, tenantId)
         const planoTemWhatsapp = PLANOS[plano].recursos.whatsapp
 
         // Sem config ou plano sem WhatsApp: mensageria não faz parte do fluxo

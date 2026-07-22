@@ -484,7 +484,10 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
                 .eq('tenant_id', orgId)
                 .maybeSingle()
 
-            const plano = await obterPlanoVigentePublico(supabase, orgId)
+            // Caminho B2B autenticado: o profissional está na tela e o plano
+            // indeterminado apenas deixa de reagendar o lembrete desta
+            // remarcação. A falha já foi reportada dentro da função.
+            const { plano } = await obterPlanoVigentePublico(supabase, orgId)
             const whatsappAtivo =
                 config &&
                 PLANOS[plano].recursos.whatsapp &&

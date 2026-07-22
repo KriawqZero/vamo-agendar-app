@@ -186,7 +186,7 @@ async function resolverPerfilPublicoPorSlug(
     // Plano vigente com o MESMO cliente privilegiado (ver JSDoc de
     // obterPlanoVigentePublico): cliente anônimo degradaria todo tenant pago
     // para gratuito em silêncio. O tenant_id vem do perfil resolvido acima.
-    const plano = await obterPlanoVigentePublico(admin, perfil.tenant_id)
+    const { plano } = await obterPlanoVigentePublico(admin, perfil.tenant_id)
     if (obterSlugEfetivo(perfil, plano) !== slug) {
         return { ok: false, motivo: 'slug_invalido' }
     }
