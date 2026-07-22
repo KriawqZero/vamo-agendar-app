@@ -417,6 +417,29 @@ O que este plano entrega para os seguintes, e por que ele tinha que vir primeiro
 
 **Sem blockers novos.** O que continua aberto é o UAT humano da Phase 1, agora com três itens reduzidos ao lado visual.
 
+## Self-Check: PASSED
+
+Arquivos declarados, conferidos por existência no disco:
+
+```
+FOUND: vitest.config.ts
+FOUND: package.json
+FOUND: src/app/actions/__tests__/public-booking-escrita.test.ts
+FOUND: docs/PENDENCIAS.md
+FOUND: .planning/phases/01-hardening-da-superf-cie-p-blica/01-07-SUMMARY.md
+```
+
+Commits declarados, conferidos por `git log`:
+
+```
+FOUND: d886446   (Task 1)
+FOUND: 4230ec0   (Task 2)
+FOUND: b148270   (Task 3)
+FOUND: f2fbd5b   (metadados do plano)
+```
+
+Nenhuma deleção de arquivo rastreado em nenhum dos quatro commits.
+
 ---
 *Phase: 01-hardening-da-superf-cie-p-blica*
 *Completed: 2026-07-22*
