@@ -188,9 +188,11 @@ Plans:
 - [ ] 01-11-PLAN.md — A chave HMAC sai da URL publicada e o corpo do gateway sai do log (gap 1 / CR-01 + CR-04) (wave 2)
 - [ ] 01-12-PLAN.md — Caminho de escrita discriminado e recuperação de double-booking viva (gap 2, parte 2 — insumo obrigatório do SC4 da Phase 2) (wave 3)
 - [ ] 01-13-PLAN.md — `PENDENCIAS`/`CONTEXT`/`COVERAGE` coerentes, rotação de chave datada e os quatro deferimentos por escrito (gap 3 / WR-05) (wave 4)
-- [ ] 01-14-PLAN.md — Namespace do slug público deixa de ser sequestrável: UNIQUE, checagem cruzada e resolução não-ambígua (CR-03) (wave 5)
-- [ ] 01-15-PLAN.md — Default privilege passa a cobrir FUNCTIONS e o harness anônimo para de dar verde sem provar nada (WR-02 + WR-08) (wave 6)
+- [ ] 01-15-PLAN.md — Default privilege passa a cobrir FUNCTIONS e o harness anônimo para de dar verde sem provar nada (WR-02 + WR-08) (wave 5)
+- [ ] 01-14-PLAN.md — Namespace do slug público deixa de ser sequestrável: UNIQUE, checagem cruzada e resolução não-ambígua (CR-03) (wave 6, depende de 01-15)
 - [ ] 01-16-PLAN.md — Falha de leitura em `assinaturas` para de derrubar o link público de tenant pagante (WR-07) (wave 7)
+
+**Por que o 01-15 vem antes do 01-14** (ordem trocada na revisão de planos): o 01-14 usa `scripts/verificar-superficie-anon.sh` como portão de não-regressão, mas o defeito WR-08 é **do próprio harness** — ele classifica como ESPERADO qualquer código diferente de 200, e só o 01-15 conserta isso. Medir fechamento de banco com o instrumento cuja calibração esta rodada admite estar quebrada é a circularidade que já queimou a fase duas vezes. Não há dependência técnica entre a constraint de slug e a default privilege de FUNCTIONS, então a troca custou apenas renumerar duas waves. O 01-12 (wave 3) também usa o harness e **não** pôde ser movido sem quebrar a ordem tracer→expansão; lá o exit 0 está registrado explicitamente como sinal fraco.
 
 **Fora do escopo desta rodada, por decisão do owner:** WR-01 (a Server Action pública devolve `tenant_id` e `slug_gratuito` — o mais barato e o mais aderente ao tema da fase), WR-03 (escrita pública sem limite de tamanho nem validação de e-mail), WR-04 (verificação por `req.url` pode matar todos os lembretes atrás do proxy) e WR-06 (falha de transporte gera lembrete duplicado). Registrados com razão e gatilho de retorno em `docs/PENDENCIAS.md` pelo plano 01-13 — nenhum foi descartado.
 
