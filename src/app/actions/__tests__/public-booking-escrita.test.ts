@@ -55,7 +55,11 @@ vi.mock('@/lib/analytics/server', () => ({
 import { createAdminClient } from '@/lib/supabase/admin'
 import { diaLocal, somarDias } from '@/lib/timezone'
 import { dispararNotificacoesAgendamento } from '@/lib/notificacoes-agendamento'
-import { criarAgendamentoPublico, obterSlotsPublicos } from '@/app/actions/public-booking'
+import {
+    criarAgendamentoPublico,
+    obterDadosBookingPublico,
+    obterSlotsPublicos,
+} from '@/app/actions/public-booking'
 import type { AgendamentoCriado } from '@/app/actions/public-booking'
 import { COPY_SLOT_INDISPONIVEL, mensagemDeEnvio } from '@/app/book/[slug]/mensagens'
 
@@ -149,6 +153,16 @@ const DURACAO_SERVICO_TESTE = 30
 const TELEFONE_FORMATADO = '(11) 98888-7777'
 const TELEFONE_SANITIZADO = '11988887777'
 
+/**
+ * Tenant VIZINHO descartável — o sequestrador do CR-03. Existe só dentro do caso
+ * que o usa, e o `finally` o remove passe ou falhe: o banco de dev tem um tenant
+ * real só, e provar colisão entre dois exige montar o segundo aqui dentro (é o
+ * padrão que o plano 01-08 estabeleceu para provar RLS sem navegador).
+ */
+const TENANT_VIZINHO = 'org_teste_integracao_booking_vizinho'
+const SLUG_GRATUITO_VIZINHO = 'teste-integracao-booking-vizinho-gratuito'
+const SLUG_CUSTOMIZADO_VIZINHO_CONSTRAINT = 'teste-integracao-booking-vizinho-constraint'
+
 let admin: SupabaseClient
 let servicoIdTeste: string
 let dataAlvo: string
@@ -161,6 +175,16 @@ async function limparTenantDeTeste(): Promise<void> {
     await admin.from('clientes').delete().eq('tenant_id', TENANT_TESTE)
     // A cascata do perfil resolve `servicos` e `horarios_funcionamento`.
     await admin.from('perfis_empresas').delete().eq('tenant_id', TENANT_TESTE)
+    // O vizinho descartável é removido pelo `finally` de cada caso que o cria;
+    // repetir aqui é o cinto de segurança para a execução que morre no meio.
+    await removerTenantVizinho()
+}
+
+/** Remove o tenant vizinho descartável. `assinaturas` tem FK ON DELETE CASCADE,
+ *  mas apagar explicitamente deixa a ordem óbvia para quem ler depois. */
+async function removerTenantVizinho(): Promise<void> {
+    await admin.from('assinaturas').delete().eq('tenant_id', TENANT_VIZINHO)
+    await admin.from('perfis_empresas').delete().eq('tenant_id', TENANT_VIZINHO)
 }
 
 async function prepararTenantDeTeste(): Promise<void> {
@@ -468,6 +492,110 @@ describe.skipIf(!temCredenciais)(
             expect(serializado).not.toContain('tenant')
             expect(serializado).not.toContain('org_')
             expect(serializado).not.toContain('PGRST')
+        })
+
+        // -------------------------------------------------------------------
+        // INVARIANTE DO NAMESPACE PÚBLICO (CR-03)
+        //
+        // `slug` e `slug_gratuito` não são duas colunas independentes: são dois
+        // membros de UM namespace — o identificador do tenant em /book/<slug>.
+        // Este bloco é a trava que o `<assumption_delta_decision>` do plano
+        // 01-14 prometeu: se uma fase futura reintroduzir a resolução por
+        // "primeiro que achar" (o fallback encadeado que existia até aqui), ele
+        // fica VERMELHO na hora, porque é exatamente o cenário do CR-03 que ele
+        // monta — e o resolver antigo servia a página do sequestrador.
+        //
+        // O que a decisão NÃO cobre e ninguém deve inferir daqui: manter mais de
+        // um alias vivo (redirecionar link antigo depois de trocar o slug) e um
+        // terceiro identificador público (domínio próprio, alias por campanha).
+        // Qualquer um dos dois virar requisito força a PROMOÇÃO para uma tabela
+        // de identificadores públicos — não uma terceira coluna.
+        // -------------------------------------------------------------------
+
+        /**
+         * Monta o sequestro do CR-03: o vizinho grava em `slug` o `slug_gratuito`
+         * da fixture — que é o link que a fixture divulga, por estar no plano
+         * gratuito.
+         *
+         * A assinatura PRO do vizinho não é decoração: sem plano com link
+         * personalizado, `obterSlugEfetivo` do vizinho devolveria o
+         * `slug_gratuito` dele, o slug acessado não seria o efetivo e a
+         * resolução recusaria por outro motivo — o caso ficaria verde sem provar
+         * nada. É o plano pago que torna o sequestro alcançável.
+         */
+        async function criarVizinhoSequestrador(): Promise<void> {
+            const { error: pErro } = await admin.from('perfis_empresas').insert({
+                tenant_id: TENANT_VIZINHO,
+                slug: SLUG_GRATUITO_TESTE,
+                slug_gratuito: SLUG_GRATUITO_VIZINHO,
+                nome_estabelecimento: 'Vizinho descartável — sequestro de link',
+                timezone: TIMEZONE_TESTE,
+            })
+            if (pErro) throw new Error(`Falha ao criar o vizinho descartável: ${pErro.message}`)
+
+            const { error: aErro } = await admin.from('assinaturas').insert({
+                tenant_id: TENANT_VIZINHO,
+                plano: 'pro',
+                ciclo: 'MONTHLY',
+                valor: 14.9,
+                status: 'ativa',
+            })
+            if (aErro) throw new Error(`Falha ao criar a assinatura do vizinho: ${aErro.message}`)
+        }
+
+        it('recusa a resolução quando o mesmo texto é `slug` de um tenant e `slug_gratuito` de outro', async () => {
+            try {
+                await criarVizinhoSequestrador()
+
+                // Com o fallback encadeado, esta chamada casava na PRIMEIRA
+                // query, encontrava o vizinho (pago, slug efetivo = o texto
+                // acessado) e servia a página dele para quem visitou o link da
+                // fixture. Recusar é a única resposta segura: escolher qualquer
+                // um dos dois entrega a agenda de um tenant a visitante do outro.
+                const dados = await obterDadosBookingPublico(SLUG_GRATUITO_TESTE)
+
+                expect(
+                    dados,
+                    'A resolução devolveu um perfil para um slug ambíguo — é o sequestro do CR-03.',
+                ).toBeNull()
+            } finally {
+                await removerTenantVizinho()
+            }
+        })
+
+        it('o banco recusa um segundo perfil com `slug_gratuito` já existente (23505)', async () => {
+            // A constraint provada por ESCRITA real, não por leitura de catálogo:
+            // catálogo prova que o objeto existe, escrita prova que ele barra.
+            const { error } = await admin.from('perfis_empresas').insert({
+                tenant_id: TENANT_VIZINHO,
+                slug: SLUG_CUSTOMIZADO_VIZINHO_CONSTRAINT,
+                slug_gratuito: SLUG_GRATUITO_TESTE, // já pertence à fixture
+                nome_estabelecimento: 'Vizinho descartável — duplicata de slug_gratuito',
+                timezone: TIMEZONE_TESTE,
+            })
+
+            try {
+                // Asserção pelo CÓDIGO SQLSTATE, nunca pelo texto: mensagem de
+                // erro do Postgres muda entre versões, o código não.
+                expect(
+                    error,
+                    'O INSERT com `slug_gratuito` duplicado passou — a constraint perfis_empresas_slug_gratuito_key não está no banco.',
+                ).not.toBeNull()
+                expect(error?.code).toBe('23505')
+            } finally {
+                // Se a constraint sumir e o INSERT passar, a linha não pode ficar.
+                await removerTenantVizinho()
+            }
+        })
+
+        it('CONTROLE: sem vizinho, o slug da fixture continua resolvendo o mesmo perfil', async () => {
+            // Sem este caso, um resolver quebrado que recusasse TUDO passaria nos
+            // dois acima. Ele é o que separa "recusa a ambiguidade" de "recusa".
+            const dados = await obterDadosBookingPublico(SLUG_GRATUITO_TESTE)
+
+            expect(dados).not.toBeNull()
+            expect(dados!.perfil.tenant_id).toBe(TENANT_TESTE)
+            expect(dados!.servicos.length).toBeGreaterThan(0)
         })
     },
 )
