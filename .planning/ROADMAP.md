@@ -151,7 +151,7 @@ precisa ser sabido antes.
   4. Uma tabela nova criada no schema `public` não aparece na Data API sem GRANT explícito
   5. POST sem assinatura válida do QStash no webhook de lembrete é rejeitado, e a aplicação não sobe se as chaves de assinatura não estiverem configuradas
 
-**Plans**: 9/9 executados · 7 planejados na 2ª rodada de fechamento de gaps (01-10 a 01-16)
+**Plans**: 10/16 plans executed
 
 Plans:
 **Wave 1**
@@ -184,7 +184,7 @@ Plans:
 
 ⛔ **Serialização estrita mantida — um plano por wave, nunca em paralelo.** Todos os sete constroem, tocam o Supabase de dev, ou dependem do estado que o anterior deixou. Os três modos de falha nomeados na rodada 1 (`.next/` compartilhado, fixture do tenant de teste apagada no meio, contagem cross-tenant poluída) continuam valendo integralmente.
 
-- [ ] 01-10-PLAN.md — **Tracer:** um erro esperado atravessa a fronteira de flight em build de produção, com harness que reprova antes do conserto (gap 2, parte 1) (wave 1)
+- [x] 01-10-PLAN.md — **Tracer:** um erro esperado atravessa a fronteira de flight em build de produção, com harness que reprova antes do conserto (gap 2, parte 1) (wave 1)
 - [ ] 01-11-PLAN.md — A chave HMAC sai da URL publicada e o corpo do gateway sai do log (gap 1 / CR-01 + CR-04) (wave 2)
 - [ ] 01-12-PLAN.md — Caminho de escrita discriminado e recuperação de double-booking viva (gap 2, parte 2 — insumo obrigatório do SC4 da Phase 2) (wave 3)
 - [ ] 01-13-PLAN.md — `PENDENCIAS`/`CONTEXT`/`COVERAGE` coerentes, rotação de chave datada e os quatro deferimentos por escrito (gap 3 / WR-05) (wave 4)
@@ -502,7 +502,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | Etapa preparatória. Fundação operacional | 0/1 | Not started | - |
-| 1. Hardening da superfície pública | 9/9 | In Progress|  |
+| 1. Hardening da superfície pública | 10/16 | In Progress|  |
 | 2. Integridade da agenda | 0/TBD | Not started | - |
 | 3. Anti-abuso no booking público | 0/TBD | Not started | - |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |

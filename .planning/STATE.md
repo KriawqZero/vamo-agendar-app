@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
-status: ready_to_execute
-stopped_at: "2ª rodada de fechamento de gaps PLANEJADA: 7 planos (01-10 a 01-16) escritos, verificados pelo plan-checker e aprovados. A fase continua reprovada até que executem — os dois bloqueadores da reverificação seguem vivos no código. Próximo: /gsd-execute-phase 01"
-last_updated: "2026-07-22T17:01:02.391Z"
+status: executing
+stopped_at: Completed 01-10-PLAN.md
+last_updated: "2026-07-22T17:31:38.992Z"
 last_activity: 2026-07-22
-last_activity_desc: "2ª rodada de fechamento de gaps planejada (01-10 a 01-16), aprovada pelo plan-checker após duas iterações de revisão"
+last_activity_desc: "plano 01-10 executado: erro esperado do booking passou a atravessar a fronteira de flight, com harness que reprovava antes do conserto"
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 16
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -27,21 +27,21 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — 9/16 PLANOS EXECUTADOS, 7 PLANEJADOS E PRONTOS
-Plan: 9 de 16 concluídos (01-01 a 01-09); 01-10 a 01-16 planejados, nenhum executado
-Status: **a fase NÃO está completa e os dois bloqueadores continuam vivos no código.** Confirmei no HEAD `1685496` antes de planejar: `whatsapp-helper.ts:147` ainda concatena a chave, e os 11 `throw` de `public-booking.ts` ainda estão lá. O que mudou nesta sessão foi só o planejamento:
+Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTANDO a 2ª rodada de fechamento de gaps
+Plan: 10 de 16 concluídos (01-01 a 01-10). Próximo: **01-11**
+Status: **a fase continua incompleta.** Dos dois bloqueadores da reverificação, um foi fechado nesta sessão e o outro segue vivo no código:
 
-  1. `whatsapp-helper.ts:147` publica `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — é a mesma chave HMAC com que o webhook autentica desde o 01-03. Ataca diretamente a segunda metade do goal da fase. **Fecha em 01-11** (código) + **01-13** (rotação datada como item do owner, PENDENCIAS, e correção dos dois documentos cuja premissa o verificador refutou)
-  2. Em build de produção o React só transporta o `digest` do erro da Server Action, então a copy contratada no `01-UI-SPEC` e a recuperação de double-booking (`includes('já foi preenchido')`) estão mortas na tela. A suíte do 01-07 dá verde porque chama a action em processo. **Fecha em 01-10** (tracer: uma travessia real, com harness que sonda `next start` pela fronteira de flight) + **01-12** (expansão). É insumo obrigatório do SC4 da Phase 2
+  1. `whatsapp-helper.ts:147` publica `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — é a mesma chave HMAC com que o webhook autentica desde o 01-03. Ataca diretamente a segunda metade do goal da fase. **ABERTO. Fecha em 01-11** (código) + **01-13** (rotação datada como item do owner, PENDENCIAS, e correção dos dois documentos cuja premissa o verificador refutou)
+  2. Em build de produção o React só transporta o `digest` do erro da Server Action, então a copy contratada no `01-UI-SPEC` e a recuperação de double-booking (`includes('já foi preenchido')`) estão mortas na tela. **METADE FECHADA no 01-10**: o caminho de LEITURA (`obterSlotsPublicos`) devolve `{ ok: false, motivo }`, e `scripts/verificar-travessia-server-action.sh` prova a travessia contra `next start` (reprovava antes, aprova depois). O caminho de ESCRITA continua lançando e `includes('já foi preenchido')` continua sempre `false` em produção — **fecha em 01-12**. Insumo obrigatório do SC4 da Phase 2
 
 Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code review: CR-03 (`slug_gratuito` sem UNIQUE → sequestro de link público entre tenants, com PII de cliente final) em 01-14; WR-02 (default privileges não cobre FUNCTIONS) e WR-08 (harness de superfície com falso verde) em 01-15; WR-07 (`assinaturas.ts` degrada tenant pago a gratuito) em 01-16. WR-01, WR-03, WR-04 e WR-06 ficaram fora, diferidos com razão e gatilho escritos no 01-13.
 
 Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
 
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar) — dois deles com prognóstico negativo até o bloqueador 2 fechar
-Last activity: 2026-07-22 — 2ª rodada de fechamento de gaps planejada e aprovada pelo plan-checker
+Last activity: 2026-07-22 — plano 01-10 executado: erro esperado do booking passou a atravessar a fronteira de flight, com harness que reprovava antes do conserto
 
-Progress: [█████░░░░░] 56% (9/16 planos executados; verificação reprovada, correção planejada)
+Progress: [██████░░░░] 63% (10/16 planos executados; verificação ainda reprovada, correção em andamento)
 
 ## Performance Metrics
 
@@ -76,6 +76,7 @@ Progress: [█████░░░░░] 56% (9/16 planos executados; verifica
 | Phase 01 P06 | ~50min | 2 tasks | 5 files |
 | Phase 01 P08 | ~22min | 3 tasks | 3 files |
 | Phase 01 P09 | ~35min | 3 tasks | 5 files |
+| Phase 01 P10 | ~33min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -124,6 +125,9 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: [Phase 01]: Correcao de requisito preserva o historico do erro — SEG-05 vira [x] mas registra que a segunda metade foi medida como falsa e por qual plano foi fechada, com o harness nomeado
 - [Phase ?]: [Phase 01]: Item de UAT parcialmente coberto diz PRIMEIRO o que a automacao NAO cobre; nenhum executor pode marcar item de UAT, e a contagem 7 abertas / 0 marcadas em PENDENCIAS e o controle automatizado disso
 - [Phase ?]: [Phase 01]: Hermeticidade do pnpm test virou regra viva em docs/PENDENCIAS.md — test:integracao e o unico ponto de entrada da suite que toca o banco, e reincluí-la no glob padrao faria toda Definition of Done futura escrever no Supabase de dev
+- [Phase ?]: Erro esperado de Server Action e valor de retorno discriminado, nunca throw: em build de producao o React so transporta o digest (medido: 1:E{"digest":"2760064589"}). throw so vale onde nenhum catch de cliente consome a .message
+- [Phase ?]: Copia de UI publica mora no cliente numa constante unica que alimenta a tela e a assercao de teste — copia divergente fica impossivel por construcao (src/app/book/[slug]/mensagens.ts)
+- [Phase ?]: Harness de fronteira de flight: o id da Server Action e sempre derivado de .next/server/server-reference-manifest.json, nunca literal — id colado a mao sobrevive a refatoracao que o invalida e deixa o harness verde para sempre
 
 ### Pending Todos
 
@@ -172,6 +176,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T15:23:03.584Z
-Stopped at: Completed 01-09-PLAN.md
+Last session: 2026-07-22T17:30:52.378Z
+Stopped at: Completed 01-10-PLAN.md
 Resume file: None
