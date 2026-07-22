@@ -16,15 +16,20 @@ CREATE TABLE agendamentos (
 ALTER TABLE agendamentos ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de RLS
--- 1. Leitura pública para busca de slots ocupados (B2C)
-CREATE POLICY "Permitir SELECT público para todos" 
-ON agendamentos FOR SELECT TO anon, authenticated
-USING (true);
+-- 1. Leitura restrita ao profissional dono da agenda. A página pública lê a
+--    ocupação pelo servidor com cliente privilegiado — a role anônima não
+--    precisa (e não deve) enxergar agendamento nenhum: cliente_id e servico_id
+--    permitem pivotar a agenda de qualquer tenant.
+CREATE POLICY "Permitir SELECT do próprio tenant para autenticados"
+ON agendamentos FOR SELECT TO authenticated
+USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'));
 
--- 2. Inserção pública para agendamentos anônimos (B2C)
-CREATE POLICY "Permitir INSERT público para visitantes" 
-ON agendamentos FOR INSERT TO anon, authenticated
-WITH CHECK (tenant_id IS NOT NULL);
+-- 2. Criação restrita ao profissional (agendamento manual do dashboard).
+--    O booking público (B2C) escreve pela Server Action com createAdminClient()
+--    após validar tenant, serviço e slot — nunca pela Data API.
+CREATE POLICY "Permitir INSERT para membros da org autenticados"
+ON agendamentos FOR INSERT TO authenticated
+WITH CHECK (tenant_id = (SELECT auth.jwt() ->> 'org_id'));
 
 -- 3. Edição e cancelamento restritos ao profissional (B2B)
 CREATE POLICY "Permitir UPDATE para membros da org autenticados" 
@@ -37,6 +42,11 @@ ON agendamentos FOR DELETE TO authenticated
 USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'));
 
 -- Comentários
+COMMENT ON POLICY "Permitir SELECT do próprio tenant para autenticados" ON agendamentos IS
+'A agenda é dado operacional do tenant. O fluxo público de booking obtém ocupação pelo servidor, não pela role anônima.';
+COMMENT ON POLICY "Permitir INSERT para membros da org autenticados" ON agendamentos IS
+'Agendamento manual do dashboard. A criação pelo cliente final passa pela Server Action pública, que valida slot contra double-booking e escreve com privilégio de serviço.';
+
 COMMENT ON TABLE agendamentos IS 'Registra os agendamentos realizados pelos clientes finais.';
 COMMENT ON COLUMN agendamentos.tenant_id IS 'Identificador do tenant dono deste agendamento.';
 COMMENT ON COLUMN agendamentos.status IS 'Status da reserva (pendente, confirmado, concluido, cancelado).';

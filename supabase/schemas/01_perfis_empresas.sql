@@ -21,10 +21,15 @@ CREATE TABLE perfis_empresas (
 ALTER TABLE perfis_empresas ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de RLS
--- 1. Leitura pública para quem vai realizar o agendamento
-CREATE POLICY "Permitir SELECT público para todos" 
-ON perfis_empresas FOR SELECT TO anon, authenticated
-USING (true);
+-- 1. Leitura restrita ao próprio tenant. A página pública lê o perfil pelo
+--    servidor com cliente privilegiado (createAdminClient), resolvendo o
+--    tenant a partir do slug — a role anônima não tem (e não deve ter) como
+--    enumerar os profissionais da plataforma.
+--    Também segura o RETURNING: upsert(...).select() das actions de perfil
+--    exige que a linha passe no SELECT.
+CREATE POLICY "Permitir SELECT do próprio tenant para autenticados"
+ON perfis_empresas FOR SELECT TO authenticated
+USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'));
 
 -- 2. Escrita protegida para o tenant autenticado
 CREATE POLICY "Permitir INSERT para donos da org autenticados" 
@@ -41,6 +46,9 @@ ON perfis_empresas FOR DELETE TO authenticated
 USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'));
 
 -- Comentários
+COMMENT ON POLICY "Permitir SELECT do próprio tenant para autenticados" ON perfis_empresas IS
+'O perfil é a identidade pública do estabelecimento, mas a LISTA de estabelecimentos não é pública: com SELECT liberado para a role anônima, qualquer um com a chave publicável raspava nome, telefone_contato e o org_id do Clerk de todos os profissionais da plataforma. A página pública lê o perfil pelo servidor com cliente privilegiado, resolvendo o tenant a partir do slug.';
+
 COMMENT ON TABLE perfis_empresas IS 'Armazena as informações públicas de perfil de cada estabelecimento/tenant.';
 COMMENT ON COLUMN perfis_empresas.tenant_id IS 'Identificador único da organização no Clerk (tenant).';
 COMMENT ON COLUMN perfis_empresas.slug IS 'Slug único utilizado na URL pública de agendamento.';

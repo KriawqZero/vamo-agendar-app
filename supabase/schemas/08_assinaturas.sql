@@ -30,21 +30,28 @@ CREATE POLICY "Permitir SELECT do próprio tenant para autenticados"
 ON assinaturas FOR SELECT TO authenticated
 USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'));
 
--- Política: o fluxo público de booking (role anon) precisa saber se o tenant
--- tem WhatsApp habilitado no plano vigente para decidir se dispara mensagens.
-CREATE POLICY "Permitir SELECT público para verificação de recursos"
-ON assinaturas FOR SELECT TO anon
-USING (true);
-
--- O GRANT por coluna restringe anon a tenant_id/plano/status: campos de
--- pagamento (valor, ids Asaas, url de fatura) nunca ficam legíveis sem login.
-REVOKE SELECT ON assinaturas FROM anon;
-GRANT SELECT (tenant_id, plano, status) ON assinaturas TO anon;
+-- A role anônima NÃO tem — e não volta a ter — privilégio nenhum nesta tabela
+-- desde a Phase 1 (migration 20260722044858_revoga_anon_assinaturas). O GRANT
+-- por coluna que existia aqui (tenant_id/plano/status) protegia os campos de
+-- pagamento mas deixava `GET /rest/v1/assinaturas?select=tenant_id` devolver o
+-- org_id do Clerk de todo tenant pagante — enumeração em massa com a chave
+-- publicável. Não há como fechar isso por coluna: o Postgres exige SELECT em
+-- qualquer coluna referenciada na query, inclusive no WHERE, e a leitura do
+-- plano filtra por tenant_id.
+--
+-- Com isso a policy "Permitir SELECT público para verificação de recursos"
+-- ficou morta (sem privilégio a policy nunca chega a ser avaliada — o portão
+-- fecha antes do porteiro) e foi removida pela Phase 1. A leitura pública do
+-- plano vigente é servida pelo cliente privilegiado em obterPlanoVigentePublico,
+-- com o tenant resolvido no servidor a partir do slug.
+--
+-- Os privilégios da Data API não moram no schema declarativo: `supabase db diff`
+-- não emite GRANT/REVOKE. Ver docs/03-PADROES_DE_BANCO_DE_DADOS.md
+-- §"Privilégios da Data API".
 
 -- Comentários
 COMMENT ON TABLE assinaturas IS 'Assinatura de plano pago (plus/pro) de cada tenant, no formato da integração Asaas. Plano Gratuito = ausência de linha vigente.';
 COMMENT ON COLUMN assinaturas.ciclo IS 'Ciclo de cobrança no enum do Asaas (MONTHLY/YEARLY).';
 COMMENT ON COLUMN assinaturas.status IS 'ativa = em dia; inadimplente = mantém benefícios + banner de pagamento pendente; cancelada = volta ao Gratuito.';
 COMMENT ON COLUMN assinaturas.url_fatura_pendente IS 'invoiceUrl da cobrança em atraso no Asaas, usada no banner de inadimplência.';
-COMMENT ON POLICY "Permitir SELECT do próprio tenant para autenticados" ON assinaturas IS 'Leitura restrita ao tenant; escrita reservada ao backend (SQL manual/webhook Asaas), sem política para roles de API.';
-COMMENT ON POLICY "Permitir SELECT público para verificação de recursos" ON assinaturas IS 'O fluxo público de booking precisa saber se o tenant tem WhatsApp habilitado no plano. O GRANT por coluna limita anon a tenant_id/plano/status — campos de pagamento ficam invisíveis sem login.';
+COMMENT ON POLICY "Permitir SELECT do próprio tenant para autenticados" ON assinaturas IS 'Leitura restrita ao tenant; escrita reservada ao backend (SQL manual/webhook Asaas), sem política para roles de API. A role anônima não tem privilégio nesta tabela desde a Phase 1: o plano vigente da página pública é lido pelo cliente privilegiado.';
