@@ -12,10 +12,31 @@ pnpm dev          # servidor de desenvolvimento
 pnpm build        # build de produção
 pnpm lint         # eslint
 pnpm test         # testes unitários (vitest)
-supabase stop && supabase db diff -f <nome_da_migracao>   # gerar migration a partir dos schemas declarativos
+npx supabase db diff --linked -f <nome_da_migracao>   # gerar migration a partir dos schemas declarativos
 ```
 
 Gerenciador de pacotes: **pnpm**.
+
+## Infraestrutura: tudo é gerenciado, nada roda local
+
+**Não existe Docker neste projeto e não existe serviço local para subir.** Banco no
+Supabase **Cloud**, Evolution API na **Railway**, filas no **Upstash QStash**, e-mail no
+**Resend**, auth no **Clerk**, analytics/erros em **PostHog** e **Sentry**.
+
+Nunca rode — todos tentam subir stack local por Docker que este projeto não usa:
+`supabase start`, `supabase stop`, `supabase db reset` (sem `--linked`), `supabase db diff`
+(sem `--linked`), `docker compose up`.
+
+- **Migrations de DDL declarativo**: `npx supabase db diff --linked`.
+- **REVOKE/GRANT e outros privilégios**: `db diff` **não os emite** — escreva a migration à
+  mão (precedentes: `20260709193156`, `20260722044858`) e aplique via `mcp__supabase__apply_migration`.
+- ⚠️ **`apply_migration` não preserva a version do arquivo.** Ele carimba o instante da
+  chamada e joga o nome inteiro do arquivo no campo `name`, desalinhando repo e ledger —
+  o que quebra todo `db diff` futuro. Depois de **cada** apply, confira
+  `mcp__supabase__list_migrations` e realinhe por DML:
+  `update supabase_migrations.schema_migrations set version='<timestamp-do-arquivo>', name='<parte-descritiva>' where version='<a-que-o-mcp-inventou>';`
+- A stack Docker da Evolution API foi movida para `../obsoleto-docker-evolution/` em
+  2026-07-22 (contexto em `OBSOLETO.md` lá).
 
 ## Definition of Done
 
@@ -71,6 +92,12 @@ Storage: bucket público `imagens-perfis` (logo/capa dos tenants, paths `<org_id
 - Editar migrations existentes é permitido NESTA FASE (relaxamento temporário do "nunca editar `supabase/migrations/`" acima).
 - Hook de imutabilidade de migrations existe pronto em `.claude/hooks/migrations-prod.md`; ativar no go-live (passos no checklist de `docs/PENDENCIAS.md`, seção "Obrigatório antes do lançamento público").
 - ⚠️ Ao entrar em prod, esta seção será substituída por regras de imutabilidade.
+
+### Segredos (fase atual: DEV)
+
+- **`.env.local` pode ser lido livremente neste projeto.** Autorização explícita do owner que sobrepõe, apenas aqui, a regra global "nunca ler `.env` e secrets". As chaves são de ambiente de desenvolvimento e serão trocadas antes do lançamento público.
+- Continua proibido, mesmo em DEV: escrever no `.env.local`, ecoar valores em log ou saída de comando, e reproduzir qualquer chave em commit, doc, PR, issue ou mensagem.
+- ⚠️ Ao entrar em prod, esta seção sai e a proibição global volta a valer integralmente.
 
 ### Engine de disponibilidade (`src/lib/booking-engine.ts`)
 
