@@ -188,6 +188,9 @@ Plans:
 - `ALTER DEFAULT PRIVILEGES ... REVOKE` no schema `public` + a regra escrita no `docs/03`
 - SEG-05 fecha o `?secret=` com fallback `'secret-key'`, que hoje transforma env ausente em porta destrancada para disparar WhatsApp em nome de tenants
 - ✅ O DNS do subdomínio de e-mail, que era o item mais atrasado do milestone, **foi resolvido em 2026-07-21** e não bloqueia mais nada — ver Phase 4
+- **O critério 5 é provado por `bash scripts/verificar-fail-fast-boot.sh`** — quatro vereditos com o exit code como veredito: `BUILD` (o build continua saindo 0 com a variável vazia), `MORTE` (o `next start` de produção encerra com código 1, nomeia a variável em `stderr` e a porta recusa conexão), `CONTROLE` (o mesmo build com as quatorze presentes responde 200) e `WEBHOOK` (401 sem assinatura, 401 com o secret legado em query string, 401 com assinatura forjada, 200 no controle). É o comando a rodar antes de qualquer afirmação sobre SEG-05
+- **A primeira medição da fase (plano 01-05, confirmada pelo verificador) encontrou o processo SOBREVIVENDO:** com uma obrigatória vazia o `next start` logava o erro, respondia 500 em toda rota e seguia escutando — deploy verde com 100% do tráfego falhando. Não era buraco de segurança, era defeito operacional. A semântica de boot foi alterada por decisão do owner no plano 01-06 (`process.exit(1)` guardado por produção + runtime `nodejs`), e só então o critério 5 passou a ser literalmente verdadeiro
+- Os quatro planos do fechamento de gaps rodaram na ordem 01-07 → 01-06 → 01-08 → 01-09, um por wave; o 01-09 reexecutou as três provas sobre o HEAD final antes de escrever qualquer documento
 
 ---
 

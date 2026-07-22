@@ -172,8 +172,27 @@ reavaliação em `docs/PENDENCIAS.md`.
 
 ## Fail-fast de configuração (`src/lib/env.ts`)
 
-Em `NODE_ENV=production`, variável obrigatória ausente **derruba o boot** listando todos os
-nomes faltantes de uma vez. Em desenvolvimento e em teste, no-op.
+Em `NODE_ENV=production`, variável obrigatória ausente faz o processo **encerrar**: a
+mensagem sai em `stderr` listando todos os nomes faltantes de uma vez e, logo em seguida,
+`encerrarBootPorEnvAusente()` (`src/lib/env.ts`) chama `process.exit(1)`. Não é "derruba o
+boot" no sentido vago de logar e continuar de pé — a porta para de aceitar conexão, e é isso
+que permite ao orquestrador reiniciar ou fazer rollback em vez de marcar como saudável um
+deploy que responde 500 em toda rota. Em desenvolvimento e em teste, no-op.
+
+Até o plano 01-06 da Phase 1 o comportamento era o outro: o `throw` saído de `register()`
+virava `unhandledRejection` no Next 16 e o servidor **seguia escutando**. A Phase 1 mediu
+isso, o owner decidiu mudar a semântica, e a prova virou comando:
+`bash scripts/verificar-fail-fast-boot.sh` — veredito `MORTE` (código de saída ≠ 0, variável
+nomeada em `stderr`, `curl` 7 = recusa de conexão).
+
+**Duas guardas mantêm o resto funcionando** e as duas são necessárias: o encerramento só
+acontece com `NODE_ENV=production` (a validação retorna na primeira linha fora dele, então
+`pnpm dev` continua subindo com variável ausente) e só no runtime `nodejs`
+(`NEXT_RUNTIME === 'nodejs'` em `src/instrumentation.ts`) — fora dele a exceção é relançada
+como antes, porque `process.exit` não existe no Edge Runtime. Efeito colateral conhecido e
+registrado em `docs/PENDENCIAS.md`: o Turbopack emite três diagnósticos estáticos de Edge
+Runtime por build (o analisador não enxerga a guarda), o build continua saindo 0 e o código
+nunca executa no edge.
 
 Disparado por `register()` em `src/instrumentation.ts`, **antes** de qualquer import de
 terceiro — invertido, um env faltando estouraria dentro do init do Sentry com a mensagem
@@ -191,8 +210,11 @@ congelado. Pressuposto declarado: o Railway usa o mesmo env em build e runtime.
 Clerk fica de fora — ele falha alto e imediato, e duplicar só criaria risco de errar o nome.
 A Phase 1 (SEG-05) acrescenta as chaves de assinatura do QStash a esta mesma lista.
 
-⚠️ **Risco de ordem de operação:** a lista já está ativa. Deploy de produção antes de
-provisionar as variáveis novas derruba o boot de propósito. Ver `docs/PENDENCIAS.md`.
+⚠️ **Risco de ordem de operação:** a lista já está ativa, e agora encerra o processo de
+verdade. Deploy de produção antes de provisionar as variáveis novas derruba o boot de
+propósito — o comportamento pedido, mas isso torna obrigatório conferir que todas as
+obrigatórias existem no Railway **antes** de subir, ou remover o nome da lista no mesmo
+commit. Ver `docs/PENDENCIAS.md` §WR-02.
 
 ---
 
