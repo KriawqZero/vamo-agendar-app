@@ -279,6 +279,13 @@ Nenhum — nada de externo a configurar.
 - **Para a 4ª verificação:** o gap "checagem que não prova nada não pode passar" tem agora reprodução por comando nos dois sentidos. Reprovar o conserto é reverter o commit `59ded5a` e ver os quatro vereditos voltarem ao vermelho.
 - **Aviso que sobrevive a este plano:** `ROADMAP.md:195` e `01-04-PLAN.md:170` citam o exit 0 deste harness como prova de SEG-01/02/03. Essa citação volta a ser legítima — mas só junto do controle. Um exit 0 do harness sem o controle ter sido rodado alguma vez continua sendo uma afirmação sobre um instrumento que ninguém conferiu.
 
+## Self-Check: PASSED
+
+- `scripts/verificar-controle-harness-anon.sh` — FOUND
+- `scripts/verificar-superficie-anon.sh` — FOUND
+- `.planning/phases/01-hardening-da-superf-cie-p-blica/01-17-SUMMARY.md` — FOUND
+- Commits `4308161`, `59ded5a`, `05013be` — todos presentes em `git log --all`
+
 ---
 
 _Phase: 01-hardening-da-superf-cie-p-blica_

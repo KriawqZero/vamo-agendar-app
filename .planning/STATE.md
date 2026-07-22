@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: ready_to_execute
-stopped_at: "3ª rodada de fechamento de gaps PLANEJADA (01-17 a 01-19) e verificada pelo plan-checker em duas passagens — 3 warnings levantados e fechados, 0 blockers. Trabalho na branch `fase-01-gaps-rodada-3` (a `posthog` foi mergeada na master pelo PR #7 e apagada). Próximo: /gsd-execute-phase 01"
-last_updated: "2026-07-22T19:25:00.000Z"
+stopped_at: Completed 01-17-PLAN.md
+last_updated: "2026-07-22T21:17:22.156Z"
 last_activity: 2026-07-22
-last_activity_desc: "3ª rodada planejada: 01-17 conserta o instrumento que certifica fechamento sem ter medido, 01-18 fecha o DoS por entrada não validada na superfície pública anônima, 01-19 escreve o alcance real da D-03 e reexecuta as 8 provas sobre o HEAD final"
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 19
-  completed_plans: 16
+  completed_plans: 17
+last_activity_desc: "3ª rodada planejada: 01-17 conserta o instrumento que certifica fechamento sem ter medido, 01-18 fecha o DoS por entrada não validada na superfície pública anônima, 01-19 escreve o alcance real da D-03 e reexecuta as 8 provas sobre o HEAD final"
 ---
 
 # Project State
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — 3ª rodada de fechamento de gaps PLANEJADA, pronta para executar
-Plan: 16 de 19 concluídos (01-01 a 01-16). A verificação **rodou** sobre o HEAD `8edb32d` e **reprovou**: 11/13 must-haves, `status: gaps_found` em `01-VERIFICATION.md`. Os planos 01-17, 01-18 e 01-19 existem para fechar os dois gaps e o item de registro — nenhum deles executado ainda
+Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
+Plan: 2 of 19
 
 ### Planejamento da 3ª rodada (2026-07-22, branch `fase-01-gaps-rodada-3`)
 
@@ -67,9 +67,9 @@ Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code rev
 Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
 
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
-Last activity: 2026-07-22 — 3ª rodada de fechamento de gaps planejada (01-17 a 01-19) e aprovada pelo plan-checker na segunda passagem
+Last activity: 2026-07-22
 
-Progress: [████████░░] 84% (16/19 planos executados; os 3 da 3ª rodada estão planejados e não executados. A fase permanece **reprovada** na verificação — 11/13 must-haves — até que 01-17, 01-18 e 01-19 rodem e uma 4ª verificação meça o resultado)
+Progress: [█████████░] 89% (16/19 planos executados; os 3 da 3ª rodada estão planejados e não executados. A fase permanece **reprovada** na verificação — 11/13 must-haves — até que 01-17, 01-18 e 01-19 rodem e uma 4ª verificação meça o resultado)
 
 ## Performance Metrics
 
@@ -111,6 +111,7 @@ Progress: [████████░░] 84% (16/19 planos executados; os 3 da
 | Phase 01 P15 | ~50min | 2 tasks | 3 files |
 | Phase 01 P14 | ~35min | 3 tasks | 5 files |
 | Phase 01 P16 | ~65min | 2 tasks | 7 files |
+| Phase 01 P17 | ~25min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -185,6 +186,11 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: [Phase 01]: 01-16: sanitizacao forcada e escrita EXPLICITAMENTE mesmo quando o valor corrente ja a implica — depender de o padrao conservador ser 'gratuito' faria de qualquer mudanca futura desse padrao um vazamento de recurso pago
 - [Phase ?]: [Phase 01]: 01-16: comentario nao repete o token que um grep-guard da fase vigia — prosa citando tenantId cega a guarda que deveria pegar o vazamento; duas contagens derivaram por isso e os comentarios foram reescritos
 - [Phase ?]: [Phase 01]: 01-16: falha que o banco nao sabe produzir sob demanda e injetada na FRONTEIRA da funcao (mock parcial de assinaturas), preservando linhas reais no resto da suite — a alternativa era revogar privilegio no banco compartilhado no meio da suite
+- [Phase 01]: 01-17: exit 0 de harness de seguranca exige PROVA POSITIVA, nunca ausencia de reprovacao — contra alvo mudo, 'nenhuma reprovacao' e 'nenhuma medicao' produzem o mesmo relatorio; o contador ESPERADAS decide o exit code, senao seria mais um numero impresso e descartado como INCONCLUSIVAS era
+- [Phase 01]: 01-17: fechamento se prova por PAR, nunca por sonda unica — referencia declarada respondendo 42501 (host respondeu, e PostgREST, o portao do Postgres se pronunciou) + canario inexistente respondendo PGRST205; indistinguiveis, sai 2, porque 'fechado' e 'nao e este banco' sao a mesma resposta para quem so olha tabelas que existem
+- [Phase 01]: 01-17: identidade do alvo e veredito de BATERIA (add-alongside, ao lado de COBERTURA) — nao conta como checagem, nao alimenta o contador de prova positiva, e roda SEMPRE inclusive com filtro: escopo reduzido dispensa cobertura, nunca identidade
+- [Phase 01]: 01-17: o canario tem guarda propria que aborta com 2 se o nome passar a constar dos schemas declarativos — canario que existe nao distingue nada, e a guarda foi vista FALHANDO (canario=assinaturas) antes de a constante ser revertida
+- [Phase 01]: 01-17: o terceiro eixo de falso verde (alvo que nega TUDO uniformemente — gateway hostil, proxy autenticando na frente, rate limit em 401) nao estava no code review nem no relatorio de verificacao; sem o veredito TUDO_NEGADO o conserto fecharia um eixo e abriria outro pela terceira vez
 
 ### Pending Todos
 
@@ -238,6 +244,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T19:32:16.468Z
-Stopped at: Completed 01-16-PLAN.md
+Last session: 2026-07-22T21:16:39.413Z
+Stopped at: Completed 01-17-PLAN.md
 Resume file: None

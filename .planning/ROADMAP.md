@@ -151,7 +151,7 @@ precisa ser sabido antes.
   4. Uma tabela nova criada no schema `public` não aparece na Data API sem GRANT explícito
   5. POST sem assinatura válida do QStash no webhook de lembrete é rejeitado, e a aplicação não sobe se as chaves de assinatura não estiverem configuradas
 
-**Plans**: 19 plans (16/19 executed; 3 planejados na 3ª rodada de fechamento de gaps)
+**Plans**: 17/19 plans executed
 
 Plans:
 **Wave 1**
@@ -198,7 +198,7 @@ Plans:
 
 ⛔ **Serialização estrita mantida — um plano por wave, nunca em paralelo.** Os três modos de falha nomeados na rodada 1 (`.next/` compartilhado, fixture do tenant de teste apagada no meio, contagem cross-tenant poluída) continuam valendo integralmente; o 01-18 e o 01-19 constroem, e o 01-19 mede o HEAD final.
 
-- [ ] 01-17-PLAN.md — **Tracer:** o instrumento de superfície ganha prova positiva e controle de identidade do alvo, com controle re-executável que nasce vermelho (gap 1 / CR-02) (wave 1)
+- [x] 01-17-PLAN.md — **Tracer:** o instrumento de superfície ganha prova positiva e controle de identidade do alvo, com controle re-executável que nasce vermelho (gap 1 / CR-02) (wave 1)
 - [ ] 01-18-PLAN.md — A superfície pública anônima deixa de entregar um jeito de derrubar o processo com uma requisição: validação na fronteira + guarda de profundidade na engine (gap 2 / CR-01) (wave 2, depende de 01-17)
 - [ ] 01-19-PLAN.md — Alcance da D-03 escrito no `docs/03`, registro coerente em `PENDENCIAS`, e gate de reexecução de todas as provas sobre o HEAD final (wave 3, depende de 01-18)
 
@@ -514,7 +514,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | Etapa preparatória. Fundação operacional | 0/1 | Not started | - |
-| 1. Hardening da superfície pública | 16/16 | In Progress|  |
+| 1. Hardening da superfície pública | 17/19 | In Progress|  |
 | 2. Integridade da agenda | 0/TBD | Not started | - |
 | 3. Anti-abuso no booking público | 0/TBD | Not started | - |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |
