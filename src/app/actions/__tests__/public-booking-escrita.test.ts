@@ -151,16 +151,6 @@ const DURACAO_SERVICO_TESTE = 30
  * pontas deixa este teste vermelho, em vez de quebrar a UX em silêncio.
  */
 const TRECHO_DOUBLE_BOOKING = 'já foi preenchido'
-const CAMINHO_BOOKING_APP = 'src/app/book/[slug]/BookingApp.tsx'
-const CAMINHO_ACTION_PUBLICA = 'src/app/actions/public-booking.ts'
-
-/**
- * Cópia renderizada VERBATIM ao cliente final na caixa vermelha da etapa de
- * data/hora quando o slug não resolve (caso real: downgrade de plano invalida o
- * slug customizado com a aba do cliente aberta). Contrato de copy do
- * 01-UI-SPEC §"Regra sobre erros novos" — asserção por igualdade estrita.
- */
-const COPIA_ERRO_SLOTS = 'Não foi possível carregar os horários. Tente de novo.'
 
 const TELEFONE_FORMATADO = '(11) 98888-7777'
 const TELEFONE_SANITIZADO = '11988887777'
@@ -222,6 +212,21 @@ async function prepararTenantDeTeste(): Promise<void> {
     // chamadas desta suíte passam.
 }
 
+/**
+ * Desembrulha o retorno DISCRIMINADO de `obterSlotsPublicos` (`{ ok, slots }` |
+ * `{ ok, motivo }`). Falhar aqui, nomeando o `motivo`, é muito melhor do que o
+ * teste morrer três linhas adiante lendo `.datetime` de `undefined`.
+ */
+async function slotsLivresDaFixture(): Promise<{ time: string; datetime: string }[]> {
+    const resultado = await obterSlotsPublicos(SLUG_GRATUITO_TESTE, dataAlvo, DURACAO_SERVICO_TESTE)
+    if (!resultado.ok) {
+        throw new Error(
+            `obterSlotsPublicos devolveu { ok: false, motivo: '${resultado.motivo}' } para a fixture — a grade não pôde ser calculada.`,
+        )
+    }
+    return resultado.slots
+}
+
 // ---------------------------------------------------------------------------
 // Sentinela — nunca é pulada. É o que impede um pulo silencioso de virar
 // falso verde: sob `pnpm test:integracao` a variável está setada, então faltar
@@ -273,11 +278,7 @@ describe.skipIf(!temCredenciais)(
             // slot por igualdade exata contra a saída de `obterSlotsDisponiveis`,
             // então consumir essa saída é o que exercita o contrato anti
             // double-booking em vez de contorná-lo com um literal cravado.
-            const slots = await obterSlotsPublicos(
-                SLUG_GRATUITO_TESTE,
-                dataAlvo,
-                DURACAO_SERVICO_TESTE,
-            )
+            const slots = await slotsLivresDaFixture()
             expect(
                 slots.length,
                 `A fixture de horários não cobriu ${dataAlvo} — nenhum slot devolvido.`,
@@ -328,11 +329,7 @@ describe.skipIf(!temCredenciais)(
         it('reaproveita o cliente existente pelo telefone, em vez de duplicar a linha', async () => {
             // A grade é refeita depois do primeiro agendamento: o primeiro slot
             // livre agora é necessariamente outro horário.
-            const slots = await obterSlotsPublicos(
-                SLUG_GRATUITO_TESTE,
-                dataAlvo,
-                DURACAO_SERVICO_TESTE,
-            )
+            const slots = await slotsLivresDaFixture()
             expect(slots.length).toBeGreaterThan(0)
             expect(slots[0].datetime).not.toBe(datetimeOcupado)
 
@@ -387,51 +384,53 @@ describe.skipIf(!temCredenciais)(
             expect(await contar()).toBe(antes)
         })
 
-        it('mantém o acoplamento de string casando nas DUAS pontas (action ↔ BookingApp)', () => {
-            // O produtor é exercitado no caso acima. O consumidor mora no
-            // navegador e não é importável aqui — então a prova é por asserção
-            // de FONTE, derivada da mesma constante.
-            const fonteAction = readFileSync(CAMINHO_ACTION_PUBLICA, 'utf8')
-            expect(fonteAction).toContain(TRECHO_DOUBLE_BOOKING)
-
-            const fonteBookingApp = readFileSync(CAMINHO_BOOKING_APP, 'utf8')
-            expect(fonteBookingApp).toContain(`mensagem.includes('${TRECHO_DOUBLE_BOOKING}')`)
-        })
+        // Aqui existia um caso chamado 'mantém o acoplamento de string casando
+        // nas DUAS pontas', que lia a FONTE de `BookingApp.tsx` e da action com
+        // `readFileSync` e assertava a substring nas duas. Foi REMOVIDO de
+        // propósito, não esquecido: prova em processo + leitura de fonte nunca
+        // provaram a travessia de flight, e davam verde exatamente enquanto o
+        // caminho estava morto em produção (é literalmente um item da lista
+        // `missing` do gap 2 do 01-VERIFICATION.md). Quem cobre isso agora é
+        // `scripts/verificar-travessia-server-action.sh`, contra `next start`.
+        // Não reintroduzir a asserção de fonte achando que sumiu cobertura.
 
         // Este caminho de falha NASCEU com a troca de identificador do plano
         // 01-02 (`tenantId` → `slug`, per D-04): antes o slug não resolver não
         // era um erro, era uma grade calculada com fuso e regras padrão — errada
-        // e sem sintoma. Hoje a action LANÇA, e a string inteira é renderizada
-        // VERBATIM ao cliente final na caixa vermelha da etapa de data/hora.
+        // e sem sintoma. Hoje a action RESOLVE com um discriminante fechado, e a
+        // cópia em pt-BR é escolhida no cliente (`mensagens.ts`) — pinada por
+        // igualdade estrita na suíte hermética `src/app/book/__tests__/`.
         //
         // ⚠️ O que este caso NÃO cobre: que a cópia chega à TELA dentro da caixa
         // vermelha com role="alert" e que o botão "Tentar de novo" funciona.
         // Isso continua sendo item de olho humano em docs/PENDENCIAS.md
-        // §"UAT humano pendente da Phase 1". Aqui se prova que a action produz a
-        // string certa — não que a UI a renderiza.
-        it('produz a cópia exata da caixa de erro de slots quando o slug não resolve', async () => {
+        // §"UAT humano pendente da Phase 1".
+        it('devolve { ok: false, motivo: "slug_invalido" } — sem rejeitar — quando o slug não resolve', async () => {
             const slugInexistente = 'slug-que-nao-existe-integracao-9f3a2b'
 
-            const erro = await obterSlotsPublicos(
+            // A promessa RESOLVE: erro esperado deixou de ser exceção. Se ela
+            // rejeitar, o `.then` de rejeição devolve o erro e o `toEqual` abaixo
+            // reprova nomeando o que voltou.
+            const resultado = await obterSlotsPublicos(
                 slugInexistente,
                 dataAlvo,
                 DURACAO_SERVICO_TESTE,
             ).then(
-                () => null,
-                (e: unknown) => e,
+                (valor) => valor,
+                (e: unknown) => ({ rejeitou: true, erro: String(e) }),
             )
 
-            expect(erro).toBeInstanceOf(Error)
-            // Igualdade ESTRITA, não `contains`: a string inteira vai para a tela.
-            expect((erro as Error).message).toBe(COPIA_ERRO_SLOTS)
+            expect(resultado).toEqual({ ok: false, motivo: 'slug_invalido' })
 
-            // Nunca vazar erro cru do Supabase nem identificador interno para uma
-            // caixa visível ao cliente final (regra do CLAUDE.md).
-            const mensagem = (erro as Error).message
-            expect(mensagem).not.toContain(slugInexistente)
-            expect(mensagem).not.toContain('tenant')
-            expect(mensagem).not.toContain('org_')
-            expect(mensagem).not.toContain('PGRST')
+            // Não-vazamento sobre o objeto INTEIRO serializado, não só sobre uma
+            // mensagem: o discriminante é enum fechado e isso precisa ficar
+            // provado — nada de identificador interno numa caixa visível ao
+            // cliente final (regra do CLAUDE.md).
+            const serializado = JSON.stringify(resultado)
+            expect(serializado).not.toContain(slugInexistente)
+            expect(serializado).not.toContain('tenant')
+            expect(serializado).not.toContain('org_')
+            expect(serializado).not.toContain('PGRST')
         })
     },
 )
