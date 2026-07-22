@@ -151,7 +151,7 @@ precisa ser sabido antes.
   4. Uma tabela nova criada no schema `public` não aparece na Data API sem GRANT explícito
   5. POST sem assinatura válida do QStash no webhook de lembrete é rejeitado, e a aplicação não sobe se as chaves de assinatura não estiverem configuradas
 
-**Plans**: 15/16 plans executed
+**Plans**: 16/16 plans executed
 
 Plans:
 **Wave 1**
@@ -190,7 +190,7 @@ Plans:
 - [x] 01-13-PLAN.md — `PENDENCIAS`/`CONTEXT`/`COVERAGE` coerentes, rotação de chave datada e os quatro deferimentos por escrito (gap 3 / WR-05) (wave 4)
 - [x] 01-15-PLAN.md — Default privilege passa a cobrir FUNCTIONS e o harness anônimo para de dar verde sem provar nada (WR-02 + WR-08) (wave 5)
 - [x] 01-14-PLAN.md — Namespace do slug público deixa de ser sequestrável: UNIQUE, checagem cruzada e resolução não-ambígua (CR-03) (wave 6, depende de 01-15)
-- [ ] 01-16-PLAN.md — Falha de leitura em `assinaturas` para de derrubar o link público de tenant pagante (WR-07) (wave 7)
+- [x] 01-16-PLAN.md — Falha de leitura em `assinaturas` para de derrubar o link público de tenant pagante (WR-07) (wave 7)
 
 **Por que o 01-15 vem antes do 01-14** (ordem trocada na revisão de planos): o 01-14 usa `scripts/verificar-superficie-anon.sh` como portão de não-regressão, mas o defeito WR-08 é **do próprio harness** — ele classifica como ESPERADO qualquer código diferente de 200, e só o 01-15 conserta isso. Medir fechamento de banco com o instrumento cuja calibração esta rodada admite estar quebrada é a circularidade que já queimou a fase duas vezes. Não há dependência técnica entre a constraint de slug e a default privilege de FUNCTIONS, então a troca custou apenas renumerar duas waves. O 01-12 (wave 3) também usa o harness e **não** pôde ser movido sem quebrar a ordem tracer→expansão; lá o exit 0 está registrado explicitamente como sinal fraco.
 
@@ -502,7 +502,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | Etapa preparatória. Fundação operacional | 0/1 | Not started | - |
-| 1. Hardening da superfície pública | 15/16 | In Progress|  |
+| 1. Hardening da superfície pública | 16/16 | In Progress|  |
 | 2. Integridade da agenda | 0/TBD | Not started | - |
 | 3. Anti-abuso no booking público | 0/TBD | Not started | - |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |

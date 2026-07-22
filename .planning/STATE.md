@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: executing
-stopped_at: Completed 01-14-PLAN.md
-last_updated: "2026-07-22T19:11:03.488Z"
+stopped_at: Completed 01-16-PLAN.md
+last_updated: "2026-07-22T19:33:20.316Z"
 last_activity: 2026-07-22
-last_activity_desc: "plano 01-14 executado: o namespace público de slug ganhou dono em três camadas (UNIQUE no banco, checagem cruzada na escrita, recusa de ambiguidade na leitura), com o sequestro do CR-03 visto VERMELHO servindo a página do sequestrador"
+last_activity_desc: "plano 01-16 executado (ÚLTIMO da fase): a degradação por falha de leitura de `assinaturas` virou distinguível e reportada, e o link público de tenant pagante deixou de cair"
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 16
-  completed_plans: 15
+  completed_plans: 16
 ---
 
 # Project State
@@ -27,9 +27,9 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTANDO a 2ª rodada de fechamento de gaps
-Plan: 15 de 16 concluídos (01-01 a 01-15). Próximo e último: **01-16**
-Status: **a fase continua incompleta.** Os dois bloqueadores da reverificação estão fechados NO CÓDIGO; o que resta em cada um não é código:
+Phase: 01 (hardening-da-superf-cie-p-blica) — 2ª rodada de fechamento de gaps EXECUTADA por inteiro
+Plan: 16 de 16 concluídos (01-01 a 01-16). Não há plano seguinte — **a verificação da fase é o próximo passo, e ela ainda não rodou sobre este HEAD**
+Status: **a fase continua incompleta, e nenhum executor pode marcá-la como completa.** Os bloqueadores da reverificação estão fechados NO CÓDIGO; o que resta em cada um não é código:
 
   1. `whatsapp-helper.ts` publicava `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — a mesma chave HMAC com que o webhook autentica desde o 01-03. **METADE DE CÓDIGO FECHADA no 01-11**: a URL publicada é agora a rota limpa, e quatro `console.error` deixaram de despejar corpo de gateway no log (o da Evolution ecoava telefone e texto personalizado — CR-04). Cinco testes travam os dois defeitos, provados vermelhos na reversão. **CONTINUA ABERTO o que código não conserta**: a chave já circulou por log de acesso e pelo console da Upstash, e a rotação é ação do owner no painel, depois de a fila secar (≤ 14 dias). **O 01-13 transformou isso em item escrito**: `docs/PENDENCIAS.md` §"🔑 Rotação das signing keys do QStash" — dono nomeado (só o owner fecha), data-limite **2026-08-05**, etapa 1 registrada como feita e etapa 2 nascida aberta, com o passo-a-passo de depois da troca. Por isso SEG-05 continua NÃO marcado como concluído em REQUIREMENTS.md
   2. Em build de produção o React só transporta o `digest` do erro da Server Action, então a copy contratada no `01-UI-SPEC` e a recuperação de double-booking estavam mortas na tela. **FECHADO NO CÓDIGO** — metade de LEITURA no 01-10, metade de ESCRITA no **01-12**: `criarAgendamentoPublico` devolve `{ ok: false, motivo }`, o `BookingApp` decide por `res.motivo === 'slot_indisponivel'` (a comparação por substring saiu do arquivo, `grep` devolve `0`) e o harness ganhou o quinto veredito `ESCRITA_VALIDACAO`, provado por contrafactual (reprova com `1:E{"digest":"3871214289"}` quando a guarda volta a `throw`). **O SC4 da Phase 2 deixou de ser insatisfazível por construção.** Continua aberto o que código não fecha: ninguém VIU o aviso âmbar na tela — é item do UAT humano e só o owner marca
@@ -38,14 +38,16 @@ Status: **a fase continua incompleta.** Os dois bloqueadores da reverificação 
 
   4. **FECHADO NO 01-14** — CR-03, o furo de isolamento entre tenants que sobrou depois de a Data API ser fechada. `slug` e `slug_gratuito` são lidos pela MESMA URL: são dois membros de um namespace só, e o namespace não tinha dono. O tenant A gravava em `slug` o `slug_gratuito` de B — que é o link que B divulga depois de um downgrade — e a página de A passava a ser servida no link de B, com os agendamentos de B (nome e telefone de clientes finais) caindo na base de A. Fechado em três camadas, porque a de baixo não expressa a regra sozinha (a colisão é ENTRE LINHAS): `UNIQUE` em `slug_gratuito` (migration `20260722185755`, ledger **20 versions = 20 arquivos**), checagem cruzada em `salvarPerfilEmpresa` antes do upsert, e recusa de resolução ambígua em `resolverPerfilPublicoPorSlug` (as duas buscas passam a ser feitas sempre, em paralelo). **As duas camadas foram vistas VERMELHAS separadamente**: com o fallback encadeado restaurado, o teste devolveu o perfil do sequestrador com o nome dele no corpo; com a constraint derrubada do banco, o INSERT duplicado passou. Pré-voo obrigatório rodado antes do DDL — duas consultas, as duas vazias. `verificar-superficie-anon.sh` continua 11/0 com cobertura 9/9
 
+  5. **FECHADO NO 01-16** — WR-07, o último da rodada e o único com decisão de produto de verdade. `obterPlanoVigentePublico` tratava **qualquer** erro de leitura como `'gratuito'`, e nesta fase isso deixou de ser detalhe: como `resolverPerfilPublicoPorSlug` compara o slug acessado com o slug EFETIVO do plano, uma falha de leitura de trinta segundos fazia `/book/<slug-customizado>` responder **404** para os clientes de um tenant Pro — sem alerta, sem evento, e sem ninguém para reclamar, porque cliente final não reclama de página que não abriu. O retorno virou `{ plano, degradadoPorErro }`, separando "não consegui LER a assinatura" de "este tenant não TEM assinatura" (que é condição de negócio e continua muda, para o detector não morrer de ruído). A saída **(B)** do plano foi implementada com a assimetria escrita junto do código: **permissivo na disponibilidade** (com o plano indeterminado, aceita `perfil.slug` ou `perfil.slug_gratuito`) e **restritivo no que é pago** (cor, logo e capa forçados a nulo — com o RLS bypassado por D-02, essa sanitização é a defesa ÚNICA do 01-UI-SPEC §29). O webhook de lembrete parou de confundir transitório com definitivo: `plano_indeterminado` vira `status: 'falha'` + **500** para o QStash retentar (seguro porque nenhuma mensagem foi enviada ainda, então retry não duplica), enquanto `plano_sem_whatsapp` continua `ignorado` + 200. **Ameaça aceita e nomeada (T-01-16-06)**: durante a janela, tenant recém-rebaixado tem o slug customizado antigo resolvendo — transitório, sem dado de terceiro, sem nada pago na tela; reverter é apagar um bloco `if`, e o reporte ao Sentry sobrevive nas duas escolhas. Suíte hermética nova (`assinaturas.test.ts`, 11 casos, com asserção NEGATIVA de que o contexto do reporte não carrega identificador nem `.message` do Postgres) e 5 casos novos de integração, os dois centrais vistos VERMELHOS antes do código. Contagens: 217 → 228 herméticos, 8 → 13 de integração; os três harnesses da fase continuam 0 reprovações
+
 Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code review: CR-03 (`slug_gratuito` sem UNIQUE → sequestro de link público entre tenants, com PII de cliente final) em 01-14; WR-02 (default privileges não cobre FUNCTIONS) e WR-08 (harness de superfície com falso verde) em 01-15; WR-07 (`assinaturas.ts` degrada tenant pago a gratuito) em 01-16. WR-01, WR-03, WR-04 e WR-06 ficaram fora, diferidos com razão e gatilho escritos no 01-13.
 
 Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
 
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
-Last activity: 2026-07-22 — plano 01-14 executado: o namespace público de slug ganhou dono em três camadas, com o sequestro do CR-03 visto VERMELHO servindo a página do sequestrador
+Last activity: 2026-07-22 — plano 01-16 executado (ÚLTIMO da fase): a degradação por falha de leitura de `assinaturas` virou distinguível e reportada, e o link público de tenant pagante deixou de cair
 
-Progress: [█████████░] 94% (15/16 planos executados; verificação ainda reprovada, correção em andamento)
+Progress: [██████████] 100% (16/16 planos executados; **a verificação da fase ainda NÃO rodou sobre este HEAD** — a fase permanece não marcada como completa)
 
 ## Performance Metrics
 
@@ -86,6 +88,7 @@ Progress: [█████████░] 94% (15/16 planos executados; verific
 | Phase 01 P13 | ~30min | 2 tasks | 3 files |
 | Phase 01 P15 | ~50min | 2 tasks | 3 files |
 | Phase 01 P14 | ~35min | 3 tasks | 5 files |
+| Phase 01 P16 | ~65min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -154,6 +157,12 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: [Phase 01]: 01-14: constraint nomeada perfis_empresas_slug_gratuito_key (padrao <tabela>_<coluna>_key) e nao o uq_ sugerido pelo review — e o nome que o Postgres da a um UNIQUE inline, e e o que impede db diff futuro de propor dropar e recriar
 - [Phase ?]: [Phase 01]: 01-14: desambiguar slug usa duas consultas .eq() em paralelo, nunca or() interpolando o slug do visitante — filtro do PostgREST montado com dado de URL e injecao de filtro
 - [Phase ?]: [Phase 01]: 01-14: no teste do sequestro, a assinatura pro do tenant vizinho E parte da prova — sem plano com link personalizado o sequestro nem acontece e o caso ficaria verde sem provar nada
+- [Phase ?]: [Phase 01]: 01-16: falha de infraestrutura e condicao de negocio nunca colapsam no mesmo valor de retorno — obterPlanoVigentePublico devolve { plano, degradadoPorErro }; o padrao conservador continua, mas vem com a confissao de quanto se sabe
+- [Phase ?]: [Phase 01]: 01-16: fail-open/fail-closed decidido por EIXO e nao por funcao — permissivo na disponibilidade (o link publico fica no ar), restritivo no que e pago (cor/logo/capa forcados a nulo); provar so um dos lados era a armadilha
+- [Phase ?]: [Phase 01]: 01-16: HTTP 500 para retry so e seguro ANTES da primeira tentativa de envio — plano_indeterminado devolve 500 porque nenhuma mensagem saiu; depois de uma tentativa, retry vira duplicacao de mensagem (WR-06)
+- [Phase ?]: [Phase 01]: 01-16: sanitizacao forcada e escrita EXPLICITAMENTE mesmo quando o valor corrente ja a implica — depender de o padrao conservador ser 'gratuito' faria de qualquer mudanca futura desse padrao um vazamento de recurso pago
+- [Phase ?]: [Phase 01]: 01-16: comentario nao repete o token que um grep-guard da fase vigia — prosa citando tenantId cega a guarda que deveria pegar o vazamento; duas contagens derivaram por isso e os comentarios foram reescritos
+- [Phase ?]: [Phase 01]: 01-16: falha que o banco nao sabe produzir sob demanda e injetada na FRONTEIRA da funcao (mock parcial de assinaturas), preservando linhas reais no resto da suite — a alternativa era revogar privilegio no banco compartilhado no meio da suite
 
 ### Pending Todos
 
@@ -207,6 +216,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T19:11:03.478Z
-Stopped at: Completed 01-14-PLAN.md
+Last session: 2026-07-22T19:32:16.468Z
+Stopped at: Completed 01-16-PLAN.md
 Resume file: None
