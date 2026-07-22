@@ -644,7 +644,11 @@ exemplo conceitual de INSERT público precisa acompanhar a decisão).
 no servidor" (muda o exemplo de política pública do docs/05); refazer a auditoria da
 Data API depois (ver item de billing abaixo).
 
-### Superfície remanescente depois do hardening da Phase 1 (registrado, não fechado)
+### ~~Superfície remanescente depois do hardening da Phase 1~~ — ✅ Fechada (plano 01-08, 2026-07-22)
+
+**As duas policies abaixo não existem mais.** A análise fica registrada porque é o motivo
+pelo qual elas foram removidas — sem isso, a próxima pessoa que ler os schemas pode
+recriá-las achando que faltou alguma coisa. O registro de fechamento está no fim da seção.
 
 Duas policies de SELECT sobreviveram à Phase 1 **por escopo, não por descuido**. Auditadas
 em `pg_policies` depois do plano 01-04:
@@ -658,13 +662,13 @@ O plano 01-04 mirava a decisão **D-07**: substituir as policies compartilhadas 
 tinham par autenticado** (dropar sem recriar quebraria o dashboard em silêncio). Estas
 duas **têm** par autenticado, então ficaram legitimamente fora daquele escopo.
 
-**Risco 1 — leitura cross-tenant por usuário autenticado (vale hoje).** A expressão é
+**Risco 1 — leitura cross-tenant por usuário autenticado (valia até 2026-07-22).** A expressão é
 `ativo = true`, sem cláusula de tenant. Qualquer profissional logado consegue ler os
 serviços e os horários ativos de **todos os outros tenants** da plataforma via Data API.
 Não expõe cliente, agendamento nem telefone — expõe catálogo e agenda de funcionamento
 da concorrência. É **pré-existente**, não foi introduzido nem agravado pela Phase 1.
 
-**Risco 2 — a policy morta é uma armadilha carregada (vale no futuro).** Para a role
+**Risco 2 — a policy morta era uma armadilha carregada (desarmada em 2026-07-22).** Para a role
 `anon` estas duas policies são inertes *hoje*: sem privilégio, uma policy nunca chega a
 ser avaliada. Mas o cabeçalho da própria migration `20260722060000_fecha_data_api_para_anon.sql`
 argumenta que o portão precisa ser fechado no privilégio justamente porque "uma policy
@@ -674,34 +678,37 @@ acidental, ou copiado de um snippet — reexpõe toda linha com `ativo = true` a
 tiver a chave publicável. **Nenhuma policy nova precisa ser escrita para o buraco
 reabrir.**
 
-**Decisão da Phase 1 (plano 01-05, 2026-07-22): registrar, não fechar aqui.** O
-fechamento é trivial em SQL (dois `DROP POLICY`, ou substituição por versões
-tenant-scoped `TO authenticated`), mas o executor do 01-05 **não tinha acesso ao banco**
-— nem MCP do Supabase, nem `psql`. Escrever a migration sem poder aplicá-la deixaria o
-repositório com 18 arquivos contra 17 versions no ledger, exatamente o desalinhamento
-que quebra qualquer `db diff` futuro e que esta fase gastou dois planos aprendendo a
-evitar. Trocar um risco latente e conhecido por drift real no pipeline é um mau negócio.
+**A D-07 NÃO se aplicava aqui — o `DROP` era seguro, e isso foi verificado antes de
+executar.** A regra "nenhuma policy compartilhada é dropada sem substituta" existe porque
+dropar sem recriar deixa o dashboard com tela vazia e sem erro. Nestas duas tabelas a
+substituta **já existia**: a policy `1b`, "Permitir SELECT do próprio tenant para
+autenticados", `TO authenticated USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'))`, em
+`supabase/schemas/02_servicos.sql` e `03_horarios_funcionamento.sql`. Ela cobre as linhas do
+próprio tenant **inclusive as inativas** (é o que permite reativar um serviço e o que faz o
+`RETURNING` do `.select()` funcionar). Policies são permissivas e se somam por `OR`:
+removendo a compartilhada, sobrou exatamente o escopo desejado. **Nenhuma substituta nova
+foi escrita — seria uma segunda policy redundante fazendo o que a `1b` já faz.** Quem for
+mexer nesses schemas: não recrie a policy removida.
 
-**A D-07 NÃO se aplica aqui — o `DROP` é seguro, e isso está verificado.** A regra
-"nenhuma policy compartilhada é dropada sem substituta" existe porque dropar sem recriar
-deixa o dashboard com tela vazia e sem erro. Nestas duas tabelas a substituta **já
-existe**: a policy `1b`, "Permitir SELECT do próprio tenant para autenticados",
-`TO authenticated USING (tenant_id = (SELECT auth.jwt() ->> 'org_id'))`, em
-`supabase/schemas/02_servicos.sql:27` e `03_horarios_funcionamento.sql:29`. Ela cobre as
-linhas do próprio tenant **inclusive as inativas** (é o que permite reativar um serviço e
-o que faz o `RETURNING` do `.select()` funcionar). Policies são permissivas e se somam por
-`OR`: removendo a compartilhada, sobra exatamente o escopo desejado. **Não escrever
-substituta nova — seria uma segunda policy redundante fazendo o que a `1b` já faz.**
+**✅ Registro de fechamento — plano 01-08, 2026-07-22**
 
-**Gatilho e forma de fechar** (sessão com acesso a banco, ou início da Phase 2):
+| Item | Valor |
+|---|---|
+| Migration | `supabase/migrations/20260722145948_fecha_policies_residuais_servicos_horarios.sql` |
+| Version no ledger | `20260722145948` / `fecha_policies_residuais_servicos_horarios` (18 versions = 18 arquivos) |
+| Corpo executável | dois `drop policy if exists "Permitir SELECT público para todos"`, um por tabela. **Zero `grant`/`revoke`** — a default privilege da `20260722060000` ficou intacta |
+| `pg_policies` depois | 8 linhas nas duas tabelas, **todas** com roles `{authenticated}`; nenhuma com o nome da policy removida, nenhuma com a role `anon` |
+| Dano encerrado | sob `set local role authenticated` + claim `org_id` de tenant real, com um tenant vizinho descartável criado na mesma transação: `tenants_distintos_visiveis` **2 → 1** em `servicos`; **1** em `horarios_funcionamento` |
+| Não-regressão do dashboard | a linha **inativa** do próprio tenant continua visível (1 em `servicos`, 2 em `horarios_funcionamento`) — é o caso que a `1b` cobre a mais e o que sustenta reativar um serviço |
+| Superfície `anon` | `bash scripts/verificar-superficie-anon.sh` → exit 0, 11 checagens, 0 reprovadas, 0 inconclusivas, depois do DROP |
 
-1. `DROP POLICY "Permitir SELECT público para todos"` nas duas tabelas. Sem `CREATE`
-   substituto, pelo motivo acima.
-2. Editar `supabase/schemas/02_servicos.sql` e `03_horarios_funcionamento.sql`.
-3. Gerar por `supabase db diff` — e **revisar a saída antes de commitar**: forçado a
-   diffar privilégio, o migra emite o contrário do desejado (ver `docs/03`).
-4. Aplicar com `execute_sql` + `INSERT` manual no ledger com a version do arquivo.
-   **`apply_migration` está proibido** — não preserva a version.
+A migration foi **escrita à mão**, não gerada por `supabase db diff`. O procedimento
+anteriormente escrito nesta seção mandava gerar pelo diff; para um delta de duas instruções
+o caminho correto é o item (b) de `docs/03-PADROES_DE_BANCO_DE_DADOS.md` — escrever à mão —,
+porque forçar o diff sobe shadow database em Docker e, quando há privilégio no caminho, emite
+o inverso do desejado (precedente do plano 01-04). Aplicada por `execute_sql` com o `INSERT`
+no ledger **na mesma chamada**, portanto na mesma transação: não houve janela entre o DDL e o
+registro da version. `apply_migration` continua proibido — não preserva a version do arquivo.
 
 ### Prevenção atômica de double-booking
 
@@ -816,25 +823,38 @@ reaproveitamento de cliente por telefone, a rejeição de horário ocupado com a
 a UI reconhece e a cópia exata da caixa de erro de slots. O que continua aqui é
 estritamente o que acontece **na tela** — e continua não aprovado.
 
-- [ ] **Wizard completo de `/book/[slug]`** — serviço → data/hora → nome + WhatsApp →
-      confirmar → "Horário confirmado!", com o agendamento caindo na agenda do dashboard.
-      Nenhuma etapa, campo ou atraso novo (Fricção Zero). *Agravado pelo plano 01-02*,
-      que trocou o identificador que as duas Server Actions públicas recebem
-      (`tenantId` → `slug`). Provado por automação até aqui: que a página responde 200,
-      que o payload monta com dados reais e — desde o plano 01-07 — que o caminho de
-      **escrita** funciona ponta a ponta pelo servidor. Falta a tela.
-- [ ] **Recuperação de double-booking** — duas abas no mesmo slot; a segunda deve voltar
-      à etapa de data/hora com o aviso âmbar e a grade refeita, nunca uma caixa vermelha
-      estática no formulário de contato. O plano 01-07 pinou o acoplamento de string nas
-      duas pontas (a action produz "já foi preenchido", `BookingApp.tsx` casa exatamente
-      essa substring); o que falta é ver a **recuperação visual** acontecer.
-- [ ] **Dashboard sob as policies tenant-scoped novas, tela a tela** — agenda carrega os
-      agendamentos; agendamento manual salva **e a linha volta** (o `RETURNING` depende de
-      passar na policy de SELECT); bloqueio/exceção salva; aba Perfil salva; serviços
-      listam. Auditoria de `pg_policies` já confirmou que todas as tabelas operacionais
-      têm SELECT/INSERT/UPDATE/DELETE `TO authenticated` com
-      `tenant_id = (SELECT auth.jwt() ->> 'org_id')`, o que torna a falha improvável —
-      mas "improvável" não é "verificado", e o sintoma é tela vazia sem erro.
+⚠️ **"Parcialmente coberto" não é "pode pular".** A cobertura automatizada cresceu com os
+planos 01-07 e 01-08 e isso **reduz** a probabilidade de cada regressão; não fecha nenhum
+item. Os sete continuam abertos, e só o owner pode fechá-los — nenhum executor tem como
+observar uma tela. Cada item marcado como parcialmente coberto diz, em primeiro lugar, o
+que a automação **não** cobre; é essa frase que define o que falta fazer.
+
+- [ ] **Wizard completo de `/book/[slug]`** — *parcialmente coberto.* **Não cobre:** as
+      telas do navegador, a ausência de fricção nova, a transição para "Horário
+      confirmado!" e a linha aparecendo na agenda do dashboard. O que fazer: serviço →
+      data/hora → nome + WhatsApp → confirmar → tela de sucesso, conferindo o agendamento
+      na agenda e que nenhuma etapa, campo ou atraso novo apareceu (Fricção Zero).
+      *Agravado pelo plano 01-02*, que trocou o identificador que as duas Server Actions
+      públicas recebem (`tenantId` → `slug`). Provado por automação até aqui: que a página
+      responde 200, que o payload monta com dados reais e — desde o plano 01-07 — que o
+      caminho de **escrita** funciona ponta a ponta pelo servidor (resolução por slug,
+      criação de cliente, sanitização de telefone, INSERT com `RETURNING`).
+- [ ] **Recuperação de double-booking** — *parcialmente coberto.* **Não cobre:** o aviso
+      âmbar renderizado, a grade refeita e o cliente voltando à etapa de data/hora. O que
+      fazer: duas abas no mesmo slot; a segunda deve voltar à etapa de data/hora com o
+      aviso âmbar e a grade refeita, nunca uma caixa vermelha estática no formulário de
+      contato. O plano 01-07 pinou o acoplamento de string nas duas pontas (a action
+      produz "já foi preenchido", `BookingApp.tsx` casa exatamente essa substring) e prova
+      que a action rejeita o horário ocupado sem gravar nada.
+- [ ] **Dashboard sob as policies tenant-scoped novas, tela a tela** — *reforçado, não
+      coberto.* Agenda carrega os agendamentos; agendamento manual salva **e a linha
+      volta** (o `RETURNING` depende de passar na policy de SELECT); bloqueio/exceção
+      salva; aba Perfil salva; serviços listam — incluindo **reativar um serviço inativo**,
+      caso que passou a importar depois do `DROP` do plano 01-08. O 01-08 provou por SQL
+      que, sob a role autenticada, o próprio tenant enxerga inclusive as linhas inativas
+      depois do DROP (1 em `servicos`, 2 em `horarios_funcionamento`), o que torna a falha
+      "tela vazia sem erro" ainda mais improvável. Improvável não é verificado; o item
+      continua aberto.
 - [ ] **Personalização por plano** — comparar um tenant Pro (cor/logo/capa aparecem) com
       um gratuito (não aparecem). Com o RLS bypassado no caminho público, a sanitização
       por plano deixou de ser defesa em profundidade e virou **defesa única**.
@@ -842,12 +862,14 @@ estritamente o que acontece **na tela** — e continua não aprovado.
       confirmar que a mensagem chega. Um `401` no log ("Assinatura QStash inválida")
       indica mismatch de URL atrás de proxy; plano B: montar a URL de `APP_URL` depois
       que a fila drenar.
-- [ ] **Caixa de erro de slots** renderizando a copy nova do plano 01-02 ("Não foi
-      possível carregar os horários. Tente de novo."). ~~Teste barato: chamar
+- [ ] **Caixa de erro de slots** — *parcialmente coberto.* **Não cobre:** a cópia
+      aparecendo na caixa vermelha com `role="alert"` e o botão "Tentar de novo"
+      funcionando — nunca foram vistos na tela. O que fazer: forçar a falha de slots e
+      olhar a caixa renderizada com a copy do plano 01-02 ("Não foi possível carregar os
+      horários. Tente de novo."). ~~Teste barato: chamar
       `obterSlotsPublicos('slug-inexistente', …)`~~ — **feito no plano 01-07**: a suíte de
       integração assere a string por igualdade estrita e que ela não vaza slug, `tenant`,
-      `org_` nem `PGRST`. Continua pendente **só o lado visual**: a caixa vermelha com
-      `role="alert"` e o botão "Tentar de novo" nunca foram vistos na tela.
+      `org_` nem `PGRST`.
 - [ ] **Backstops visuais com dado extremo** — 20+ serviços ativos na lista da etapa;
       `horizonte_maximo_dias = 30` alongando a fileira de datas; nome de serviço, nome de
       cliente, `nome_estabelecimento`, descrição e endereço longos no resumo, na tela de
@@ -1133,8 +1155,9 @@ além do banner atual — até validação com clientes reais.
 
 ## 🧪 Qualidade e testes (requisito transversal)
 
-Não há framework de testes configurado no repositório. Adotar testes como requisito
-**proporcional**, nas áreas de maior risco — comportamento crítico, não cobertura:
+O runner é **Vitest** (`vitest.config.ts`), e a decisão de adotá-lo já foi tomada e
+executada. Testes continuam sendo requisito **proporcional**, nas áreas de maior risco —
+comportamento crítico, não cobertura:
 
 - Junto do trabalho de produto (P0): engine de disponibilidade (`booking-engine.ts`)
   — slots, exceções, colisões; fuso horário (P0.4) — limites de dia em pelo menos SP
@@ -1144,8 +1167,29 @@ Não há framework de testes configurado no repositório. Adotar testes como req
 - Antes do lançamento: pertencimento multi-tenant e políticas RLS — IDs cruzados
   rejeitados; criação concorrente — corrida nunca gera sobreposição.
 
-Decisão pendente: escolher o runner (Vitest é o candidato natural na stack) quando o
-primeiro item P0 com testes for implementado.
+### ⚠️ `pnpm test` é hermético por desenho — leia antes de mexer no `vitest.config.ts`
+
+Regra viva, não pendência. Estabelecida no plano 01-07 e registrada aqui porque o lugar
+onde alguém tropeça nela é o `vitest.config.ts`, não o SUMMARY de um plano.
+
+- `pnpm test` **não toca rede nem banco**, e assim deve continuar. É o comando da
+  Definition of Done do projeto e roda em toda fase, na máquina de qualquer um.
+- A suíte `src/app/actions/__tests__/public-booking-escrita.test.ts` **escreve e apaga no
+  Supabase de dev** (cria o tenant `org_teste_integracao_booking`, agenda, e limpa antes e
+  depois). Ela fica **fora do glob padrão** do vitest: o `exclude` do `vitest.config.ts` a
+  remove sempre que `EXIGIR_INTEGRACAO !== '1'`.
+- **Único ponto de entrada:** `pnpm test:integracao` (que é `EXIGIR_INTEGRACAO=1 vitest run
+  <a suíte>`). Sem credenciais o comando **reprova** em vez de pular — pulo silencioso
+  devolveria verde sobre prova que não rodou.
+- **Consequência de reincluí-la no glob padrão:** toda execução da Definition of Done, em
+  toda fase futura, passaria a escrever no banco de dev — e duas execuções concorrentes
+  apagariam a fixture uma da outra, produzindo falha intermitente que parece bug de
+  produto. Se a contagem de `pnpm test` crescer para incluir esses casos, é regressão.
+- A variável `CAMINHO_ENV_LOCAL` existe **apenas** para provar que o comando reprova sem
+  credenciais, apontando para um arquivo inexistente. Ela nunca move, renomeia ou escreve
+  no `.env.local` real.
+- Contagem de referência hoje: `pnpm test` → **13 arquivos / 198 testes**;
+  `pnpm test:integracao` → **6 testes** (5 de integração + a sentinela), 0 pulados.
 
 ---
 
@@ -1527,10 +1571,11 @@ primeiro item P0 com testes for implementado.
   conscientemente (necessária para a defesa do WhatsApp no fluxo público) **até** o
   redesenho do acesso público (item de integridade, pré-lançamento).
 
-### 🔴 Enumeração de `org_id` por conta autenticada (achado da verificação da Phase 1)
+### ~~🔴 Enumeração de `org_id` por conta autenticada~~ — ✅ Fechada (plano 01-08, 2026-07-22)
 
 Descoberto ao auditar `pg_policies` depois do fechamento da Data API. **Não foi introduzido
-pela Phase 1 — é pré-existente e ficou visível quando o vetor anônimo fechou.**
+pela Phase 1 — é pré-existente e ficou visível quando o vetor anônimo fechou.** O relato
+abaixo descreve o estado que existia até 2026-07-22; o fechamento está no fim do bloco.
 
 `servicos` e `horarios_funcionamento` têm DUAS policies de SELECT aplicáveis a
 `authenticated`, ambas `PERMISSIVE`:
@@ -1557,7 +1602,16 @@ tabelas, inclusive as inativas (`supabase/schemas/02_servicos.sql:27`,
 `03_horarios_funcionamento.sql:29`). A leitura pública já roda com cliente privilegiado desde
 o plano 01-02, então nada do booking depende delas.
 
-**Por que não foi feito na Phase 1**: o executor do 01-05 não tinha acesso ao banco, e a
+**Por que não foi feito no plano 01-05**: o executor não tinha acesso ao banco, e a
 migration ficaria no repo sem ser aplicada — 18 arquivos contra 17 versions no ledger. Trocar
 risco documentado por drift real no pipeline, no plano que fecha a fase, seria mau negócio.
+
+✅ **Feito no plano 01-08 (2026-07-22), pelo executor que tinha o MCP do Supabase.** As duas
+policies foram removidas pela migration
+`20260722145948_fecha_policies_residuais_servicos_horarios.sql`, aplicada com o `INSERT` no
+ledger na mesma transação. O dano foi medido antes e depois, não deduzido: sob
+`set local role authenticated` com o claim `org_id` de um tenant real e um tenant vizinho
+descartável criado dentro da transação revertida, `tenants_distintos_visiveis` caiu de **2
+para 1**. Detalhes e as demais evidências na seção "Superfície remanescente depois do
+hardening da Phase 1", acima.
 
