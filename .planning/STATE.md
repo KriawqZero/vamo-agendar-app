@@ -4,14 +4,14 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
-status: executing
-stopped_at: Completed 01-09-PLAN.md
+status: gaps_found
+stopped_at: "Os 9 planos executaram, mas a reverificação REPROVOU (7/9 must-haves). Dois bloqueadores novos, levantados pelo code review e confirmados de forma independente pelo verificador: a chave HMAC do QStash publicada em query string, e a mensagem de erro da Server Action que não atravessa a fronteira em build de produção. Próximo: /gsd-plan-phase 01 --gaps"
 last_updated: "2026-07-22T15:23:39.118Z"
 last_activity: 2026-07-22
-last_activity_desc: 01-09 concluído (as quatro provas reexecutadas sobre o HEAD final antes de qualquer edição; SEG-05 corrigido para `[x]`, `Partial` extinto, PENDENCIAS coerente com o código)
+last_activity_desc: "Fechamento de gaps executado (01-07, 01-06, 01-08, 01-09) — os três gaps antigos fecharam e foram reproduzidos; a reverificação encontrou dois bloqueadores novos e a fase segue aberta"
 progress:
   total_phases: 1
-  completed_phases: 1
+  completed_phases: 0
   total_plans: 9
   completed_plans: 9
 ---
@@ -27,12 +27,15 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — PLANOS CONCLUÍDOS, aguardando reverificação
+Phase: 01 (hardening-da-superf-cie-p-blica) — 9/9 PLANOS EXECUTADOS, VERIFICAÇÃO REPROVOU
 Plan: 9 de 9 concluídos (01-01 a 01-09)
-Status: Pronta para `/gsd-verify-work` — os três gaps da `01-VERIFICATION.md` estão fechados por código e refletidos na documentação. O que continua aberto é o **UAT humano** (7 itens, só o owner pode fechar)
-Last activity: 2026-07-22 — 01-09 concluído (as quatro provas reexecutadas sobre o HEAD final antes de qualquer edição; SEG-05 corrigido para `[x]`, `Partial` extinto, PENDENCIAS coerente com o código)
+Status: **gaps_found — a fase NÃO está completa.** Os três gaps da verificação anterior fecharam e foram reproduzidos (incluindo o lado banco do gap 3, confirmado por `pg_policies` via MCP). Mas a reverificação sobre o HEAD final abriu **dois bloqueadores novos**, ambos originados no code review e confirmados de forma independente:
+  1. `whatsapp-helper.ts:147` publica `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — é a mesma chave HMAC com que o webhook autentica desde o 01-03. Ataca diretamente a segunda metade do goal da fase
+  2. Em build de produção o React só transporta o `digest` do erro da Server Action, então a copy contratada no `01-UI-SPEC` e a recuperação de double-booking (`includes('já foi preenchido')`) estão mortas na tela. A suíte do 01-07 dá verde porque chama a action em processo
+Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar) — dois deles com prognóstico negativo por causa do bloqueador 2
+Last activity: 2026-07-22 — fechamento de gaps executado e reverificado; fase reprovada com dois bloqueadores novos
 
-Progress: [██████████] 100%
+Progress: [█████████░] 90% (execução completa, verificação reprovada)
 
 ## Performance Metrics
 
