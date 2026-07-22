@@ -10,7 +10,7 @@ import type { PlanoId } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 import { ehHexValida } from '@/lib/cores'
 import { capturarEventoTenant } from '@/lib/analytics/server'
-import { reportarExcecao } from '@/lib/observabilidade/reportar'
+import { reportarExcecao, reportarFalhaSilenciosa } from '@/lib/observabilidade/reportar'
 import { erroSinteticoSupabase } from '@/lib/observabilidade/erro-supabase'
 
 // Projeção explícita das leituras públicas. Coluna nova no banco (ex.: cpf_cnpj
@@ -101,9 +101,22 @@ async function lerPerfilPor(admin: SupabaseClient, coluna: 'slug' | 'slug_gratui
  * Resolve o estabelecimento a partir do slug da URL — sempre no SERVIDOR.
  *
  * É a única porta de entrada do caminho público: o `tenant_id` (org_id do Clerk)
- * nunca chega do navegador, ele sai daqui. Busca pelo slug customizado, cai no
- * `slug_gratuito` do provisionamento e só devolve o perfil se o slug acessado
- * for o efetivo do plano vigente (downgrade invalida o customizado na hora).
+ * nunca chega do navegador, ele sai daqui. Procura o slug nas DUAS colunas do
+ * namespace público (o customizado e o do provisionamento) e só devolve o perfil
+ * se o slug acessado for o efetivo do plano vigente (downgrade invalida o
+ * customizado na hora).
+ *
+ * ⚠️ As duas buscas são feitas SEMPRE, e não mais encadeadas por fallback. O
+ * fallback era o sequestro do CR-03: `slug` e `slug_gratuito` são um namespace
+ * só, e casar na primeira query servia a página do tenant A para quem visitou o
+ * link de provisionamento do tenant B — junto dos agendamentos de B, com nome e
+ * telefone dos clientes finais dele. A constraint `perfis_empresas_slug_gratuito_key`
+ * e a checagem cruzada de `salvarPerfilEmpresa` impedem colisão NOVA; esta
+ * recusa é o que cobre as linhas que já existem.
+ *
+ * Custo assumido: uma consulta indexada a mais por carregamento de página
+ * pública. As duas correm em paralelo, então o custo é de conexão, não de
+ * latência somada — e é o preço de não servir o tenant errado.
  *
  * Devolve valor DISCRIMINADO, nunca `null`: "slug não existe" é condição de
  * negócio (`slug_invalido`) e "não consegui ler" é falha de infraestrutura
@@ -116,13 +129,41 @@ async function resolverPerfilPublicoPorSlug(
     admin: SupabaseClient,
     slug: string,
 ): Promise<ResolucaoPerfil> {
-    let { data: perfil, error: pError } = await lerPerfilPor(admin, 'slug', slug)
+    // Duas consultas `.eq()` separadas, NUNCA um filtro `or(...)` montado com o
+    // slug: o slug é dado do visitante, e interpolar valor de URL numa string de
+    // filtro do PostgREST é injeção de filtro. Fechar o sequestro abrindo uma
+    // injeção seria o pior resultado possível.
+    const [porCustomizado, porProvisionamento] = await Promise.all([
+        lerPerfilPor(admin, 'slug', slug),
+        lerPerfilPor(admin, 'slug_gratuito', slug),
+    ])
 
-    if (!perfil && !pError) {
-        const fallback = await lerPerfilPor(admin, 'slug_gratuito', slug)
-        perfil = fallback.data
-        pError = fallback.error
+    const pError = porCustomizado.error ?? porProvisionamento.error
+
+    if (!pError && porCustomizado.data && porProvisionamento.data) {
+        if (porCustomizado.data.tenant_id !== porProvisionamento.data.tenant_id) {
+            // O invariante do namespace foi violado: o mesmo texto é o slug
+            // customizado de um tenant e o de provisionamento de outro. Não é
+            // condição de negócio, é SINTOMA — vai ao Sentry. Recusar é a única
+            // resposta segura: qualquer escolha entre os dois serviria a página
+            // (e a agenda) de um tenant a quem visitou o link do outro.
+            //
+            // Nem o slug (dado do visitante) nem os `tenant_id` entram no
+            // contexto. Quem investigar roda o self-join de `a.slug =
+            // b.slug_gratuito` com `tenant_id` diferente — a mesma consulta de
+            // pré-voo da migration 20260722185755.
+            console.error('Namespace de slug ambíguo entre dois tenants na resolução pública.')
+            reportarFalhaSilenciosa('booking:namespace_slug_ambiguo', {
+                fluxo: 'booking_publico',
+                etapa: 'resolver_perfil',
+            })
+            return { ok: false, motivo: 'slug_invalido' }
+        }
+        // Mesmo tenant nas duas colunas: é o caso trivial de quem nunca
+        // personalizou o link (`slug === slug_gratuito`). Segue normalmente.
     }
+
+    const perfil = porCustomizado.data ?? porProvisionamento.data
 
     if (pError) {
         // Erro de leitura com service role é falha de infraestrutura, não
