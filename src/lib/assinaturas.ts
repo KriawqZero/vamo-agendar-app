@@ -52,9 +52,12 @@ export const obterAssinaturaVigente = cache(
 )
 
 /**
- * Variante enxuta para contextos públicos (role anon): o GRANT por coluna
- * permite a anon ler apenas tenant_id/plano/status de assinaturas.
- * Retorna somente o plano vigente.
+ * Variante enxuta para contextos públicos: retorna somente o plano vigente.
+ *
+ * ⚠️ Exige o cliente PRIVILEGIADO (`createAdminClient()`). A role anon perdeu
+ * todo privilégio em `assinaturas` — passar o cliente anônimo aqui não estoura
+ * erro: a leitura falha, o catch degrada para 'gratuito' e todo tenant pago
+ * perde slug customizado e personalização em silêncio.
  */
 export async function obterPlanoVigentePublico(
     supabase: SupabaseClient,

@@ -1,0 +1,29 @@
+-- Escrita à MÃO por necessidade: `supabase db diff` não emite GRANT/REVOKE
+-- (documentado em docs/SUPABASE_DECLARATIVE-DATABASE-SCHEMA.md, com column
+-- privileges na lista de caveats do migra). Mesmo precedente da migration
+-- 20260709193156_restringe_colunas_assinaturas_anon.sql.
+--
+-- Por que de negócio: aquela migration restringiu o privilégio de anon às
+-- colunas tenant_id/plano/status, o que protegeu os campos de pagamento mas
+-- deixou `GET /rest/v1/assinaturas?select=tenant_id` devolver o org_id do Clerk
+-- de TODO tenant pagante da plataforma — enumeração em massa com a chave
+-- publicável, confirmada por curl anônimo real antes desta migration.
+--
+-- O GRANT por coluna não tem como fechar isso: o Postgres exige SELECT em
+-- qualquer coluna referenciada na query, INCLUSIVE no WHERE, e a leitura do
+-- plano filtra por tenant_id. Manter a coluna legível para o filtro é o mesmo
+-- que mantê-la raspável. Por isso anon perde o acesso inteiro (D-01) e a
+-- leitura pública do plano passa a usar o cliente privilegiado (D-02), já
+-- aplicada em obterDadosBookingPublico no mesmo commit desta migration.
+--
+-- `authenticated` e `service_role` NÃO são tocados de propósito: o dashboard lê
+-- a própria assinatura pela policy do tenant e o createAdminClient() é quem
+-- serve a página pública. O repositório já tem o precedente do estrago —
+-- 20260709161817 existe porque um REVOKE amplo demais derrubou o acesso via
+-- PostgREST neste projeto uma vez.
+--
+-- A policy anônima de assinaturas segue no schema declarativo e é limpa no
+-- plano 01-04, junto das demais: sem privilégio, ela nunca chega a ser
+-- avaliada — o portão já está fechado.
+
+revoke all privileges on public.assinaturas from anon;

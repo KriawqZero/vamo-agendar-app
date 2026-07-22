@@ -251,8 +251,17 @@ export async function obterDadosBookingPublico(slug: string) {
         return null
     }
 
-    // 2. Validar que o slug acessado é o efetivo para o plano vigente do tenant
-    const plano = await obterPlanoVigentePublico(supabase, perfil.tenant_id)
+    // 2. Validar que o slug acessado é o efetivo para o plano vigente do tenant.
+    // A leitura do plano usa o cliente PRIVILEGIADO: a role anon perdeu todo
+    // privilégio em `assinaturas` (o GRANT por coluna deixava
+    // `?select=tenant_id` devolver o org_id do Clerk de todo tenant pagante).
+    // Passar o cliente anônimo aqui degradaria TODO tenant pago para gratuito
+    // em silêncio — slug customizado viraria 404 e a personalização sumiria,
+    // porque `obterPlanoVigentePublico` trata erro de leitura como 'gratuito'.
+    // O tenant_id vem de `perfil.tenant_id`, resolvido no servidor a partir do
+    // slug — nunca do navegador (mitigação 1 da D-02).
+    const admin = createAdminClient()
+    const plano = await obterPlanoVigentePublico(admin, perfil.tenant_id)
     if (obterSlugEfetivo(perfil, plano) !== slug) {
         return null
     }
