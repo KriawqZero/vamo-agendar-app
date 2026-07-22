@@ -60,8 +60,15 @@ type PerfilPublicoLinha = NonNullable<Awaited<ReturnType<typeof lerPerfilPor>>['
 /** Slots devolvidos pela engine de disponibilidade — formato é contrato anti double-booking. */
 type SlotPublico = Awaited<ReturnType<typeof obterSlotsDisponiveis>>[number]
 
+/**
+ * `degradadoPorErro` viaja junto do plano de propósito: quem consome a
+ * resolução precisa saber que o `plano` acima é um PADRÃO CONSERVADOR e não uma
+ * leitura confirmada. Sem esse campo, o consumidor não tem como distinguir
+ * "este tenant é gratuito" de "não deu para saber", e foi essa confusão que
+ * derrubou o link público de tenant pagante (WR-07).
+ */
 export type ResolucaoPerfil =
-    | { ok: true; perfil: PerfilPublicoLinha; plano: PlanoId }
+    | { ok: true; perfil: PerfilPublicoLinha; plano: PlanoId; degradadoPorErro: boolean }
     | { ok: false; motivo: MotivoLeituraPublica }
 
 export type ResultadoSlots =
@@ -186,12 +193,44 @@ async function resolverPerfilPublicoPorSlug(
     // Plano vigente com o MESMO cliente privilegiado (ver JSDoc de
     // obterPlanoVigentePublico): cliente anônimo degradaria todo tenant pago
     // para gratuito em silêncio. O tenant_id vem do perfil resolvido acima.
-    const { plano } = await obterPlanoVigentePublico(admin, perfil.tenant_id)
-    if (obterSlugEfetivo(perfil, plano) !== slug) {
+    const { plano, degradadoPorErro } = await obterPlanoVigentePublico(admin, perfil.tenant_id)
+
+    if (degradadoPorErro) {
+        // ⚠️ JANELA DE PLANO INDETERMINADO — a decisão está aqui, escrita, para
+        // não ser reconstruída por quem ler depois.
+        //
+        // Assimetria proposital: PERMISSIVO NA DISPONIBILIDADE, RESTRITIVO NO
+        // QUE É PAGO. Sem esta condicional, a comparação por slug efetivo roda
+        // com o padrão conservador 'gratuito' e invalida o slug customizado —
+        // ou seja, uma falha de leitura de trinta segundos responde 404 para os
+        // clientes de um tenant pagante, sem alerta e indistinguível de "essa
+        // agenda não existe". É o Core Value do projeto quebrando por um soluço
+        // de infraestrutura. A metade restritiva mora em
+        // `obterDadosBookingPublico`, onde a personalização é forçada a
+        // gratuito: o link fica no ar, mas nada pago aparece.
+        //
+        // O afrouxamento é ESTE e nada mais: aceita-se o slug acessado se ele
+        // for uma das duas colunas do namespace público do perfil já
+        // encontrado. Continua valendo a exigência de o perfil existir e
+        // continua valendo — logo acima, antes de qualquer leitura de plano — a
+        // recusa de resolução ambígua entre tenants do plano 01-14.
+        //
+        // RISCO RESIDUAL, nomeado e aceito (T-01-16-06): durante a janela de
+        // falha, um tenant que fez downgrade recentemente teria o slug
+        // customizado antigo voltando a resolver. É transitório, não expõe dado
+        // de terceiro e não exibe nada pago. Reverter para o comportamento
+        // fechado é apagar este bloco — e o reporte ao Sentry, que é o ganho
+        // maior, sobrevive nas duas escolhas.
+        if (slug !== perfil.slug && slug !== perfil.slug_gratuito) {
+            return { ok: false, motivo: 'slug_invalido' }
+        }
+    } else if (obterSlugEfetivo(perfil, plano) !== slug) {
+        // Caminho normal, INTACTO: só o slug efetivo do plano vigente resolve,
+        // e um downgrade invalida o customizado na hora. É a regra de produto.
         return { ok: false, motivo: 'slug_invalido' }
     }
 
-    return { ok: true, perfil, plano }
+    return { ok: true, perfil, plano, degradadoPorErro }
 }
 
 interface AgendamentoPublicoParams {
@@ -445,7 +484,7 @@ export async function obterDadosBookingPublico(slug: string) {
         return null
     }
 
-    const { perfil, plano } = resolvido
+    const { perfil, plano, degradadoPorErro } = resolvido
 
     // 2. Buscar serviços ativos desta empresa. `ativo` e `tenant_id` são
     // colunas de FILTRO — não precisam (nem devem) estar na projeção que viaja
@@ -479,7 +518,14 @@ export async function obterDadosBookingPublico(slug: string) {
     // ⚠️ Com a leitura no cliente privilegiado (RLS bypassado), esta sanitização
     // é a ÚNICA defesa: sem ela, tenant gratuito passa a exibir cor/logo/capa
     // pagas — regressão visual E de monetização, silenciosa nas duas pontas.
-    const recursos = PLANOS[plano].recursos
+    //
+    // É aqui que mora a metade RESTRITIVA da decisão tomada em
+    // `resolverPerfilPublicoPorSlug`: com o plano indeterminado, a sanitização é
+    // forçada ao nível gratuito. A forçagem é EXPLÍCITA de propósito, mesmo que
+    // hoje `plano` já venha 'gratuito' na degradação — depender desse detalhe
+    // faria de qualquer mudança futura no padrão conservador um vazamento de
+    // recurso pago, e essa é a última defesa que sobrou nesta tela.
+    const recursos = degradadoPorErro ? PLANOS.gratuito.recursos : PLANOS[plano].recursos
     const personalizacao = {
         corMarca:
             recursos.corPersonalizada && ehHexValida(perfil.cor_marca) ? perfil.cor_marca : null,

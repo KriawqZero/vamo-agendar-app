@@ -36,14 +36,24 @@ import { existsSync, readFileSync } from 'node:fs'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
-// Únicos dois mocks da suíte, e cada um por um motivo concreto:
+// Únicos TRÊS mocks da suíte, e cada um por um motivo concreto:
 // 1. mensageria — nenhuma chamada pode sair para a Evolution API nem enfileirar
 //    lembrete no QStash por causa de um teste (WhatsApp para número inventado).
 //    A FIAÇÃO continua provada, por asserção sobre o mock.
 // 2. analytics — `capturarEventoTenant` chama `after()` de 'next/server', que
 //    LANÇA fora de um contexto de request.
-// Nada além disso é mockado: cliente Supabase, engine de disponibilidade,
-// planos e assinaturas são exatamente o que precisa ser real aqui.
+// 3. assinaturas — mock PARCIAL, e este merece explicação: por padrão a função
+//    real roda (o comentário original desta suíte dizia "assinaturas é
+//    exatamente o que precisa ser real aqui", e continua sendo). O override
+//    existe para UM caso que o banco não sabe produzir sob demanda: a FALHA DE
+//    LEITURA de `assinaturas`. A alternativa seria revogar privilégio no banco
+//    compartilhado no meio da suíte — efeito colateral global para provar um
+//    ramo local. Injetar a falha na fronteira da função é a única forma de
+//    exercitar o comportamento novo contra linhas REAIS do banco (perfil com
+//    `cor_marca` gravada, dois slugs de verdade), que é justamente o que uma
+//    suíte hermética não provaria.
+// Nada além disso é mockado: cliente Supabase, engine de disponibilidade e
+// planos continuam reais.
 vi.mock('@/lib/notificacoes-agendamento', () => ({
     dispararNotificacoesAgendamento: vi.fn(async () => {}),
 }))
@@ -51,10 +61,15 @@ vi.mock('@/lib/analytics/server', () => ({
     capturarEventoTenant: vi.fn(),
     capturarEventoServidor: vi.fn(),
 }))
+vi.mock('@/lib/assinaturas', async (importarOriginal) => {
+    const real = await importarOriginal<typeof import('@/lib/assinaturas')>()
+    return { ...real, obterPlanoVigentePublico: vi.fn(real.obterPlanoVigentePublico) }
+})
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { diaLocal, somarDias } from '@/lib/timezone'
 import { dispararNotificacoesAgendamento } from '@/lib/notificacoes-agendamento'
+import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 import {
     criarAgendamentoPublico,
     obterDadosBookingPublico,
@@ -187,6 +202,17 @@ async function removerTenantVizinho(): Promise<void> {
     await admin.from('perfis_empresas').delete().eq('tenant_id', TENANT_VIZINHO)
 }
 
+/**
+ * Personalização PAGA gravada num tenant que está no plano GRATUITO. Não é
+ * cenário inventado: downgrade não zera as colunas, então esta é exatamente a
+ * linha que um ex-Pro deixa no banco. É o que permite provar que a sanitização
+ * por plano — defesa ÚNICA com o RLS bypassado (01-UI-SPEC §29) — continua
+ * segurando inclusive na janela de degradação.
+ */
+const COR_MARCA_GRAVADA = '#a1b2c3'
+const LOGO_GRAVADO = 'https://exemplo.invalido/logo-fixture.png'
+const CAPA_GRAVADA = 'https://exemplo.invalido/capa-fixture.png'
+
 async function prepararTenantDeTeste(): Promise<void> {
     const { error: pErro } = await admin.from('perfis_empresas').insert({
         tenant_id: TENANT_TESTE,
@@ -196,6 +222,9 @@ async function prepararTenantDeTeste(): Promise<void> {
         timezone: TIMEZONE_TESTE,
         antecedencia_minima_minutos: 0,
         horizonte_maximo_dias: 30,
+        cor_marca: COR_MARCA_GRAVADA,
+        logo_url: LOGO_GRAVADO,
+        capa_url: CAPA_GRAVADA,
     })
     if (pErro) throw new Error(`Falha ao criar o perfil da fixture: ${pErro.message}`)
 
@@ -596,6 +625,142 @@ describe.skipIf(!temCredenciais)(
             expect(dados).not.toBeNull()
             expect(dados!.perfil.tenant_id).toBe(TENANT_TESTE)
             expect(dados!.servicos.length).toBeGreaterThan(0)
+        })
+
+        // -------------------------------------------------------------------
+        // DEGRADAÇÃO POR FALHA DE LEITURA DE PLANO (WR-07 / T-01-16-01..03)
+        //
+        // A decisão de produto registrada no objetivo do plano 01-16, em uma
+        // frase: PERMISSIVO NA DISPONIBILIDADE, RESTRITIVO NO QUE É PAGO.
+        // Enquanto o plano é desconhecido, o link fica no ar (o cliente final
+        // de quem paga não vê "agenda não encontrada" por causa de um soluço de
+        // infraestrutura) e nada pago aparece na tela.
+        //
+        // Os dois lados precisam de prova, e um sem o outro é armadilha: provar
+        // só o lado permissivo transformaria a correção de disponibilidade num
+        // vazamento de recurso pago; provar só o restritivo deixaria a saída (A)
+        // — o 404 na cara do cliente — passar como se fosse a nova.
+        // -------------------------------------------------------------------
+
+        /**
+         * Injeta a falha de leitura de `assinaturas` na fronteira da função,
+         * pela duração de UMA chamada da action sob teste.
+         *
+         * O `finally` com `mockReset()` devolve a implementação REAL (é o
+         * contrato de `vi.fn(impl)`), e isso não fica no fio da navalha: o caso
+         * de CONTROLE logo abaixo roda o caminho real depois desta injeção e
+         * reprovaria na hora se a restauração não acontecesse.
+         */
+        async function comLeituraDePlanoFalhando<T>(executar: () => Promise<T>): Promise<T> {
+            const espiao = vi.mocked(obterPlanoVigentePublico)
+            espiao.mockResolvedValue({ plano: 'gratuito', degradadoPorErro: true })
+            try {
+                return await executar()
+            } finally {
+                espiao.mockReset()
+            }
+        }
+
+        it('sob degradação, o slug CUSTOMIZADO de um tenant gratuito volta a resolver (o link não cai)', async () => {
+            // Este é o cenário do WR-07 com o sinal trocado. A fixture está no
+            // plano gratuito, então em operação normal o slug efetivo dela é o
+            // `slug_gratuito` e o customizado NÃO resolve (o caso de controle
+            // abaixo prova que essa regra continua de pé). Sob degradação o
+            // plano é DESCONHECIDO — e recusar o slug customizado nessa hora é
+            // exatamente o que respondia 404 para os clientes de um tenant Pro.
+            const dados = await comLeituraDePlanoFalhando(() =>
+                obterDadosBookingPublico(SLUG_CUSTOMIZADO_TESTE),
+            )
+
+            expect(
+                dados,
+                'O link customizado caiu durante a falha de leitura de plano — é o 404 do WR-07 na cara do cliente de quem paga.',
+            ).not.toBeNull()
+            expect(dados!.perfil.tenant_id).toBe(TENANT_TESTE)
+            expect(dados!.servicos.length).toBeGreaterThan(0)
+        })
+
+        it('CONTROLE: sem degradação, o slug customizado de um tenant gratuito continua NÃO resolvendo', async () => {
+            // A regra de produto (downgrade invalida o link customizado na hora)
+            // não foi afrouxada — só passou a ser condicional ao que se SABE do
+            // plano. Sem este caso, a mudança acima seria indistinguível de
+            // "removi a checagem de slug efetivo", que é regressão de
+            // monetização.
+            const dados = await obterDadosBookingPublico(SLUG_CUSTOMIZADO_TESTE)
+
+            expect(
+                dados,
+                'O slug customizado de um tenant GRATUITO resolveu fora da janela de degradação — a regra de slug efetivo por plano foi perdida.',
+            ).toBeNull()
+        })
+
+        it('sob degradação, nada pago aparece: cor, logo e capa voltam nulos mesmo gravados no perfil', async () => {
+            // A metade "restritiva" da decisão, e a linha 29 do 01-UI-SPEC: com
+            // o RLS bypassado pelo cliente privilegiado, esta sanitização é a
+            // ÚNICA defesa. A saída permissiva na disponibilidade não pode virar
+            // porta de entrada para recurso pago numa tela pública.
+            const dados = await comLeituraDePlanoFalhando(() =>
+                obterDadosBookingPublico(SLUG_CUSTOMIZADO_TESTE),
+            )
+
+            expect(dados).not.toBeNull()
+            expect(
+                dados!.personalizacao.corMarca,
+                'A cor de marca vazou durante a janela de degradação — recurso pago exibido com o plano desconhecido.',
+            ).toBeNull()
+            expect(dados!.personalizacao.logoUrl).toBeNull()
+            expect(dados!.personalizacao.capaUrl).toBeNull()
+
+            // E os campos CRUS também: neutralizá-los no `perfil` é o que
+            // impede consumo acidental fora do objeto `personalizacao`.
+            expect(dados!.perfil.cor_marca).toBeNull()
+            expect(dados!.perfil.logo_url).toBeNull()
+            expect(dados!.perfil.capa_url).toBeNull()
+
+            // A prova de que a fixture REALMENTE tem a personalização gravada —
+            // sem isto, os `toBeNull()` acima passariam contra um perfil vazio e
+            // não provariam sanitização nenhuma.
+            const { data: linhaCrua } = await admin
+                .from('perfis_empresas')
+                .select('cor_marca, logo_url, capa_url')
+                .eq('tenant_id', TENANT_TESTE)
+                .single()
+            expect(linhaCrua?.cor_marca).toBe(COR_MARCA_GRAVADA)
+            expect(linhaCrua?.logo_url).toBe(LOGO_GRAVADO)
+            expect(linhaCrua?.capa_url).toBe(CAPA_GRAVADA)
+        })
+
+        it('sob degradação, o slug do PROVISIONAMENTO também continua resolvendo', async () => {
+            // As duas colunas do namespace são aceitas na janela de falha, não
+            // só a customizada: o tenant que nunca personalizou o link é a
+            // maioria, e ele não pode sair do ar junto.
+            const dados = await comLeituraDePlanoFalhando(() =>
+                obterDadosBookingPublico(SLUG_GRATUITO_TESTE),
+            )
+
+            expect(dados).not.toBeNull()
+            expect(dados!.perfil.tenant_id).toBe(TENANT_TESTE)
+        })
+
+        it('sob degradação, a recusa de namespace ambíguo do plano 01-14 CONTINUA valendo', async () => {
+            // A janela de degradação é o único momento em que dois candidatos
+            // podem coexistir legitimamente na mesma decisão — então é onde a
+            // recusa importa MAIS, não menos. Afrouxar a checagem de slug não
+            // pode ter reaberto o sequestro do CR-03 por uma porta lateral.
+            try {
+                await criarVizinhoSequestrador()
+
+                const dados = await comLeituraDePlanoFalhando(() =>
+                    obterDadosBookingPublico(SLUG_GRATUITO_TESTE),
+                )
+
+                expect(
+                    dados,
+                    'A resolução devolveu um perfil para um slug ambíguo durante a degradação — o sequestro do CR-03 reabriu pela porta lateral.',
+                ).toBeNull()
+            } finally {
+                await removerTenantVizinho()
+            }
         })
     },
 )
