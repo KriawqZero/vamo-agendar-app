@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
-status: executing
-stopped_at: Completed 01-04-PLAN.md
-last_updated: "2026-07-22T06:24:10.814Z"
+status: verifying
+stopped_at: Completed 01-05-PLAN.md — fase 01 pronta para verificacao
+last_updated: "2026-07-22T06:45:42.975Z"
 last_activity: 2026-07-22
 last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 5
-  completed_plans: 4
+  completed_plans: 5
 ---
 
 # Project State
@@ -29,10 +29,10 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
 Plan: 5 of 5
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-22 — Phase 01 execution started
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [████████░░] 80%
 | Phase 01 P03 | ~25min | 3 tasks | 9 files |
 | Phase 01 P02 | ~12min | 3 tasks | 5 files |
 | Phase 01 P04 | ~35min | 3 tasks | 8 files |
+| Phase 01 P05 | ~45min | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,10 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: Saída de supabase db diff é rascunho, não artefato: forçado a diffar privilégio o migra gera o CONTRÁRIO (revoke service_role em tudo, grant truncate a anon) — privilégio mora em migration escrita à mão
 - [Phase ?]: mcp__supabase__apply_migration está proibido: o método correto é execute_sql para o DDL + INSERT manual no ledger com a version do arquivo (duas confirmações, 01-01 e 01-04)
 - [Phase ?]: supabase db diff sobe shadow database em Docker — única exceção de container do projeto, exige aprovação prévia (CLAUDE.md §Infraestrutura)
+- [Phase ?]: Assuncao A1 refutada: sem env obrigatoria o boot do Next 16 NAO mata o processo — ele segue escutando e responde 500 em toda rota; healthcheck de deploy precisa ser por HTTP, nunca por liveness de processo
+- [Phase ?]: Criterio 5 satisfeito na substancia por duas camadas (app nao serve nada + verificarAssinaturaQstash lanca sem chave), registrado como insatisfeito na forma — mudar semantica de boot e decisao de arquitetura, nao improviso de plano de verificacao
+- [Phase ?]: Policies residuais de servicos/horarios_funcionamento registradas e nao fechadas: migration nao aplicavel criaria drift 18 arquivos x 17 versions no ledger; o conserto futuro e DROP puro, a substituta 1b ja existe
+- [Phase ?]: Assertiva de vazamento por PADRAO e nao por substring: grep 'org_' falseia em producao por causa da baggage do Sentry (sentry-org_id=N)
 
 ### Pending Todos
 
@@ -107,6 +112,8 @@ Nenhum ainda.
 - UAT do wizard completo de /book/avantis pendente (regressão obrigatória do CONTEXT §specifics); o contrafactual de slug prova só a leitura do plano — **agravado pelo 01-02**, que trocou o identificador recebido pelas duas actions públicas (`tenantId` → `slug`). Escopo do 01-05
 - Caixa de erro de slots nunca vista renderizando a copy nova do 01-02 ("Não foi possível carregar os horários. Tente de novo."); teste barato no UAT do 01-05: chamar `obterSlotsPublicos('slug-inexistente', …)`
 - UAT do dashboard sob as policies tenant-scoped novas do 01-04 (agenda, agendamento manual com RETURNING, exceção de agenda, perfil) — Pitfall 3: policy substituta errada deixa a tela VAZIA sem estourar erro. Escopo do 01-05
+- UAT humano da Phase 1 NAO EXECUTADO (7 itens: wizard completo, double-booking, dashboard tela a tela, personalizacao Pro x gratuito, lembrete QStash ponta a ponta, caixa de erro de slots, backstops visuais). Checklist com o motivo de cada um em docs/PENDENCIAS.md secao 'UAT humano pendente da Phase 1'. Owner ausente na execucao do 01-05 — registrado como pendente, nunca aprovado
+- Duas policies de SELECT ainda {anon,authenticated} com USING (ativo = true) em servicos e horarios_funcionamento: leitura cross-tenant por autenticado hoje, e um GRANT futuro a anon reabre tudo sem policy nova. Conserto e DROP puro (a 1b ja cobre o tenant). Precisa de sessao com acesso a banco
 
 ### Quick Tasks Completed
 
@@ -133,6 +140,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T06:23:45.185Z
-Stopped at: Completed 01-04-PLAN.md
+Last session: 2026-07-22T06:45:42.968Z
+Stopped at: Completed 01-05-PLAN.md — fase 01 pronta para verificacao
 Resume file: None
