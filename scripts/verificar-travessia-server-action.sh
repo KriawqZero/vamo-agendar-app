@@ -59,17 +59,30 @@
 #   PULAR_BUILD=1 bash scripts/verificar-travessia-server-action.sh   # reusa .next/
 #   PORTA_TRAVESSIA=4002 bash scripts/verificar-travessia-server-action.sh
 #
-# Quatro vereditos:
-#   PREPARO       o id da Server Action `obterSlotsPublicos` foi derivado do
-#                 manifesto do build (nunca de literal colada à mão)
-#   CONTROLE      `GET /` responde 200 com o processo vivo — sem ele, um 500 de
-#                 build quebrado seria lido como falha da travessia
-#   SLOTS_ERRO    o corpo da resposta da action com slug inexistente CONTÉM o
-#                 discriminante `slug_invalido` e NÃO contém a literal `digest`
-#   SEM_VAZAMENTO o mesmo corpo não contém o slug enviado, nem `org_`, nem
-#                 `PGRST`, nem `tenant_id`
+# Cinco vereditos — os dois caminhos públicos, LEITURA e ESCRITA:
+#   PREPARO           os ids das Server Actions `obterSlotsPublicos` e
+#                     `criarAgendamentoPublico` foram derivados do manifesto do
+#                     build (nunca de literal colada à mão)
+#   CONTROLE          `GET /` responde 200 com o processo vivo — sem ele, um 500
+#                     de build quebrado seria lido como falha da travessia
+#   SLOTS_ERRO        o corpo da resposta da action de LEITURA com slug
+#                     inexistente CONTÉM o discriminante `slug_invalido` e NÃO
+#                     contém a literal `digest`
+#   ESCRITA_VALIDACAO o corpo da resposta da action de ESCRITA com campos
+#                     obrigatórios vazios CONTÉM `campos_obrigatorios` e NÃO
+#                     contém `digest`
+#   SEM_VAZAMENTO     nenhum dos dois corpos contém o slug enviado, nem `org_`,
+#                     nem `PGRST`, nem `tenant_id`
 #
-# Sai 0 só com os quatro aprovados; 1 com qualquer reprovação; 2 para erro de
+# 6) POR QUE A SONDA DE ESCRITA USA UMA VALIDAÇÃO PURA. `campos_obrigatorios` é
+#    a primeira guarda de `criarAgendamentoPublico` e retorna antes de qualquer
+#    acesso ao banco: a sonda não depende de fixture, não depende de tenant
+#    existente e não deixa resíduo, então o harness continua rodável a qualquer
+#    momento e em qualquer ordem. O caso de `slot_indisponivel`, que exigiria um
+#    horário realmente ocupado, fica onde já há infraestrutura para isso — na
+#    suíte `pnpm test:integracao`.
+#
+# Sai 0 só com os cinco aprovados; 1 com qualquer reprovação; 2 para erro de
 # preparação (porta ocupada, build ausente, id não derivável, pnpm indisponível).
 
 set -uo pipefail
@@ -80,9 +93,14 @@ LIMITE_CONTROLE=30
 MANIFESTO='.next/server/server-reference-manifest.json'
 MODULO_ACTION='src/app/actions/public-booking.ts'
 NOME_ACTION='obterSlotsPublicos'
+NOME_ACTION_ESCRITA='criarAgendamentoPublico'
 ROTA_SONDA='/book/rota-do-harness-de-travessia'
 SLUG_INEXISTENTE='slug-que-nao-existe-harness-9f3a2b'
 CORPO_SONDA="[\"$SLUG_INEXISTENTE\",\"2030-01-01\",30]"
+# Slug preenchido de propósito (ver nota 6): dá ao SEM_VAZAMENTO uma literal
+# concreta para procurar na resposta, e os demais campos vazios já disparam a
+# guarda `campos_obrigatorios` antes de qualquer acesso ao banco.
+CORPO_SONDA_ESCRITA="[{\"slug\":\"$SLUG_INEXISTENTE\",\"servicoId\":\"\",\"dataHora\":\"\",\"clienteNome\":\"\",\"clienteTelefone\":\"\"}]"
 
 # Valores obviamente falsos para as obrigatórias ausentes em dev (ver nota 4).
 COMPLEMENTO_DEV=(
@@ -124,11 +142,11 @@ registrar() {
     local veredito="$1" nome="$2" detalhe="$3"
     TOTAL=$((TOTAL + 1))
     if [ "$veredito" = 'APROVADO' ]; then
-        printf '  [APROVADO]  %-14s %s\n' "$nome" "$detalhe"
+        printf '  [APROVADO]  %-17s %s\n' "$nome" "$detalhe"
     else
         REPROVADOS=$((REPROVADOS + 1))
         LISTA_REPROVADOS+=("$nome — $detalhe")
-        printf '  [REPROVADO] %-14s %s\n' "$nome" "$detalhe"
+        printf '  [REPROVADO] %-17s %s\n' "$nome" "$detalhe"
     fi
 }
 
@@ -161,7 +179,7 @@ codigo_http() {
 }
 
 echo 'Verificação da travessia de erro esperado pela fronteira de Server Action'
-echo "Action alvo: $NOME_ACTION   |   Porta: $PORTA"
+echo "Actions alvo: $NOME_ACTION (leitura) e $NOME_ACTION_ESCRITA (escrita)   |   Porta: $PORTA"
 echo
 
 command -v pnpm >/dev/null 2>&1 || abortar 'pnpm não encontrado no PATH.'
@@ -187,7 +205,8 @@ fi
 # `jq` não é, então a extração é feita com node mesmo.
 [ -f "$MANIFESTO" ] || abortar "manifesto não encontrado: $MANIFESTO"
 
-ID_ACTION=$(node -e '
+derivar_id() {
+    node -e '
 const [caminho, modulo, nomeExportado] = process.argv.slice(1)
 const manifesto = require(require("node:path").resolve(caminho))
 for (const [id, entrada] of Object.entries(manifesto.node || {})) {
@@ -199,12 +218,21 @@ for (const [id, entrada] of Object.entries(manifesto.node || {})) {
     }
 }
 process.exit(1)
-' "$MANIFESTO" "$MODULO_ACTION" "$NOME_ACTION" 2>/dev/null)
+' "$MANIFESTO" "$MODULO_ACTION" "$1" 2>/dev/null
+}
 
+ID_ACTION=$(derivar_id "$NOME_ACTION")
 if [ -z "$ID_ACTION" ]; then
     abortar "não foi possível derivar o id de $NOME_ACTION a partir de $MANIFESTO (exportedName + filename terminando em $MODULO_ACTION). Nunca colar id à mão — ver nota 2."
 fi
-registrar APROVADO PREPARO "id de $NOME_ACTION derivado de $MANIFESTO (prefixo ${ID_ACTION:0:8}…)"
+
+ID_ACTION_ESCRITA=$(derivar_id "$NOME_ACTION_ESCRITA")
+if [ -z "$ID_ACTION_ESCRITA" ]; then
+    abortar "não foi possível derivar o id de $NOME_ACTION_ESCRITA a partir de $MANIFESTO (exportedName + filename terminando em $MODULO_ACTION). Sumir do manifesto é motivo de ABORTO, nunca de degradar o veredito — ver nota 2."
+fi
+
+registrar APROVADO PREPARO \
+    "ids de $NOME_ACTION (prefixo ${ID_ACTION:0:8}…) e $NOME_ACTION_ESCRITA (prefixo ${ID_ACTION_ESCRITA:0:8}…) derivados de $MANIFESTO"
 
 # --- Veredito 2: CONTROLE ----------------------------------------------------
 iniciar_servidor travessia "${COMPLEMENTO_DEV[@]}"
@@ -232,46 +260,68 @@ else
     SERVIDOR_SAUDAVEL=0
 fi
 
-# --- Vereditos 3 e 4: SLOTS_ERRO e SEM_VAZAMENTO -----------------------------
-if [ "$SERVIDOR_SAUDAVEL" -eq 1 ]; then
-    CORPO_RESPOSTA=$(curl -s --max-time 15 -X POST \
-        -H "Next-Action: $ID_ACTION" \
+# --- Vereditos 3, 4 e 5: SLOTS_ERRO, ESCRITA_VALIDACAO e SEM_VAZAMENTO -------
+sondar_action() {
+    curl -s --max-time 15 -X POST \
+        -H "Next-Action: $1" \
         -H 'Content-Type: text/plain;charset=UTF-8' \
-        --data-raw "$CORPO_SONDA" \
-        "$BASE_URL$ROTA_SONDA" 2>/dev/null)
+        --data-raw "$2" \
+        "$BASE_URL$ROTA_SONDA" 2>/dev/null
+}
 
-    # Recorte para o relatório: corpo de flight pode ser longo, e o que interessa
-    # como evidência é o começo (onde mora o chunk de resultado da action).
-    CORPO_CURTO=$(printf '%s' "$CORPO_RESPOSTA" | head -c 400 | tr '\n' '|')
+# Recorte para o relatório: corpo de flight pode ser longo, e o que interessa
+# como evidência é o começo (onde mora o chunk de resultado da action).
+recorte() {
+    printf '%s' "$1" | head -c 400 | tr '\n' '|'
+}
 
-    TEM_DISCRIMINANTE=0
-    TEM_DIGEST=0
-    case "$CORPO_RESPOSTA" in *slug_invalido*) TEM_DISCRIMINANTE=1 ;; esac
-    case "$CORPO_RESPOSTA" in *digest*) TEM_DIGEST=1 ;; esac
+# Um veredito de travessia, parametrizado pelo discriminante esperado: o corpo
+# tem de CONTER o discriminante e NÃO conter a literal `digest`.
+avaliar_travessia() {
+    local nome="$1" discriminante="$2" corpo="$3"
+    local tem_discriminante=0 tem_digest=0
+    case "$corpo" in *"$discriminante"*) tem_discriminante=1 ;; esac
+    case "$corpo" in *digest*) tem_digest=1 ;; esac
 
-    if [ "$TEM_DISCRIMINANTE" -eq 1 ] && [ "$TEM_DIGEST" -eq 0 ]; then
-        registrar APROVADO SLOTS_ERRO \
-            'o corpo da resposta carrega o discriminante `slug_invalido` e nenhum `digest` opaco'
+    if [ "$tem_discriminante" -eq 1 ] && [ "$tem_digest" -eq 0 ]; then
+        registrar APROVADO "$nome" \
+            "o corpo da resposta carrega o discriminante \`$discriminante\` e nenhum \`digest\` opaco"
     else
-        registrar REPROVADO SLOTS_ERRO \
-            "contém slug_invalido=$TEM_DISCRIMINANTE (exigido 1), contém digest=$TEM_DIGEST (exigido 0) — corpo observado: $CORPO_CURTO"
+        registrar REPROVADO "$nome" \
+            "contém $discriminante=$tem_discriminante (exigido 1), contém digest=$tem_digest (exigido 0) — corpo observado: $(recorte "$corpo")"
     fi
+}
 
+if [ "$SERVIDOR_SAUDAVEL" -eq 1 ]; then
+    CORPO_LEITURA=$(sondar_action "$ID_ACTION" "$CORPO_SONDA")
+    CORPO_ESCRITA=$(sondar_action "$ID_ACTION_ESCRITA" "$CORPO_SONDA_ESCRITA")
+
+    avaliar_travessia SLOTS_ERRO slug_invalido "$CORPO_LEITURA"
+    avaliar_travessia ESCRITA_VALIDACAO campos_obrigatorios "$CORPO_ESCRITA"
+
+    # As mesmas quatro asserções negativas sobre os DOIS corpos: o caminho de
+    # escrita recebe dado do visitante e escreve com cliente privilegiado, então
+    # é o que tem mais a vazar, não menos.
     VAZAMENTOS=()
-    case "$CORPO_RESPOSTA" in *"$SLUG_INEXISTENTE"*) VAZAMENTOS+=('slug enviado') ;; esac
-    case "$CORPO_RESPOSTA" in *org_*) VAZAMENTOS+=('org_') ;; esac
-    case "$CORPO_RESPOSTA" in *PGRST*) VAZAMENTOS+=('PGRST') ;; esac
-    case "$CORPO_RESPOSTA" in *tenant_id*) VAZAMENTOS+=('tenant_id') ;; esac
+    for par in "leitura:$CORPO_LEITURA" "escrita:$CORPO_ESCRITA"; do
+        rotulo="${par%%:*}"
+        corpo="${par#*:}"
+        case "$corpo" in *"$SLUG_INEXISTENTE"*) VAZAMENTOS+=("$rotulo/slug enviado") ;; esac
+        case "$corpo" in *org_*) VAZAMENTOS+=("$rotulo/org_") ;; esac
+        case "$corpo" in *PGRST*) VAZAMENTOS+=("$rotulo/PGRST") ;; esac
+        case "$corpo" in *tenant_id*) VAZAMENTOS+=("$rotulo/tenant_id") ;; esac
+    done
 
     if [ "${#VAZAMENTOS[@]}" -eq 0 ]; then
         registrar APROVADO SEM_VAZAMENTO \
-            'o corpo não carrega o slug do visitante, nem org_, nem PGRST, nem tenant_id'
+            'nenhum dos dois corpos carrega o slug do visitante, org_, PGRST ou tenant_id'
     else
         registrar REPROVADO SEM_VAZAMENTO \
-            "identificador interno na resposta: ${VAZAMENTOS[*]} — corpo observado: $CORPO_CURTO"
+            "identificador interno na resposta: ${VAZAMENTOS[*]} — leitura: $(recorte "$CORPO_LEITURA") — escrita: $(recorte "$CORPO_ESCRITA")"
     fi
 else
     registrar REPROVADO SLOTS_ERRO 'não medido: o CONTROLE não deixou servidor saudável de pé'
+    registrar REPROVADO ESCRITA_VALIDACAO 'não medido: o CONTROLE não deixou servidor saudável de pé'
     registrar REPROVADO SEM_VAZAMENTO 'não medido: o CONTROLE não deixou servidor saudável de pé'
 fi
 
@@ -279,7 +329,7 @@ encerrar_servidor
 
 echo
 if [ "$REPROVADOS" -eq 0 ]; then
-    echo "Resumo: $TOTAL vereditos, 0 reprovados — o erro esperado atravessa a fronteira com identidade preservada."
+    echo "Resumo: $TOTAL vereditos, 0 reprovados — os erros esperados dos DOIS caminhos públicos atravessam a fronteira com identidade preservada."
     exit 0
 fi
 

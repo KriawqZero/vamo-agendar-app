@@ -23,6 +23,13 @@
  * docs/RESET_AMBIENTE_DEV.md). Ainda assim a fixture é determinística e a
  * limpeza roda ANTES de criar e DEPOIS da suíte, filtrando sempre pelo
  * `tenant_id` de teste: nenhum tenant real é lido ou escrito.
+ *
+ * ⚠️ O QUE ESTA SUÍTE NÃO PROVA, e é preciso dizer em voz alta: ela chama a
+ * action EM PROCESSO, sem nenhuma serialização de flight. Verde aqui significa
+ * "o produtor devolve o discriminante certo", nunca "o discriminante chega ao
+ * navegador". Foi exatamente essa confusão que manteve o gap 2 verde enquanto o
+ * caminho estava morto em produção. Quem prova a travessia da fronteira é
+ * `scripts/verificar-travessia-server-action.sh`, contra `next start`.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -49,6 +56,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { diaLocal, somarDias } from '@/lib/timezone'
 import { dispararNotificacoesAgendamento } from '@/lib/notificacoes-agendamento'
 import { criarAgendamentoPublico, obterSlotsPublicos } from '@/app/actions/public-booking'
+import type { AgendamentoCriado } from '@/app/actions/public-booking'
+import { COPY_SLOT_INDISPONIVEL, mensagemDeEnvio } from '@/app/book/[slug]/mensagens'
 
 // ---------------------------------------------------------------------------
 // Credenciais — só os NOMES aparecem em qualquer saída, nunca os valores
@@ -137,21 +146,6 @@ const SLUG_GRATUITO_TESTE = 'teste-integracao-booking-gratuito'
 const TIMEZONE_TESTE = 'America/Sao_Paulo'
 const DURACAO_SERVICO_TESTE = 30
 
-/**
- * Acoplamento por SUBSTRING entre produtor e consumidor, sem nenhum tipo que o
- * sustente: `criarAgendamentoPublico` lança uma mensagem que CONTÉM este trecho
- * e `BookingApp.tsx` decide a recuperação de double-booking com
- * `mensagem.includes(...)` exatamente sobre ele.
- *
- * Intenção de negócio: sem o casamento, o cliente final fica preso numa caixa
- * vermelha estática embaixo do formulário de contato, olhando para um horário
- * que não existe mais — em vez de voltar para a grade refeita com o aviso âmbar.
- *
- * Uma constante ÚNICA usada nas duas asserções: reescrever qualquer uma das
- * pontas deixa este teste vermelho, em vez de quebrar a UX em silêncio.
- */
-const TRECHO_DOUBLE_BOOKING = 'já foi preenchido'
-
 const TELEFONE_FORMATADO = '(11) 98888-7777'
 const TELEFONE_SANITIZADO = '11988887777'
 
@@ -227,6 +221,25 @@ async function slotsLivresDaFixture(): Promise<{ time: string; datetime: string 
     return resultado.slots
 }
 
+/**
+ * Desembrulha o retorno DISCRIMINADO de `criarAgendamentoPublico`
+ * (`{ ok, agendamento }` | `{ ok, motivo }`) nos casos em que a criação PRECISA
+ * dar certo. Mesmo motivo do helper acima: falhar aqui nomeando o `motivo` é
+ * muito melhor do que o teste morrer três linhas adiante lendo `.id` de
+ * `undefined` — foi assim que a mudança de contrato apareceu na medição RED.
+ */
+async function criarComSucesso(
+    params: Parameters<typeof criarAgendamentoPublico>[0],
+): Promise<AgendamentoCriado> {
+    const resultado = await criarAgendamentoPublico(params)
+    if (!resultado.ok) {
+        throw new Error(
+            `criarAgendamentoPublico devolveu { ok: false, motivo: '${resultado.motivo}' } onde a criação precisava dar certo.`,
+        )
+    }
+    return resultado.agendamento
+}
+
 // ---------------------------------------------------------------------------
 // Sentinela — nunca é pulada. É o que impede um pulo silencioso de virar
 // falso verde: sob `pnpm test:integracao` a variável está setada, então faltar
@@ -284,7 +297,7 @@ describe.skipIf(!temCredenciais)(
                 `A fixture de horários não cobriu ${dataAlvo} — nenhum slot devolvido.`,
             ).toBeGreaterThan(0)
 
-            const agendamento = await criarAgendamentoPublico({
+            const agendamento = await criarComSucesso({
                 slug: SLUG_GRATUITO_TESTE,
                 servicoId: servicoIdTeste,
                 dataHora: slots[0].datetime,
@@ -333,7 +346,7 @@ describe.skipIf(!temCredenciais)(
             expect(slots.length).toBeGreaterThan(0)
             expect(slots[0].datetime).not.toBe(datetimeOcupado)
 
-            const segundo = await criarAgendamentoPublico({
+            const segundo = await criarComSucesso({
                 slug: SLUG_GRATUITO_TESTE,
                 servicoId: servicoIdTeste,
                 dataHora: slots[0].datetime,
@@ -357,7 +370,13 @@ describe.skipIf(!temCredenciais)(
             expect(linhaSegundo?.cliente_id).toBe(clienteIdPrimeiro)
         })
 
-        it('rejeita horário já ocupado sem gravar nada, com a mensagem que a UI reconhece', async () => {
+        // O caso que a Phase 2 §SC4 depende. Até esta rodada a action LANÇAVA
+        // aqui, e o `BookingApp` reconhecia a corrida por substring da mensagem —
+        // comparação sempre falsa em build de produção, onde só o `digest`
+        // atravessa. Agora o discriminante é o contrato, e é ele que este caso
+        // assere. ⚠️ Isto continua sendo prova do PRODUTOR: a travessia da
+        // fronteira é do harness (ver cabeçalho do arquivo).
+        it('devolve { ok: false, motivo: "slot_indisponivel" } — sem rejeitar — no horário já ocupado, e não grava nada', async () => {
             const contar = async () => {
                 const { count } = await admin
                     .from('agendamentos')
@@ -368,20 +387,38 @@ describe.skipIf(!temCredenciais)(
 
             const antes = await contar()
 
-            const erro = await criarAgendamentoPublico({
+            // A promessa RESOLVE. Se ela rejeitar, o `.then` de rejeição devolve
+            // o erro e o `toEqual` abaixo reprova nomeando o que voltou.
+            const resultado = await criarAgendamentoPublico({
                 slug: SLUG_GRATUITO_TESTE,
                 servicoId: servicoIdTeste,
                 dataHora: datetimeOcupado,
                 clienteNome: 'Cliente Atrasado',
                 clienteTelefone: '(11) 97777-6666',
             }).then(
-                () => null,
-                (e: unknown) => e,
+                (valor) => valor,
+                (e: unknown) => ({ rejeitou: true, erro: String(e) }),
             )
 
-            expect(erro).toBeInstanceOf(Error)
-            expect((erro as Error).message).toContain(TRECHO_DOUBLE_BOOKING)
+            expect(resultado).toEqual({ ok: false, motivo: 'slot_indisponivel' })
+
+            // O coração do caso, inalterado: nada foi gravado na tentativa.
             expect(await contar()).toBe(antes)
+
+            // Não-vazamento sobre o retorno INTEIRO serializado, não sobre uma
+            // mensagem: o discriminante é enum fechado e isso precisa ficar
+            // provado — nada de identificador interno numa caixa visível ao
+            // cliente final (regra do CLAUDE.md).
+            const serializado = JSON.stringify(resultado)
+            expect(serializado).not.toContain(SLUG_GRATUITO_TESTE)
+            expect(serializado).not.toContain('tenant')
+            expect(serializado).not.toContain('org_')
+            expect(serializado).not.toContain('PGRST')
+
+            // E a ponta do cliente: este discriminante vira o aviso âmbar com a
+            // cópia contratada. As duas pontas do caminho que a Phase 2 §SC4
+            // precisa vivo ficam asseridas no mesmo caso.
+            expect(mensagemDeEnvio('slot_indisponivel')).toBe(COPY_SLOT_INDISPONIVEL)
         })
 
         // Aqui existia um caso chamado 'mantém o acoplamento de string casando
