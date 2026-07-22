@@ -132,12 +132,26 @@ export function calcularIntervalosLivres(
  * é oferecido se não deixar, entre ele e as bordas do intervalo, um buraco menor
  * que a menor duração de serviço ativa do tenant — buraco esse que nenhum
  * serviço conseguiria preencher depois.
+ *
+ * ⚠️ GUARDA DE PROFUNDIDADE na primeira linha: com `duracaoMinutos` negativo, a
+ * condição de parada do laço abaixo (`candidato + duracaoMinutos <= b`) deixa de
+ * limitar a grade ao intervalo livre e passa a limitá-la à própria magnitude do
+ * valor, linearmente — `-5000000` num intervalo de 10 horas produz 333.374
+ * entradas no `Set`, e o laço é SÍNCRONO (enquanto roda, o event loop está
+ * parado para todas as requisições em voo).
+ *
+ * A guarda vive aqui, e não só na fronteira da Server Action pública, porque
+ * esta função é exportada e pura: a validação da action é a FRONTEIRA (recusa
+ * antes de gastar I/O), esta é o CONTRATO — um terceiro chamador futuro herda a
+ * proteção sem que ninguém precise se lembrar de replicá-la.
  */
 export function gerarSlotsAntiBuraco(
     intervalos: Intervalo[],
     duracaoMinutos: number,
     menorDuracaoAtiva: number,
 ): number[] {
+    if (!Number.isInteger(duracaoMinutos) || duracaoMinutos <= 0) return []
+
     const candidatos = new Set<number>()
 
     for (const { start: a, end: b } of intervalos) {
