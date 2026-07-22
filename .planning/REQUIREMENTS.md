@@ -11,7 +11,7 @@ requisitos que faltam para receber tráfego real com segurança.
 ### Superfície pública e integridade multi-tenant
 
 - [ ] **SEG-01**: Visitante anônimo não consegue inserir agendamento nem cliente direto na Data API, contornando a Server Action
-- [ ] **SEG-02**: `perfis_empresas` deixa de ser enumerável — a lista de profissionais da plataforma não é obtível com a chave publicável
+- [x] **SEG-02**: `perfis_empresas` deixa de ser enumerável — a lista de profissionais da plataforma não é obtível com a chave publicável
 - [ ] **SEG-03**: `agendamentos` e `excecoes_agenda` expõem a `anon` apenas as colunas que a engine de disponibilidade consome
 - [ ] **SEG-04**: Coluna nova em tabela com leitura pública nasce sem acesso `anon` por padrão (regra escrita e privilégio revogado por default)
 - [ ] **SEG-05**: Webhook de lembrete só aceita requisições com assinatura válida do QStash; a aplicação não sobe sem as chaves configuradas
@@ -145,7 +145,7 @@ um destino** de `.planning/ROADMAP.md` — uma das 12 fases ou a etapa preparat�
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | SEG-01 | Phase 1 | Pending |
-| SEG-02 | Phase 1 | Pending |
+| SEG-02 | Phase 1 | Complete |
 | SEG-03 | Phase 1 | Pending |
 | SEG-04 | Phase 1 | Pending |
 | SEG-05 | Phase 1 | Pending |
@@ -220,6 +220,7 @@ um destino** de `.planning/ROADMAP.md` — uma das 12 fases ou a etapa preparat�
 | 12 | Ativação dos primeiros profissionais | ATI-01, ATI-02, ATI-03 | 3 |
 
 **Coverage:**
+
 - v1 requirements: 56 total
 - Mapped: 56 (54 nas 12 fases + 2 na etapa preparatória)
 - Unmapped: 0 ✓

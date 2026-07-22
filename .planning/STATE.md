@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lançamento público
-current_phase: 1
-current_phase_name: Hardening da superfície pública
-status: ready_to_execute
-stopped_at: Phase 1 planejada (5 planos, 4 waves, verificação passou) — pronta para /gsd-execute-phase 1; Gate 1 e Gate 2 da etapa preparatória seguem aguardando o owner
-last_updated: "2026-07-22T02:30:00.000Z"
+current_phase: 01
+current_phase_name: hardening-da-superf-cie-p-blica
+status: executing
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-07-22T05:19:46.113Z"
 last_activity: 2026-07-22
-last_activity_desc: Phase 1 planejada — 5 planos verificados, requisitos e decisões 100% cobertos
+last_activity_desc: Phase 01 execution started
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 5
-  completed_plans: 0
+  completed_plans: 1
 ---
 
 # Project State
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 **Core value:** Um agendamento real, feito por um cliente final que nunca ouviu falar do VamoAgendar, cair na agenda do profissional sem que nada quebre no caminho.
-**Current focus:** Phase 1 — Hardening da superfície pública
+**Current focus:** Phase 01 — hardening-da-superf-cie-p-blica
 
 ## Current Position
 
-Phase: 1 de 12 (Hardening da superfície pública) — planejada; execução das waves de banco depende do MCP do Supabase autenticado (ou psql liberado) e os Gates 1/2 da etapa preparatória seguem com o owner
-Plan: 5 planos criados (0/5 executados) — waves 1–4 em `.planning/phases/01-hardening-da-superf-cie-p-blica/`
-Status: Ready to execute (`/gsd-execute-phase 1`)
-Last activity: 2026-07-22 — Phase 1 planejada: 5 planos, verificação passou na 1ª iteração, 5/5 requisitos e 7/7 decisões cobertos
+Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
+Plan: 2 of 5
+Status: Ready to execute
+Last activity: 2026-07-22 — Phase 01 execution started
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
@@ -54,6 +54,11 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: —
 
 *Atualizado após cada plano concluído*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 01 P01 | 46min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -67,6 +72,8 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - **Roadmap**: AUT-01 a AUT-09 promovidos de v2 para v1 — table stake que toda a concorrência entrega
 - **Rede de proteção do banco removida do v1 (2026-07-21)**: o banco atual não é produção e migration destrutiva está autorizada pelo owner; o Pro (backup diário, sem pausa) entra quando o sócio aprovar. Volta a ser obrigatória quando existir dado de terceiro — condição escrita no ROADMAP.md e no PROJECT.md
 - **Hardening antes do checkout**: rate limit na Server Action é teatro enquanto o INSERT `anon` existir
+- [Phase ?]: apply_migration do MCP não preserva a version do arquivo — toda aplicação exige corrigir version/name por DML no ledger em seguida (01-04 aplica mais duas)
+- [Phase ?]: Prova de leitura privilegiada por contrafactual de slug: /book/<slug-pago> 200 E /book/<slug_gratuito> 404 — um 200 sozinho não distingue os dois mundos
 
 ### Pending Todos
 
@@ -74,7 +81,7 @@ Nenhum ainda.
 
 ### Blockers/Concerns
 
-- ✅ **RESOLVIDO 2026-07-21 — DNS do subdomínio de e-mail.** `mail.vamoagendar.com.br` verificado no Resend, DKIM propagado (conferido por `dig`). Deixou de bloquear a Phase 4. Remetente: `naoresponda@mail.vamoagendar.com.br`. Restam dois TXT opcionais do owner: DMARC `p=none` com `rua` e SPF do subdomínio — nenhum impede enviar
+- ✅ **RESOLVIDO 2026-07-21 — DNS do subdomínio de e-mail.** `mail.vamoagendar.com.br` verificado no Resend, DKIM propagado (conferido por `dig`). Deixou de bloquear a Phase 4. Remetente: `naoresponda@mail.vamoagendar.com.br`. Restam dois TXT opcionais do owner: DMARC `p=` com `rua` e SPF do subdomínio — nenhum impede enviar
 - **Nenhum endereço do domínio recebe e-mail** (sem MX na raiz e no subdomínio). O `suporte@`/`contato@` da Phase 10 exige provedor de caixa próprio — o Resend só envia. Decisão adiada por escolha do owner em 2026-07-21
 - **Aprovação da conta Asaas para produção**: dependência externa sem prazo, fora do controle do owner. Não bloqueia a construção (sandbox), bloqueia ATI-02 na Phase 12
 - **Upgrade para Supabase Pro**: depende de aprovação do sócio, sem data. Não bloqueia nenhuma fase, mas é a condição para haver dado de terceiro no banco — sem ele, `pg_dump` antes de migration destrutiva volta a ser obrigatório
@@ -82,6 +89,8 @@ Nenhum ainda.
 - **Revisão jurídica humana** dos termos e da política antes de publicar (Phase 10) — menor confiança de toda a pesquisa
 - **Precedência de lookup** quando telefone e e-mail batem em clientes diferentes: decidir na Phase 5, não descobrir em produção
 - 🚨 **Janela de crash-loop aberta agora (quick task 260721-jif).** A lista de treze variáveis obrigatórias em produção já está valendo no `master`. Deploy de produção **antes** de provisionar `ANALYTICS_TENANT_SALT`, `NEXT_PUBLIC_SENTRY_DSN` e `RESEND_API_KEY` no Railway derruba o boot de propósito. É o comportamento pedido (OPE-02 e SEG-05 dependem dele), mas o intervalo entre merge e configuração é risco real. Duas saídas escritas em `docs/PENDENCIAS.md`: provisionar antes, ou remover as quatro da lista no mesmo commit do deploy
+- pnpm build não rodado no plano 01-01 (lint e test verdes); a Definition of Done exige os três — rodar no 01-02 ou no fechamento da fase
+- UAT do wizard completo de /book/avantis pendente (regressão obrigatória do CONTEXT §specifics); o contrafactual de slug prova só a leitura do plano
 
 ### Quick Tasks Completed
 
@@ -108,6 +117,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T02:30:00.000Z
-Stopped at: Phase 1 planejada — pronto para /gsd-execute-phase 1 (pré-requisito de owner: MCP do Supabase autenticado OU psql pelo pooler liberado, ver user_setup dos planos 01-01/01-04)
-Resume file: .planning/phases/01-hardening-da-superf-cie-p-blica/01-01-PLAN.md
+Last session: 2026-07-22T05:19:46.107Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None
