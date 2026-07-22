@@ -49,6 +49,9 @@ const TODOS_OS_MOTIVOS = [
  */
 const PROIBIDOS = ['org_', 'PGRST', 'tenant', 'slug-'] as const
 
+/** União de tudo que `mensagens.ts` exporta: as cópias (tipo literal) e o mapeador. */
+type ExportacaoDeMensagem = (typeof mensagens)[keyof typeof mensagens]
+
 describe('cópias públicas do booking', () => {
     it('mantém a cópia da caixa de erro de slots byte a byte', () => {
         // Igualdade ESTRITA, não `contains`: a string inteira vai para a tela.
@@ -76,8 +79,13 @@ describe('cópias públicas do booking', () => {
         // Iteração sobre o módulo (não sobre uma lista escrita à mão): cópia
         // acrescentada no futuro já nasce sob a regra, sem alguém lembrar de
         // acrescentar caso de teste.
+        // O predicado narra para os membros STRING da união exportada pelo
+        // módulo — `[string, string]` não é subtipo do que `Object.entries`
+        // devolve (as cópias têm tipo literal, e `mensagemDeMotivo` é função),
+        // e o compilador reprova o predicado antes de reprovar o teste.
         const copiasExportadas = Object.entries(mensagens).filter(
-            (par): par is [string, string] => typeof par[1] === 'string',
+            (par): par is [string, Extract<ExportacaoDeMensagem, string>] =>
+                typeof par[1] === 'string',
         )
         expect(copiasExportadas.length).toBeGreaterThan(0)
 
