@@ -1468,3 +1468,38 @@ primeiro item P0 com testes for implementado.
 - Exposição anônima de `tenant_id/plano/status` de `assinaturas`: aceita
   conscientemente (necessária para a defesa do WhatsApp no fluxo público) **até** o
   redesenho do acesso público (item de integridade, pré-lançamento).
+
+### 🔴 Enumeração de `org_id` por conta autenticada (achado da verificação da Phase 1)
+
+Descoberto ao auditar `pg_policies` depois do fechamento da Data API. **Não foi introduzido
+pela Phase 1 — é pré-existente e ficou visível quando o vetor anônimo fechou.**
+
+`servicos` e `horarios_funcionamento` têm DUAS policies de SELECT aplicáveis a
+`authenticated`, ambas `PERMISSIVE`:
+
+| policy | roles | expressão |
+|---|---|---|
+| Permitir SELECT público para todos | `{anon,authenticated}` | `ativo = true` |
+| Permitir SELECT do próprio tenant para autenticados | `{authenticated}` | `tenant_id = org_id` |
+
+O Postgres soma policies permissivas por `OR`. Logo, para qualquer conta autenticada a
+visibilidade efetiva é `(ativo = true) OR (tenant_id = meu)` — ou seja, **todos os serviços
+e horários ativos de todos os tenants, com a coluna `tenant_id` junto**. Como o cadastro no
+Clerk é self-service, qualquer pessoa cria uma conta grátis e enumera o `org_id` de todos os
+profissionais da plataforma.
+
+A Phase 1 fechou o vetor `anon` por completo (as duas policies são inertes para essa role,
+que perdeu todo privilégio). O vetor `authenticated` continua aberto — no mesmo dado que a
+fase existia para proteger. Arranha o espírito de SEG-02, não a letra, que fala em "chave
+publicável".
+
+**Conserto**: `drop policy` puro nas duas, sem substituta. A D-07 (nunca dropar sem recriar)
+**não se aplica**: a policy `1b` tenant-scoped já cobre as linhas do próprio tenant nas duas
+tabelas, inclusive as inativas (`supabase/schemas/02_servicos.sql:27`,
+`03_horarios_funcionamento.sql:29`). A leitura pública já roda com cliente privilegiado desde
+o plano 01-02, então nada do booking depende delas.
+
+**Por que não foi feito na Phase 1**: o executor do 01-05 não tinha acesso ao banco, e a
+migration ficaria no repo sem ser aplicada — 18 arquivos contra 17 versions no ledger. Trocar
+risco documentado por drift real no pipeline, no plano que fecha a fase, seria mau negócio.
+

@@ -14,7 +14,7 @@ requisitos que faltam para receber tráfego real com segurança.
 - [x] **SEG-02**: `perfis_empresas` deixa de ser enumerável — a lista de profissionais da plataforma não é obtível com a chave publicável
 - [x] **SEG-03**: `agendamentos` e `excecoes_agenda` expõem a `anon` apenas as colunas que a engine de disponibilidade consome
 - [x] **SEG-04**: Coluna nova em tabela com leitura pública nasce sem acesso `anon` por padrão (regra escrita e privilégio revogado por default)
-- [x] **SEG-05**: Webhook de lembrete só aceita requisições com assinatura válida do QStash; a aplicação não sobe sem as chaves configuradas
+- [~] **SEG-05**: Webhook de lembrete só aceita requisições com assinatura válida do QStash ✅; **a aplicação não sobe sem as chaves configuradas ❌ — critério falso, medido na Phase 1**. Sem `QSTASH_NEXT_SIGNING_KEY` o `next start` loga o erro nomeando a variável e responde 500 em toda rota, mas **o processo continua vivo e escutando**: healthcheck de liveness marca o deploy verde com 100% do tráfego falhando. Não é buraco de segurança (a app não serve nada e `verificarAssinaturaQstash` lança sem chave), é defeito operacional. Decisão do owner: readiness HTTP no Railway ou `process.exit(1)` na semântica de boot. Ver `01-VERIFICATION.md`
 
 ### Correção da agenda
 
@@ -148,7 +148,7 @@ um destino** de `.planning/ROADMAP.md` — uma das 12 fases ou a etapa preparat�
 | SEG-02 | Phase 1 | Complete |
 | SEG-03 | Phase 1 | Complete |
 | SEG-04 | Phase 1 | Complete |
-| SEG-05 | Phase 1 | Complete |
+| SEG-05 | Phase 1 | Partial — webhook fechado; fail-fast de boot não derruba o processo (ver 01-VERIFICATION.md) |
 | AGE-01 | Phase 2 | Pending |
 | AGE-02 | Phase 2 | Pending |
 | AGE-03 | Phase 2 | Pending |
