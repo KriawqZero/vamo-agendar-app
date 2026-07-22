@@ -88,6 +88,32 @@ RLS **não** substitui `GRANT`. A role precisa do privilégio na tabela **e** de
 
 Toda tabela criada por migration não aparece na Data API para nenhuma das duas roles de API, e toda **function** criada pelo role `postgres` nasce sem `EXECUTE` para a chave publicável — o PostgREST expõe as funções do schema `public` como `POST /rest/v1/rpc/<nome>`, então function é superfície de rede igual a tabela. Isso é proposital: a superfície não cresce por acidente.
 
+⚠️ **Para qual role a regra vale — e o que escapa dela.** "Objeto novo nasce fechado" é verdade para objeto criado **pelo `postgres`**, não para qualquer objeto que apareça no schema `public`. As duas migrations acima são `for role postgres`, e default privilege no Postgres é **por role criadora**: ela só alcança o que aquela role criar. As migrations deste projeto rodam como `postgres`, então a regra cobre tudo que passa pelo fluxo normal de schema — é a rotina inteira do dia a dia.
+
+O que escapa é o **caminho da plataforma**: tabela criada pelo `supabase_admin` (extensão habilitada pelo painel, recurso gerenciado da Supabase) continua herdando `anon` **e** `authenticated`, porque esse é o default de plataforma da Supabase e a migration não o tocou — nem poderia, sendo `for role postgres`. Hoje isso não abre buraco neste projeto (nenhuma extensão nossa cria tabela em `public`), mas quem habilitar a próxima extensão precisa saber que a garantia não se estende até lá.
+
+Medido em `pg_default_acl` — a tabela que decide a ACL que **toda** tabela ou função futura vai herdar. É a causa, não o efeito, então responde à pergunta sem precisar criar objeto descartável:
+
+| Objeto | Criado por | ACL padrão herdada | concede `anon` | concede `authenticated` |
+|---|---|---|---|---|
+| tabela em `public` | `postgres` | `{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}` | **não** | **não** |
+| tabela em `public` | `supabase_admin` | `{postgres=…,anon=…,authenticated=…,service_role=…}` | **sim** | **sim** |
+| função (escopo global) | `postgres` | `{postgres=X/postgres}` | **não** | **não** |
+| função em `public` | `postgres` | `{postgres=X/postgres,service_role=X/postgres}` | **não** | **não** |
+
+A linha global de funções (`{postgres=X/postgres}`, **sem** `IN SCHEMA`) é confirmação estrutural de que a forma aplicada no `20260722183153` é a que funciona, e não o no-op por schema que a documentação do PostgreSQL 17 nomeia como comando ineficaz — é a armadilha 2 logo abaixo, medida no estado de repouso do banco em vez de deduzida.
+
+Consulta usada — **não-mutante**, reexecutável a qualquer momento, e é ela o gatilho de conferência do checklist:
+
+```sql
+select coalesce(n.nspname,'(global)') as escopo, pg_get_userbyid(d.defaclrole) as criada_por,
+       d.defaclacl::text as acl_padrao
+from pg_default_acl d left join pg_namespace n on n.oid = d.defaclnamespace
+where d.defaclobjtype in ('r','f') order by d.defaclobjtype, escopo;
+```
+
+**Procedência da medição:** reexecutada em **2026-07-22**, sobre o HEAD `f473437`, pelo MCP da Supabase contra `https://cimeiteyueeolwmlouxi.supabase.co` (identidade do alvo conferida antes da consulta), na execução do plano 01-19. Bate linha a linha com a medição anterior do orquestrador da execute-phase — 2026-07-22, HEAD `8edb32d`, registrada em `.planning/phases/01-hardening-da-superf-cie-p-blica/01-VERIFICATION.md` §"Adendo do orquestrador — SC4 remedido por `pg_default_acl`".
+
 🚨 **Duas armadilhas na linha de function, e cada uma produz um no-op que PARECE conserto:**
 
 1. **Revogar de `anon` em vez de `PUBLIC` não tem efeito nenhum.** A concessão padrão do Postgres para function nova é a `PUBLIC` (pseudo-role que abarca toda role existente e futura); `anon` só executa porque herda de `PUBLIC`. Revogar de `anon` deixa a herança intacta.
@@ -130,6 +156,7 @@ Pior que "não gera": quando forçado a diffar privilégio, o migra gera o **con
 - [ ] migration gerada por `supabase db diff` (DDL de tabela/policy)
 - [ ] **migration manual de `GRANT ... TO authenticated`** se o dashboard for usar a tabela pela Data API
 - [ ] se a página pública precisar do dado: ler pelo `createAdminClient()`, não conceder à role anônima
+- [ ] **só quando a tabela nascer pelo caminho da plataforma** (extensão habilitada pelo painel ou recurso gerenciado da Supabase, que criam como `supabase_admin`): reexecutar a consulta de `pg_default_acl` do item a e conferir se a tabela nasceu com `anon`/`authenticated`. Se nasceu, o conserto é uma migration manual de `revoke`, escrita à mão como as demais de privilégio. Tabela criada por migration não precisa disto — a default privilege já a cobre
 
 **Checklist ao criar function/RPC nova no schema `public`:**
 
