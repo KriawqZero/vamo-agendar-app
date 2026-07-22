@@ -10,11 +10,11 @@ requisitos que faltam para receber tráfego real com segurança.
 
 ### Superfície pública e integridade multi-tenant
 
-- [x] **SEG-01**: Visitante anônimo não consegue inserir agendamento nem cliente direto na Data API, contornando a Server Action
-- [x] **SEG-02**: `perfis_empresas` deixa de ser enumerável — a lista de profissionais da plataforma não é obtível com a chave publicável
-- [x] **SEG-03**: `agendamentos` e `excecoes_agenda` expõem a `anon` apenas as colunas que a engine de disponibilidade consome
-- [x] **SEG-04**: Coluna nova em tabela com leitura pública nasce sem acesso `anon` por padrão (regra escrita e privilégio revogado por default)
-- [x] **SEG-05**: Webhook de lembrete só aceita requisições com assinatura válida do QStash, e a aplicação não sobe sem as chaves configuradas — em produção, variável obrigatória ausente faz o processo **encerrar** com código 1 depois de nomear a variável em `stderr`, em vez de ficar de pé servindo 500. A segunda metade foi medida como **falsa** na primeira verificação da Phase 1 (o processo sobrevivia, e um healthcheck de liveness marcaria o deploy verde com 100% do tráfego falhando) e foi fechada pelo plano 01-06. As duas metades são provadas por `scripts/verificar-fail-fast-boot.sh`: veredito `MORTE` (código 1 + porta recusando conexão) e veredito `WEBHOOK` (401 sem assinatura, 401 com o secret legado em query string, 401 com assinatura forjada, 200 no controle)
+- [ ] **SEG-01**: Visitante anônimo não consegue inserir agendamento nem cliente direto na Data API, contornando a Server Action
+- [ ] **SEG-02**: `perfis_empresas` deixa de ser enumerável — a lista de profissionais da plataforma não é obtível com a chave publicável
+- [ ] **SEG-03**: `agendamentos` e `excecoes_agenda` expõem a `anon` apenas as colunas que a engine de disponibilidade consome
+- [ ] **SEG-04**: Coluna nova em tabela com leitura pública nasce sem acesso `anon` por padrão (regra escrita e privilégio revogado por default)
+- [ ] **SEG-05**: Webhook de lembrete só aceita requisições com assinatura válida do QStash, e a aplicação não sobe sem as chaves configuradas — em produção, variável obrigatória ausente faz o processo **encerrar** com código 1 depois de nomear a variável em `stderr`, em vez de ficar de pé servindo 500. A segunda metade foi medida como **falsa** na primeira verificação da Phase 1 (o processo sobrevivia, e um healthcheck de liveness marcaria o deploy verde com 100% do tráfego falhando) e foi fechada pelo plano 01-06. As duas metades são provadas por `scripts/verificar-fail-fast-boot.sh`: veredito `MORTE` (código 1 + porta recusando conexão) e veredito `WEBHOOK` (401 sem assinatura, 401 com o secret legado em query string, 401 com assinatura forjada, 200 no controle)
 
 ### Correção da agenda
 
@@ -144,11 +144,11 @@ um destino** de `.planning/ROADMAP.md` — uma das 12 fases ou a etapa preparat�
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEG-01 | Phase 1 | Complete |
-| SEG-02 | Phase 1 | Complete |
-| SEG-03 | Phase 1 | Complete |
-| SEG-04 | Phase 1 | Complete |
-| SEG-05 | Phase 1 | Complete |
+| SEG-01 | Phase 1 | Gaps Found |
+| SEG-02 | Phase 1 | Gaps Found |
+| SEG-03 | Phase 1 | Gaps Found |
+| SEG-04 | Phase 1 | Gaps Found |
+| SEG-05 | Phase 1 | Gaps Found |
 | AGE-01 | Phase 2 | Pending |
 | AGE-02 | Phase 2 | Pending |
 | AGE-03 | Phase 2 | Pending |
