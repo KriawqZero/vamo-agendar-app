@@ -151,7 +151,7 @@ precisa ser sabido antes.
   4. Uma tabela nova criada no schema `public` não aparece na Data API sem GRANT explícito
   5. POST sem assinatura válida do QStash no webhook de lembrete é rejeitado, e a aplicação não sobe se as chaves de assinatura não estiverem configuradas
 
-**Plans**: 8/9 plans executed
+**Plans**: 9/9 plans executed
 
 Plans:
 **Wave 1**
@@ -178,7 +178,7 @@ Plans:
 - [x] 01-07-PLAN.md — Suíte de integração do caminho de ESCRITA do booking contra o Supabase de dev (gap 2, SC2b) (wave 1)
 - [x] 01-06-PLAN.md — Boot que morre de verdade sem as chaves + harness que prova (gap 1, SEG-05) (wave 2, depende de 01-07)
 - [x] 01-08-PLAN.md — DROP das duas policies residuais de `servicos`/`horarios_funcionamento` (gap 3) (wave 3, depende de 01-06 e 01-07)
-- [ ] 01-09-PLAN.md — Gate de reexecução das provas + reparo de REQUIREMENTS/ROADMAP/PENDENCIAS (wave 4, depende dos três)
+- [x] 01-09-PLAN.md — Gate de reexecução das provas + reparo de REQUIREMENTS/ROADMAP/PENDENCIAS (wave 4, depende dos três)
 
 **Notas de execução:**
 
@@ -483,7 +483,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | Etapa preparatória. Fundação operacional | 0/1 | Not started | - |
-| 1. Hardening da superfície pública | 8/9 | In Progress|  |
+| 1. Hardening da superfície pública | 9/9 | In Progress|  |
 | 2. Integridade da agenda | 0/TBD | Not started | - |
 | 3. Anti-abuso no booking público | 0/TBD | Not started | - |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |

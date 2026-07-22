@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: executing
-stopped_at: Completed 01-08-PLAN.md
-last_updated: "2026-07-22T15:08:56.923Z"
+stopped_at: Completed 01-09-PLAN.md
+last_updated: "2026-07-22T15:23:39.118Z"
 last_activity: 2026-07-22
-last_activity_desc: 01-08 concluído (policies residuais removidas; cross-tenant medido 2→1 sob role authenticated)
+last_activity_desc: 01-09 concluído (as quatro provas reexecutadas sobre o HEAD final antes de qualquer edição; SEG-05 corrigido para `[x]`, `Partial` extinto, PENDENCIAS coerente com o código)
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 9
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -27,12 +27,12 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
-Plan: 8 de 9 concluídos (01-01 a 01-08)
-Status: Ready to execute — último da serialização estrita do gap closure: **01-09**
-Last activity: 2026-07-22 — 01-08 concluído (policies residuais removidas; cross-tenant medido 2→1 sob role authenticated)
+Phase: 01 (hardening-da-superf-cie-p-blica) — PLANOS CONCLUÍDOS, aguardando reverificação
+Plan: 9 de 9 concluídos (01-01 a 01-09)
+Status: Pronta para `/gsd-verify-work` — os três gaps da `01-VERIFICATION.md` estão fechados por código e refletidos na documentação. O que continua aberto é o **UAT humano** (7 itens, só o owner pode fechar)
+Last activity: 2026-07-22 — 01-09 concluído (as quatro provas reexecutadas sobre o HEAD final antes de qualquer edição; SEG-05 corrigido para `[x]`, `Partial` extinto, PENDENCIAS coerente com o código)
 
-Progress: [█████████░] 89%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Progress: [█████████░] 89%
 | Phase 01 P07 | ~28min | 3 tasks | 4 files |
 | Phase 01 P06 | ~50min | 2 tasks | 5 files |
 | Phase 01 P08 | ~22min | 3 tasks | 3 files |
+| Phase 01 P09 | ~35min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -110,6 +111,10 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: [Phase 01]: Prova de RLS sem navegador — transacao revertida com set_config('request.jwt.claims') + set local role authenticated, e um tenant vizinho DESCARTAVEL criado dentro da propria transacao quando o banco de dev tem um tenant so; converte veredito INCONCLUSIVO em conclusivo sem persistir nada
 - [Phase ?]: [Phase 01]: Nao-regressao de dashboard depois de DROP POLICY se mede pela linha INATIVA do proprio tenant — as ativas passavam pelas duas policies e nao distinguem nada; a inativa e o unico caso que a 1b cobre a mais e o que sustenta reativar servico e o RETURNING
 - [Phase ?]: [Phase 01]: DDL e INSERT no ledger emitidos numa UNICA chamada de execute_sql, portanto na mesma transacao — fecha a janela de desalinhamento repo/ledger que o procedimento em dois passos deixava aberta
+- [Phase ?]: [Phase 01]: Gap closure escreve documento so depois da prova — as quatro provas (superficie anon, fail-fast de boot, escrita do booking, Definition of Done) rodaram sobre o HEAD final antes do primeiro Edit; criterio que le como satisfeito enquanto a medicao diz o contrario foi o defeito que queimou a fase uma vez
+- [Phase ?]: [Phase 01]: Correcao de requisito preserva o historico do erro — SEG-05 vira [x] mas registra que a segunda metade foi medida como falsa e por qual plano foi fechada, com o harness nomeado
+- [Phase ?]: [Phase 01]: Item de UAT parcialmente coberto diz PRIMEIRO o que a automacao NAO cobre; nenhum executor pode marcar item de UAT, e a contagem 7 abertas / 0 marcadas em PENDENCIAS e o controle automatizado disso
+- [Phase ?]: [Phase 01]: Hermeticidade do pnpm test virou regra viva em docs/PENDENCIAS.md — test:integracao e o unico ponto de entrada da suite que toca o banco, e reincluí-la no glob padrao faria toda Definition of Done futura escrever no Supabase de dev
 
 ### Pending Todos
 
@@ -130,7 +135,7 @@ Nenhum ainda.
 - Caixa de erro de slots nunca vista renderizando a copy nova do 01-02 ("Não foi possível carregar os horários. Tente de novo."); teste barato no UAT do 01-05: chamar `obterSlotsPublicos('slug-inexistente', …)`
 - UAT do dashboard sob as policies tenant-scoped novas do 01-04 (agenda, agendamento manual com RETURNING, exceção de agenda, perfil) — Pitfall 3: policy substituta errada deixa a tela VAZIA sem estourar erro. Escopo do 01-05
 - UAT humano da Phase 1 NAO EXECUTADO (7 itens: wizard completo, double-booking, dashboard tela a tela, personalizacao Pro x gratuito, lembrete QStash ponta a ponta, caixa de erro de slots, backstops visuais). Checklist com o motivo de cada um em docs/PENDENCIAS.md secao 'UAT humano pendente da Phase 1'. Owner ausente na execucao do 01-05 — registrado como pendente, nunca aprovado
-- ✅ **RESOLVIDO no 01-08 — as duas policies de SELECT {anon,authenticated} com USING (ativo = true).** Removidas do banco e do schema declarativo pela migration `20260722145948_fecha_policies_residuais_servicos_horarios.sql`. Medido sob role `authenticated` com claim `org_id` em transação revertida: **2 tenants distintos visíveis antes, 1 depois**; a linha INATIVA do próprio tenant continua visível (a `1b` cobre, o `RETURNING` não regrediu). Ledger em 18 versions = 18 arquivos. Falta só a edição de `docs/PENDENCIAS.md`, que é do 01-09 por desenho
+- ✅ **RESOLVIDO no 01-08 — as duas policies de SELECT {anon,authenticated} com USING (ativo = true).** Removidas do banco e do schema declarativo pela migration `20260722145948_fecha_policies_residuais_servicos_horarios.sql`. Medido sob role `authenticated` com claim `org_id` em transação revertida: **2 tenants distintos visíveis antes, 1 depois**; a linha INATIVA do próprio tenant continua visível (a `1b` cobre, o `RETURNING` não regrediu). Ledger em 18 versions = 18 arquivos. A edição de `docs/PENDENCIAS.md` foi feita no 01-09: a seção "Superfície remanescente" e o bloco 🔴 de enumeração de `org_id` estão marcados como fechados, com migration, version e evidências
 - Dashboard nunca percorrido à mão sob o regime pós-DROP do 01-08 — em especial **reativar um serviço inativo**, que é o caso que a prova SQL cobre no banco e não na tela (Pitfall 3: policy quebrada degrada em silêncio). Entra no UAT humano da Phase 1
 
 ### Quick Tasks Completed
@@ -158,6 +163,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T15:08:41.650Z
-Stopped at: Completed 01-08-PLAN.md
+Last session: 2026-07-22T15:23:03.584Z
+Stopped at: Completed 01-09-PLAN.md
 Resume file: None
