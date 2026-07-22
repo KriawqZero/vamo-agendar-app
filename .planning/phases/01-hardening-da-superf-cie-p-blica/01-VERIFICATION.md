@@ -1,312 +1,459 @@
 ---
 phase: 01-hardening-da-superf-cie-p-blica
-verified: 2026-07-22T15:51:28Z
+verified: 2026-07-22T20:07:30Z
 status: gaps_found
-score: 7/9 must-haves verified
-behavior_unverified: 0
+score: 11/13 must-haves verificados
+behavior_unverified: 1
 overrides_applied: 0
 re_verification:
-  previous_status: gaps_found
-  previous_score: 5/7
-  gaps_closed:
-    - "Gap 1 — fail-fast de boot: o processo agora MORRE. Reproduzido pelo verificador com `bash scripts/verificar-fail-fast-boot.sh` no HEAD 4596463: veredito MORTE APROVADO (código 1, `QSTASH_NEXT_SIGNING_KEY` nomeada em stderr, curl 7 = recusa de conexão), CONTROLE APROVADO (200, processo vivo). Exit 0, 4 vereditos, 0 reprovados"
-    - "Gap 2 (metade servidor) — o caminho de ESCRITA do booking passou a ser exercitado: `pnpm test:integracao` roda 6 testes contra o Supabase de dev (cliente novo + RETURNING, reaproveitamento por telefone, sanitização, rejeição de slot ocupado, cópia de erro de slots) e passa. `pnpm test` continua hermético (13 arquivos / 198 testes em 381 ms)"
-    - "Gap 3 (lado repositório) — a migration `20260722145948` existe com os dois DROP POLICY, os schemas declarativos 02/03 não contêm mais a policy, e a migration não tem nenhuma linha de grant/revoke"
-  gaps_remaining:
-    - "Gap 3 (lado banco): não reproduzível nesta sessão — sem MCP do Supabase e sem token do CLI, não consegui consultar `pg_policies` nem repetir a contagem cross-tenant 2→1"
-  regressions:
-    - "Nenhuma regressão de código introduzida pelo fechamento de gaps. `pnpm lint`, `pnpm test` e `pnpm build` verdes; harness de superfície anônima segue exit 0 com 11 checagens e 0 reprovadas"
-  novos_achados:
-    - "CR-01 e CR-02 do 01-REVIEW.md foram verificados de forma independente e PROCEDEM — viram os dois gaps bloqueantes desta reverificação"
+    previous_status: gaps_found
+    previous_score: 7/9
+    gaps_closed:
+        - "Gap 1 — a chave HMAC saiu da URL publicada. Medido por leitura direta: `whatsapp-helper.ts:158` publica `${APP_URL}/api/webhooks/lembrete` sem query string, e `grep -rn 'secret=' src/ scripts/` só devolve comentários, testes e a sonda de regressão do harness de boot. Os quatro `console.error` que ecoavam corpo de gateway viraram `http_<status>` (linhas 95, 178, 224). O resíduo (a chave já circulou) ficou registrado com dono e prazo em `docs/PENDENCIAS.md:806` — data-limite 2026-08-05"
+        - "Gap 2 — o erro esperado atravessa a fronteira de flight em build de PRODUÇÃO. Reproduzido por mim: `bash scripts/verificar-travessia-server-action.sh` → exit 0, 5 vereditos, 0 reprovados (PREPARO, CONTROLE, SLOTS_ERRO com `slug_invalido`, ESCRITA_VALIDACAO com `campos_obrigatorios`, SEM_VAZAMENTO). `BookingApp.tsx:282` decide por `res.motivo === 'slot_indisponivel'`; nenhum `.includes()` de mensagem restou. As três cópias contratadas no 01-UI-SPEC continuam byte a byte em `mensagens.ts:27,52,58`"
+        - "Gap 3 — `docs/PENDENCIAS.md` coerente com o código: o item do webhook (:1200) está riscado com o comando que prova, e o item de rotação (:806) nasceu aberto, com dono e data. Contagem da seção de UAT conferida por comando: 7 abertas / 0 marcadas"
+    gaps_remaining: []
+    regressions:
+        - "Nenhuma regressão de comportamento introduzida pela 2ª rodada. `pnpm lint` exit 0, `npx tsc --noEmit` exit 0, `pnpm test` 15 arquivos / 228 testes em 521 ms (hermético), `pnpm test:integracao` 13/13 em 8,40 s contra o Supabase de dev"
+    novos_achados:
+        - "CR-02 do 01-REVIEW.md REPRODUZIDO EMPIRICAMENTE por mim (não confirmado por leitura): o harness de superfície anônima sai 0 e imprime uma afirmação positiva de fechamento com as 11 checagens em HTTP 000. Vira gap bloqueante"
+        - "CR-01 do 01-REVIEW.md REPRODUZIDO EMPIRICAMENTE POR HTTP contra build de produção, com slug público real e sem sessão: 26.751 ms de laço síncrono e 19,29 MB de resposta numa ÚNICA requisição anônima. Vira gap bloqueante"
 gaps:
-  - truth: "O webhook de lembrete só aceita quem o QStash assinou (segunda metade do goal da fase)"
-    status: failed
-    reason: >-
-      `src/lib/whatsapp-helper.ts:147` publica a chave HMAC de autenticação em texto
-      claro na query string da URL de destino de TODO lembrete
-      (`${APP_URL}/api/webhooks/lembrete?secret=${chaveAssinatura}`, onde
-      `chaveAssinatura` é `QSTASH_CURRENT_SIGNING_KEY`). Desde o plano 01-03 essa é a
-      MESMA chave com que `verificarAssinaturaQstash` autentica o webhook via
-      `Receiver`. HMAC é simétrico: quem lê a URL forja um `Upstash-Signature` válido.
-      A porta foi fechada e a chave ficou no capacho. Verificado por leitura direta de
-      `whatsapp-helper.ts:131-148` e `qstash-assinatura.ts:34-54`.
-      A justificativa escrita no próprio código ("a fila tem lembretes em voo e o
-      webhook casa a assinatura contra a URL completa") é FALSA para publicações NOVAS
-      e eu conferi por quê: `route.ts:29` verifica contra `req.url`, ou seja, contra a
-      URL que a requisição de fato trouxer — mensagens já enfileiradas continuam
-      validando com a URL antiga quer as novas carreguem o parâmetro ou não. O webhook
-      nem lê mais `?secret=`.
-      Vetores de exposição reais, todos fora do alcance da sanitização do Sentry:
-      log de acesso HTTP de qualquer hop entre QStash e Railway; console do QStash
-      (URL de destino visível na listagem por até 14 dias); e
-      `whatsapp-helper.ts:164-167`, que despeja `await response.text()` do QStash no log
-      da aplicação — corpo de erro que costuma ecoar a URL de destino.
-      Não é regressão desta fase (o parâmetro é pré-existente), mas é a fase que
-      transformou aquele valor na chave de autenticação e declarou o critério fechado.
-    artifacts:
-      - path: "src/lib/whatsapp-helper.ts"
-        issue: "linha 147 concatena QSTASH_CURRENT_SIGNING_KEY na URL publicada; linhas 164-167 logam o corpo de erro cru do QStash"
-      - path: ".planning/phases/01-hardening-da-superf-cie-p-blica/01-CONTEXT.md"
-        issue: "linha 176 difere a remoção do parâmetro sob a premissa técnica de 'duas gerações de URL', que é falsa"
-    missing:
-      - "Publicar sem o parâmetro: `const webhookUrl = `${APP_URL}/api/webhooks/lembrete`` — lembretes já enfileirados continuam validando porque a verificação usa `req.url`"
-      - "Logar só `response.status` nos dois `console.error` de whatsapp-helper.ts (nunca o corpo do gateway)"
-      - "Depois que a fila secar (≤ 14 dias): rotacionar as signing keys no painel da Upstash — a chave atual já circulou em URL publicada e em log"
-      - "Registrar o item em docs/PENDENCIAS.md como risco vivo pós-Phase 1 (hoje não está em lugar nenhum)"
-  - truth: "O booking público continua funcionando exatamente como antes (critério 2 do ROADMAP, segunda metade)"
-    status: failed
-    reason: >-
-      PROVADO EMPIRICAMENTE PELO VERIFICADOR, não inferido. Contra o build de produção
-      deste HEAD (`next start` na porta 3992), invoquei a Server Action
-      `obterSlotsPublicos` (id `70efdce379…` extraído do bundle) com um slug
-      inexistente. A resposta de flight foi, na íntegra:
-      `1:E{"digest":"2760064589"}` — só o digest, mensagem nenhuma. Confirmado na
-      origem: em `react-server-dom-webpack-server.node.production.js` a assinatura é
-      `emitErrorChunk(request, id, digest)` (na versão de desenvolvimento é
-      `(request, id, digest, error, debug, owner)`), e o bundle de cliente de produção
-      carrega a string "The specific message is omitted in production builds…".
-      Consequências concretas, ambas em caminho que ESTA fase criou ou pinou:
-      (a) a cópia `Não foi possível carregar os horários. Tente de novo.` — contrato
-      verbatim do 01-UI-SPEC, nascida nesta fase (conferi: em `master`,
-      `obterSlotsPublicos` NÃO lançava, caía em fuso e regras padrão) — nunca chega à
-      tela; o cliente final vê texto de framework em inglês na caixa vermelha;
-      (b) `mensagem.includes('já foi preenchido')` em `BookingApp.tsx:276` é sempre
-      `false` em produção, então a recuperação de double-booking (aviso âmbar + grade
-      refeita) não acontece: o visitante fica preso na etapa de contato olhando para um
-      horário que não existe mais.
-      A suíte do plano 01-07 dá verde nos dois casos porque chama a action EM PROCESSO,
-      sem serialização de flight — o próprio comentário do teste admite não provar a
-      renderização, mas o efeito prático é sinal verde num caminho morto em produção.
-      Em `pnpm dev` tudo funciona, que é exatamente o que faz o defeito passar batido.
-    artifacts:
-      - path: "src/app/actions/public-booking.ts"
-        issue: "linhas 170-181 e 366-374 modelam erro esperado como `throw`; a mensagem não atravessa a fronteira da Server Action em produção"
-      - path: "src/app/book/[slug]/BookingApp.tsx"
-        issue: "linhas 157-165 e 271-287 decidem a UX por `err.message` / `mensagem.includes(...)`"
-      - path: "src/app/actions/__tests__/public-booking-escrita.test.ts"
-        issue: "linhas 363-435 provam o produtor em processo e o acoplamento por asserção de fonte — não a travessia; falso verde"
-    missing:
-      - "Modelar erro esperado como VALOR DE RETORNO discriminado (`{ ok: false, motivo: 'slot_indisponivel' | 'slug_invalido' | ... }`) e reservar `throw` para o inesperado"
-      - "`BookingApp` decidir pelo `motivo`, nunca por substring de mensagem"
-      - "Teste que exercite a travessia (ou, no mínimo, remover a asserção de fonte que hoje sugere cobertura que não existe)"
-  - truth: "docs/PENDENCIAS.md descreve o webhook de lembrete como ele é hoje (item 6 da Definition of Done do CLAUDE.md)"
-    status: partial
-    reason: >-
-      `docs/PENDENCIAS.md:1071-1077` ainda afirma que "o secret trafega em query string
-      **e o fallback `'secret-key'` vale nos dois lados**" e que "o ideal é migrar para
-      verificação da assinatura real do QStash". As duas afirmações são falsas hoje:
-      `grep -rn "secret-key" src/ scripts/` volta vazio (conferido) e a verificação por
-      `Receiver` foi implementada no plano 01-03. Ao mesmo tempo, a parte que CONTINUA
-      verdadeira e virou o achado mais grave da fase (a chave de assinatura na query
-      string) não aparece como pendência viva em seção nenhuma. O resto do documento é
-      exemplar nisso — a seção de superfície remanescente (:647) tem registro de
-      fechamento com medição — o que torna esta entrada uma inconsistência isolada.
-    artifacts:
-      - path: "docs/PENDENCIAS.md"
-        issue: "linhas 1071-1077 descrevem como aberto o que a fase fechou e omitem o que ficou aberto"
-    missing:
-      - "Marcar a autenticação por assinatura como fechada, apontando src/lib/qstash-assinatura.ts"
-      - "Abrir item novo para a chave na query string com o plano de duas etapas (parar de publicar agora; rotacionar depois da fila secar)"
-deferred:
-  - truth: "A recuperação VISUAL de double-booking (aviso âmbar, grade refeita, cliente de volta na etapa de data/hora)"
-    addressed_in: "Phase 2"
-    evidence: >-
-      Success Criteria 4 da Phase 2: "Quem perde a corrida vê 'esse horário acabou de
-      ser reservado, escolha outro' com os horários recarregados — nunca a mensagem do
-      PostgreSQL". É o mesmo comportamento. ⚠️ Atenção: a Phase 2 NÃO conseguirá
-      satisfazer esse critério enquanto o mecanismo do gap 2 não for trocado — o
-      diagnóstico é insumo obrigatório do planejamento dela.
-behavior_unverified_items: []
-orchestrator_followup:
-  - truth: "As duas policies residuais de SELECT compartilhadas com `anon` em `servicos` e `horarios_funcionamento` não existem mais NO BANCO"
-    status: verified
-    quando: "2026-07-22, pelo orquestrador do execute-phase, sobre o mesmo HEAD que o verificador avaliou"
-    porque_aqui: >-
-      O verificador registrou este item como `behavior_unverified` porque o subagente
-      não recebe as ferramentas MCP do Supabase e o CLI não está autenticado. O
-      orquestrador tem o MCP, então a reconferência foi feita na hora em vez de virar
-      dívida — a ressalva de método do verificador estava certa, só não precisava
-      sobreviver à sessão.
-    evidencia: >-
-      `select tablename, policyname, roles, cmd, qual from pg_policies where
-      schemaname='public' and tablename in ('servicos','horarios_funcionamento')`
-      devolveu 8 linhas, TODAS com `roles = {authenticated}`. Nenhuma com `anon`,
-      nenhuma chamada 'Permitir SELECT público para todos'. Nas duas tabelas a ÚNICA
-      policy de SELECT restante é 'Permitir SELECT do próprio tenant para autenticados',
-      com `qual = (tenant_id = ( SELECT (auth.jwt() ->> 'org_id'::text)))`.
-    por_que_isso_basta: >-
-      Policies permissivas somam por `OR`. Com uma só policy de SELECT por tabela não há
-      segundo termo para somar, então o predicado efetivo para qualquer conta autenticada
-      é exatamente `tenant_id = próprio` — não `(ativo = true) OR (tenant_id = próprio)`.
-      A contagem cross-tenant 2→1 do plano 01-08 é consequência aritmética disso, não
-      precisa ser remedida. A cláusula `TO anon` (a armadilha carregada) também sumiu:
-      não há policy alguma para a role `anon` nas duas tabelas.
-    bonus: >-
-      `list_migrations` devolveu 18 versions alinhadas com os 18 arquivos de
-      `supabase/migrations/`, com a version própria do arquivo
-      (`20260722145948_fecha_policies_residuais_servicos_horarios`) — o desalinhamento
-      de ledger que o `apply_migration` costuma causar não ocorreu.
+    - truth: "`scripts/verificar-superficie-anon.sh` — 'checagem que não prova nada não pode passar' (must-have do plano 01-15)"
+      status: failed
+      reason: >-
+          MEDIDO, NÃO INFERIDO. Copiei o harness e `supabase/schemas/` para um diretório
+          isolado, escrevi um `.env.local` apontando para um host Supabase inexistente e
+          rodei o script sem tocar em mais nada. Resultado: as 11 checagens registraram
+          `HTTP 000 sem 42501 — não provou permissão negada`, o veredito COBERTURA passou
+          ("9 declarada(s), 9 coberta(s)"), e a última linha foi
+          `Resumo: 11 checagem(ns), 0 reprovada(s) — a role anon não devolveu linha nenhuma.`
+          com EXIT CODE 0. Uma afirmação positiva de segurança emitida a partir de zero
+          medição.
+          A causa está em `:398-401`: o exit code é decidido só por `REPROVADAS -eq 0`;
+          `INCONCLUSIVAS` é impresso e descartado. O conserto do WR-08 foi real e eu o
+          confirmei na mesma execução (o `000` virou INCONCLUSIVO, não ESPERADO — o eixo
+          do NOME da tabela está fechado), mas o falso verde apenas mudou de eixo: o da
+          IDENTIDADE DO ALVO segue aberto. O segundo cenário do review (projeto errado ⇒
+          PGRST205 ⇒ `tabela_declarada` confere o nome contra arquivos LOCAIS ⇒ tudo
+          ESPERADO) não precisei reproduzir, porque `:262-273` e `:319-329` são explícitos.
+          Por que isto é gap e não aviso: este é o instrumento que o `ROADMAP.md:195` e o
+          `01-04-PLAN.md:170` nomeiam como prova de SEG-01, SEG-02 e SEG-03, e o cabeçalho
+          do próprio script promete o oposto do que ele faz. Sem controle positivo de alvo,
+          o exit 0 dele não é evidência — e a fase inteira já foi queimada duas vezes por
+          critério que lê como satisfeito enquanto a medição diz outra coisa.
+          Não contamina as conclusões desta verificação: SC1, SC2 e SC3 foram
+          remedidos por mim por caminho independente, com controle positivo de identidade
+          do alvo (a mesma URL respondendo 200 com linhas reais sob `service_role`).
+      artifacts:
+          - path: "scripts/verificar-superficie-anon.sh"
+            issue: "linhas 398-401 — o exit code ignora INCONCLUSIVAS e imprime frase de fechamento; não há controle positivo de identidade do alvo"
+      missing:
+          - "Contador `ESPERADAS`; se `ESPERADAS -eq 0`, sair 2 com 'nenhuma checagem produziu PROVA POSITIVA'"
+          - "Controle de identidade do alvo: uma tabela sabidamente inexistente tem de ser DISTINGUÍVEL de uma tabela declarada e fechada; se forem indistinguíveis, sair 2"
+          - "Enquanto isso não existir, nenhum documento do projeto pode citar o exit 0 deste script como prova de fechamento — só a leitura linha a linha do relatório"
+    - truth: "A superfície pública anônima não entrega ao visitante um jeito de derrubar o processo com uma requisição"
+      status: failed
+      reason: >-
+          MEDIDO POR HTTP CONTRA BUILD DE PRODUÇÃO, com slug público real (`avantis`), sem
+          sessão, invocando a Server Action pelo id derivado do manifesto (`70efdce3…`),
+          num dia com janela de funcionamento ativa (2026-07-27):
+
+          duracaoMinutos=30        →     525 ms |      2.179 bytes
+          duracaoMinutos=-100000   →   1.123 ms |    378.054 bytes
+          duracaoMinutos=-5000000  →  26.751 ms | 19.291.480 bytes
+
+          `obterSlotsPublicos` (`public-booking.ts:560`) repassa os três argumentos do
+          navegador sem validação nenhuma; `duracaoMinutos` alimenta a condição de parada
+          do laço em `booking-engine.ts:144`
+          (`for (let candidato = a; candidato + duracaoMinutos <= b; candidato += 15)`).
+          Negativo, o valor deixa de limitar a grade ao intervalo livre e passa a limitá-la
+          à própria magnitude. Medi também a função pura isolada: -1.000.000 → 66.707
+          entradas em 9 ms; -100.000.000 → 6.666.707 entradas em 1.237 ms. O crescimento é
+          linear e o laço é SÍNCRONO: o event loop fica bloqueado para todas as requisições
+          em voo, não só a do atacante.
+          A inversão do modelo de confiança é acidental e está provada por contraste dentro
+          do próprio repositório: o fluxo AUTENTICADO `obterSlotsDashboard`
+          (`agendamentos.ts:189`) valida `dateStr` com `/^\d{4}-\d{2}-\d{2}$/`; o fluxo
+          PÚBLICO E ANÔNIMO não valida nada. Medi a consequência colateral disso também:
+          `dateStr = "nao-e-uma-data"` devolve `{ ok: true, slots: [] }` — exatamente a
+          "grade calculada errada, sem sintoma" que o JSDoc da função afirma ter eliminado.
+          Ressalvas honestas: (a) NÃO é regressão desta fase — `git show
+          master:src/app/actions/public-booking.ts:295` mostra a mesma ausência de
+          validação, e esta fase melhorou o argumento (`tenantId` → `slug`) sem fechar a
+          porta; (b) NÃO falsifica a letra de nenhum dos 5 Success Criteria, que falam da
+          chave publicável e do webhook. É gap porque a fase se chama "hardening da
+          superfície pública", o milestone é abrir ao público, e a Fricção Zero proíbe
+          CAPTCHA — a validação de entrada é a ÚNICA defesa disponível.
+          Conferi o deferimento antes de reportar: a Phase 3 NÃO cobre isto. O SC1 dela é
+          sobre teto de CRIAÇÃO de agendamentos por repetição; um rate limit deixa a
+          primeira requisição passar, e uma requisição basta.
+      artifacts:
+          - path: "src/app/actions/public-booking.ts"
+            issue: "linhas 560-591 — `slug`, `dateStr` e `duracaoMinutos` chegam do navegador de um visitante sem sessão e seguem sem validação"
+          - path: "src/lib/booking-engine.ts"
+            issue: "linha 144 — `duracaoMinutos` é a condição de parada do laço, sem guarda de sinal nem de tipo"
+      missing:
+          - "Validar na fronteira da action pública devolvendo discriminante (`data_invalida`, `servico_invalido` já são membros de `MotivoPublico`, então os dois `Record` de `mensagens.ts` compilam sem edição)"
+          - "Guarda de profundidade na função pura: `if (!Number.isInteger(duracaoMinutos) || duracaoMinutos <= 0) return []` no topo de `gerarSlotsAntiBuraco` — é o invariante de verdade e sobrevive a um terceiro chamador"
+          - "Replicar a validação de `duracaoMinutos` em `obterSlotsDashboard`, que hoje valida só `dateStr`"
+deferred: []
+behavior_unverified_items:
+    - truth: "SC4 — uma tabela (e, desde o plano 01-15, uma função) nova criada no schema `public` não aparece na Data API sem GRANT explícito"
+      test: "Criar um objeto descartável no schema `public` pelo role `postgres`, consultar `has_table_privilege`/`has_function_privilege` para `anon`, `authenticated` e `service_role`, tentar `GET /rest/v1/<tabela>` e `POST /rest/v1/rpc/<funcao>` com a chave publicável, e remover o objeto"
+      expected: "`anon` e `authenticated` sem privilégio, `service_role` com privilégio, e a chamada com a chave publicável devolvendo 42501 / PGRST205"
+      why_human: >-
+          Exige DDL, e esta sessão não tem caminho até lá: o subagente verificador não
+          recebe as ferramentas MCP do Supabase, `.env.local` não traz `DATABASE_URL` nem
+          `SUPABASE_ACCESS_TOKEN`, e o CLI responde `LegacyPlatformAuthRequiredError`.
+          Não afirmo o critério nem o reprovo — declaro o que consegui e o que não consegui
+          medir. Ver a seção "SC4" no corpo do relatório para o que foi possível estabelecer
+          por via indireta.
+human_verification:
+    - test: "Reconferir SC4 com DDL (o orquestrador tem o MCP do Supabase; o verificador não)"
+      expected: "Objeto descartável nasce fechado para `anon`/`authenticated` e aberto para `service_role`, nas duas classes (TABLES e FUNCTIONS)"
+      why_human: "Precisa de DDL; ver `behavior_unverified_items`"
+    - test: "Wizard completo de `/book/[slug]` no navegador, em `next start` sobre build de produção — nunca em `pnpm dev`"
+      expected: "Serviço → data/hora → contato → 'Horário confirmado!', e a linha aparecendo na agenda do dashboard, sem fricção nova"
+      why_human: "Renderização e fluxo de tela não se inferem de código HTTP nem de suíte. Item 1 de `docs/PENDENCIAS.md:859`"
+    - test: "Recuperação de double-booking NA TELA, em `next start`"
+      expected: "Aviso âmbar `Este horário já foi preenchido ou está indisponível. Por favor, selecione outro.`, volta para a etapa de data/hora, grade refeita"
+      why_human: "O prognóstico virou positivo (o discriminante atravessa — veredito ESCRITA_VALIDACAO), mas quem vê a tela é o olho humano. Item 2 de `docs/PENDENCIAS.md`"
+    - test: "Caixa de erro de slots NA TELA, em `next start`"
+      expected: "`Não foi possível carregar os horários. Tente de novo.` com `role=\"alert\"` e o botão `Tentar de novo` reexecutando a busca"
+      why_human: "Item 3 de `docs/PENDENCIAS.md`"
+    - test: "Dashboard tela a tela sob as policies tenant-scoped, incluindo reativar um serviço inativo"
+      expected: "Nenhuma tela degrada em branco depois do DROP das policies residuais do plano 01-08"
+      why_human: "Item 4 de `docs/PENDENCIAS.md`"
+    - test: "Personalização por plano na página pública"
+      expected: "Pro exibe cor/logo/capa; gratuito não exibe nada disso — inclusive durante degradação de leitura de `assinaturas`"
+      why_human: "Com o RLS fora do caminho público (D-02), a sanitização por plano é defesa ÚNICA. Item 5 de `docs/PENDENCIAS.md`"
+    - test: "Lembrete do QStash ponta a ponta, com a URL de destino já sem query string"
+      expected: "A mensagem chega; nenhum 401 no log (401 indicaria mismatch de URL atrás do proxy — WR-04 deferido)"
+      why_human: "O caminho de falha é inteiramente silencioso por design. Item 6 de `docs/PENDENCIAS.md`"
+    - test: "Backstops visuais com dado extremo (20+ serviços, `horizonte_maximo_dias = 30`, nomes longos)"
+      expected: "Layout não quebra em mobile nem em desktop"
+      why_human: "São as truths `verification: backstop` dos planos 01-10 e 01-12. Item 7 de `docs/PENDENCIAS.md`"
 ---
 
-# Phase 1: Hardening da superfície pública — Verification Report (reverificação)
+# Phase 1: Hardening da superfície pública — Relatório de verificação (3ª rodada)
 
-**Phase Goal:** A chave publicável que vai no bundle deixa de dar acesso a qualquer coisa além do estritamente necessário para a página pública funcionar, e o webhook de lembrete só aceita quem o QStash assinou
-**Verified:** 2026-07-22T15:51:28Z (HEAD `4596463`)
+**Goal da fase:** A chave publicável que vai no bundle deixa de dar acesso a qualquer coisa além do estritamente necessário para a página pública funcionar, e o webhook de lembrete só aceita quem o QStash assinou
+**Verificado:** 2026-07-22T20:07:30Z, sobre o HEAD `8edb32d`
 **Status:** gaps_found
-**Re-verification:** Sim — após o fechamento dos três gaps (planos 01-06 a 01-09)
+**Reverificação:** Sim — 3ª passagem, depois da 2ª rodada de fechamento de gaps (planos 01-10 a 01-16)
 
-## Goal Achievement
+## Nota de método, antes de qualquer veredito
 
-### Observable Truths
+Duas coisas moldaram esta verificação.
 
-| # | Truth | Status | Evidence |
+A primeira é a regra que esta fase pagou caro para aprender: **critério que lê como
+satisfeito enquanto a medição diz outra coisa é o defeito.** Por isso não herdei o exit
+code de nenhum harness como prova. Remedi SC1, SC2 e SC3 por caminho independente, com
+`curl` anônimo direto contra o projeto Supabase do repositório, e — o que o harness não
+faz — **com controle positivo de identidade do alvo**: antes de qualquer medição anônima,
+provei que aquela URL é o banco deste projeto, respondendo 200 com linhas reais sob
+`service_role` nas quatro tabelas centrais, e devolvendo `PGRST205` para um nome de tabela
+inventado. Sem esse par, "fechado" e "não é este banco" são indistinguíveis.
+
+A segunda é uma limitação de ferramenta que declaro em vez de contornar com prosa: **este
+subagente não recebeu as ferramentas MCP do Supabase.** Só tenho `Read`, `Write`, `Bash` e
+`Skill`. `.env.local` não traz `DATABASE_URL` nem `SUPABASE_ACCESS_TOKEN`, e o CLI responde
+`LegacyPlatformAuthRequiredError`. Consequência concreta: não consigo executar DDL, e por
+isso **SC4 não foi remedido nesta sessão**. Tudo o que passa por PostgREST eu medi; o que
+exige DDL, não. Onde não medi, digo que não medi.
+
+## Alcance do goal
+
+### Truths observáveis
+
+| # | Truth | Status | Evidência |
 |---|---|---|---|
-| 1 | SC1 — `curl` anônimo em `perfis_empresas` não devolve a lista de profissionais, nem `telefone_contato`, nem o `org_id` | ✓ VERIFIED | Harness rodado por mim neste HEAD: `?select=*` e `?select=tenant_id,telefone_contato` → **HTTP 401 / code 42501** (`permission denied`, não 404) |
-| 2 | SC2a — POST anônimo em `agendamentos` e `clientes` é rejeitado | ✓ VERIFIED | Harness: 401/42501 nas duas tabelas |
-| 3 | SC2b — o booking público continua funcionando **exatamente como antes** | ✗ **FAILED** | Provado por mim contra o build de produção: a Server Action devolve `1:E{"digest":"2760064589"}` — sem mensagem. A copy nova desta fase nunca chega à tela e a recuperação de double-booking morre. Ver gap 2 |
-| 4 | SC3 — `agendamentos` e `excecoes_agenda` sem `cliente_id` nem `motivo` para `anon` | ✓ VERIFIED | Harness: `?select=cliente_id` e `?select=motivo` → 401/42501. Satisfeito com folga (zero colunas ⊂ colunas necessárias) |
-| 5 | SC4 — tabela nova não aparece na Data API sem GRANT explícito | ✓ VERIFIED | Mecanismo lido linha a linha em `20260722060000`: `alter default privileges for role postgres in schema public revoke all on tables from anon, authenticated` + `grant all on tables to service_role`. `service_role` não aparece em nenhuma linha de `revoke` (as 2 ocorrências do grep estão em comentário). Prova empírica com tabela descartável foi feita na verificação anterior; não reproduzível nesta sessão (sem acesso a banco) |
-| 6 | SC5a — POST sem assinatura válida do QStash é rejeitado | ✓ VERIFIED | Veredito `WEBHOOK` do harness, contra build de produção: **401 sem assinatura \| 401 com `?secret=` legado \| 401 com `Upstash-Signature` forjado \| 200 no controle `GET /`** |
-| 7 | SC5b — a aplicação **não sobe** sem as chaves de assinatura | ✓ **VERIFIED — gap 1 fechado** | Veredito `MORTE`: "o processo do next encerrou com **código 1**, nomeou `QSTASH_NEXT_SIGNING_KEY` em stderr e a porta **recusou conexão (curl 7)**". Veredito `CONTROLE`: 200 com as quatorze presentes. Era `✗ FAILED` na verificação anterior |
-| 8 | GOAL — "o webhook de lembrete **só aceita quem o QStash assinou**" | ✗ **FAILED** | A chave HMAC que autentica o webhook é publicada em texto claro na query string de todo lembrete (`whatsapp-helper.ts:147`). Quem lê um log forja assinatura válida. Ver gap 1 |
-| 9 | Gap 3 — as policies residuais de `servicos`/`horarios_funcionamento` sumiram **do banco** | ✓ VERIFIED | Lado repositório verificado pelo verificador (migration + schemas + zero grant/revoke). Lado banco confirmado pelo orquestrador no mesmo HEAD: `pg_policies` devolve 8 linhas nas duas tabelas, todas `{authenticated}`, e a única de SELECT em cada uma é a do próprio tenant — ver `orchestrator_followup` |
+| 1 | **SC1** — `curl` anônimo em `perfis_empresas` não devolve a lista de profissionais, nem `telefone_contato`, nem o `org_id` | ✓ VERIFICADO | Medido por mim. Cinco projeções (`*`, `tenant_id`, `telefone_contato`, `slug`, `nome_estabelecimento`) → **HTTP 401 / código 42501** `permission denied for table perfis_empresas`. Zero bytes de dado. Controle positivo: a mesma URL sob `service_role` devolve `[{"tenant_id":"org_…"}]` |
+| 2 | **SC2a** — POST anônimo em `agendamentos` e `clientes` é rejeitado | ✓ VERIFICADO | Medido por mim, com payload plausível: os dois → **401 / 42501** `permission denied for table …`, com o `hint` do Postgres pedindo o `GRANT INSERT` que não existe |
+| 3 | **SC2b** — o booking público continua funcionando **exatamente como antes** | ✓ VERIFICADO — gap anterior fechado | Três medições independentes: (a) `verificar-travessia-server-action.sh` → exit 0, 5/5 vereditos contra `next start`; (b) `pnpm test:integracao` → **13/13** em 8,40 s com escrita real no Supabase de dev; (c) sonda HTTP minha contra o build de produção com o slug real `avantis` → `{"ok":true,"slots":[{"time":"08:…}]}`, grade completa em 525 ms. Era `✗ FAILED` na verificação anterior |
+| 4 | **SC3** — `agendamentos` e `excecoes_agenda` sem `cliente_id` e sem `motivo` para `anon` | ✓ VERIFICADO | Medido por mim: `?select=cliente_id` e `?select=motivo` → 401/42501. Satisfeito com folga — a role anon não lê coluna nenhuma das duas tabelas (∅ ⊂ colunas da engine) |
+| 5 | **SC4** — tabela (e função) nova não aparece na Data API sem GRANT explícito | ⚠️ **PRESENTE, COMPORTAMENTO NÃO EXERCITADO** | Mecanismo presente e lido linha a linha nas duas migrations. Aplicação da de TABELAS provada por efeito colateral observável (ver abaixo). A de FUNÇÕES não tem efeito observável e exige DDL, que esta sessão não tem. Vai para verificação humana — não conto como verificado |
+| 6 | **SC5a** — POST sem assinatura válida do QStash é rejeitado | ✓ VERIFICADO | Veredito `WEBHOOK` de `verificar-fail-fast-boot.sh`, rodado por mim contra build de produção: **401 sem assinatura \| 401 com `?secret=` legado \| 401 com `Upstash-Signature` forjado \| 200 no controle `GET /`** |
+| 7 | **SC5b** — a aplicação **não sobe** sem as chaves de assinatura | ✓ VERIFICADO | Veredito `MORTE`, rodado por mim: o `next start` encerrou com **código 1**, nomeou `QSTASH_NEXT_SIGNING_KEY` em `stderr` e a porta **recusou conexão**. Veredito `CONTROLE`: 200 com as quatorze presentes. Veredito `BUILD`: `pnpm build` continua saindo 0 com a variável vazia |
+| 8 | **GOAL, 2ª metade** — "o webhook de lembrete só aceita quem o QStash assinou" | ✓ VERIFICADO — gap anterior fechado | `whatsapp-helper.ts:158` publica `${APP_URL}/api/webhooks/lembrete`, sem query string. `grep -rn "secret=" src/ scripts/` só devolve comentário, teste e a sonda de regressão. Os quatro `console.error` de gateway viraram `http_<status>` (:95, :178, :224). O resíduo — a chave já circulou em URL publicada e em log — está registrado com dono e data-limite 2026-08-05 em `docs/PENDENCIAS.md:806` |
+| 9 | **01-15** — "checagem que não prova nada não pode passar" | ✗ **REPROVADO** | Reproduzi: com o alvo inalcançável, 11 checagens em HTTP 000, **exit 0** e a frase `0 reprovada(s) — a role anon não devolveu linha nenhuma`. Ver gap 1 |
+| 10 | **01-14** — o namespace do slug público ganhou dono | ✓ VERIFICADO | O `UNIQUE` está **no banco**, não só no repositório: sonda não-mutante `POST ?on_conflict=slug_gratuito` com `Prefer: resolution=ignore-duplicates` → **201** (o Postgres aceitou a especificação ON CONFLICT), enquanto o **controle negativo** na coluna sem índice (`on_conflict=nome_estabelecimento`) → **42P10** `there is no unique or exclusion constraint matching the ON CONFLICT specification`. Confirmação de não-mutação: a tabela seguiu com 1 linha. Cruzado com o teste de integração `:595`, que mede o `23505` pelo outro lado |
+| 11 | **01-10/01-12** — erro esperado atravessa a fronteira de flight com identidade preservada | ✓ VERIFICADO | Harness rodado por mim contra `next start`: `SLOTS_ERRO` carrega `slug_invalido`, `ESCRITA_VALIDACAO` carrega `campos_obrigatorios`, `SEM_VAZAMENTO` não acha slug, `org_`, `PGRST` nem `tenant_id` em corpo nenhum. Nenhum `digest` opaco |
+| 12 | **01-16** — falha de leitura em `assinaturas` não derruba o link público, e a degradação continua restritiva no que é pago | ✓ VERIFICADO | 11 casos herméticos em `src/lib/__tests__/assinaturas.test.ts` exercitam a transição (inclusive o invariante de que o contexto do reporte não carrega `tenantId`, slug nem `.message`), mais 5 casos de integração com banco real (:664, :683, :697, :733, :745) — incluindo os dois **controles** que impedem o "passa porque recusa tudo" |
+| 13 | **01-13** — registro coerente, rotação datada, UAT intocado | ✓ VERIFICADO | Contado por comando na seção `docs/PENDENCIAS.md:859`: **7 abertas / 0 marcadas**. Item de rotação em `:806` com dono ("só o owner fecha") e data-limite 2026-08-05, etapa 1 escrita como feita e etapa 2 nascida aberta. Item antigo do webhook riscado em `:1200`, com o comando que prova |
 
-**Score:** 7/9 truths verified (2 failed, 0 uncertain — a truth 9 saiu de UNCERTAIN depois que o orquestrador consultou `pg_policies` pelo MCP)
+**Score:** 11/13 truths verificados (1 reprovado, 1 presente com comportamento não exercitado)
 
-### Deferred Items
+### SC4 — o que consegui estabelecer, e o que não
 
-| # | Item | Addressed In | Evidence |
-|---|---|---|---|
-| 1 | Recuperação **visual** de double-booking (aviso âmbar, grade refeita) | Phase 2 | SC4 da Phase 2: "Quem perde a corrida vê 'esse horário acabou de ser reservado, escolha outro' com os horários recarregados". ⚠️ A Phase 2 não fecha esse critério sem antes trocar o mecanismo do gap 2 |
+Separo isto do resto porque é o único critério que não medi.
+
+**O que consegui:** a migration de TABELAS (`20260722060000`) foi de fato aplicada ao banco,
+e isso não é inferência de ledger — é efeito colateral observável. Ela carrega, além das
+`ALTER DEFAULT PRIVILEGES`, um `revoke all on all tables in schema public from anon`, e eu
+varri **as nove tabelas declaradas** com a chave publicável: as nove devolveram 401/42501.
+As duas funções que já existiam também: `rls_auto_enable` → 42501, e
+`substituir_horarios_funcionamento(jsonb)`, chamada com o parâmetro certo → 42501.
+
+**O que não consegui:** provar o comportamento sobre objetos FUTUROS. A migration de
+FUNÇÕES (`20260722183153`) contém *apenas* duas `ALTER DEFAULT PRIVILEGES` — nenhum efeito
+observável por PostgREST —, e a verificação exige criar e destruir um objeto descartável.
+Sem DDL, não dá.
+
+**Como pesei a evidência de terceiro:** li o `01-15-SUMMARY.md` procurando falso verde e
+não achei. Ao contrário: a prova empírica **reprovou o conserto na primeira tentativa** (a
+função descartável criada depois do primeiro SQL ainda nascia com `=X` para `PUBLIC`,
+porque `ALTER DEFAULT PRIVILEGES ... IN SCHEMA public REVOKE ... FROM PUBLIC` é um no-op
+conhecido), o diagnóstico foi registrado com a citação da documentação, e só a terceira
+função descartável mediu `postgres=X|service_role=X` com `anon = false` e RPC real
+devolvendo 42501. Um contrafactual assim — objeto criado ANTES e DEPOIS do conserto — é
+exatamente o que distingue "fechou" de "sempre esteve assim". É evidência forte. Mas é
+evidência de outra sessão, sobre objetos que já foram destruídos, e a regra desta fase é
+que eu meça. Marco como não exercitado e mando para reconferência.
 
 ### Required Artifacts
 
-| Artifact | Expected | Status | Details |
+| Artefato | Esperado | Status | Detalhes |
 |---|---|---|---|
-| `scripts/verificar-fail-fast-boot.sh` | 4 vereditos, exit 0 só com os quatro | ✓ VERIFIED | 307 linhas. Rodado por mim: exit 0. Li o script antes: `set -m` para o PGID próprio, `setsid` explicitamente proibido, complemento de dev idêntico nas duas execuções (isola a variável alvo) |
-| `src/lib/env.ts` — `encerrarBootPorEnvAusente` | Encerra nomeando a variável | ✓ VERIFIED | `process.stderr.write` (nunca `node:fs` — o módulo é empacotado para o edge), escrita ANTES do `process.exit(1)`, `CODIGO_SAIDA_ENV_AUSENTE = 1` |
-| `src/instrumentation.ts` | Guarda de encerramento no `register()` | ✓ VERIFIED | `try { validarEnvObrigatorio() } catch { if (NEXT_RUNTIME === 'nodejs') encerrarBootPorEnvAusente(...); throw }` — o edge preserva o relançar. JSDoc corrigido: não afirma mais que a rejeição sozinha derruba o processo |
-| `src/lib/__tests__/env.test.ts` | Contrato do encerramento pinado | ✓ VERIFIED | 11 casos; espia `process.exit` com sentinela, assere `CODIGO_SAIDA_ENV_AUSENTE === 1` e comenta o modo de falha (`exitCode = 0` disfarçado de fix) |
-| `src/app/actions/__tests__/public-booking-escrita.test.ts` | Escrita real contra o Supabase de dev | ⚠️ VERIFIED com ressalva | 438 linhas, escrita real via `createAdminClient()`, fixture determinística, teardown antes e depois. Rodado: **6/6 em 6,35 s**. Ressalva: o caso 'acoplamento nas DUAS pontas' (l.390-399) é asserção de FONTE e dá verde num caminho morto em produção (gap 2) |
-| `vitest.config.ts` | Alias `@` + exclusão condicional | ✓ VERIFIED | `EXIGIR_INTEGRACAO === '1'` destrava; `configDefaults.exclude` espalhado corretamente. Hermeticidade provada: `pnpm test` = 13 arquivos / 198 testes em **381 ms** (sem rede) |
-| `package.json` | Script `test:integracao` | ✓ VERIFIED | `EXIGIR_INTEGRACAO=1 vitest run src/app/actions/__tests__/public-booking-escrita.test.ts` |
-| `supabase/migrations/20260722145948_…` | DROP das duas policies, sem privilégio | ✓ VERIFIED | 2 `drop policy if exists`; `grep -vE '^\s*--' \| grep -icE 'grant\|revoke'` → 0. Cabeçalho documenta por que a D-07 não se aplica (a policy `1b` da `20260709165703` já cobre, inclusive linhas inativas) |
-| `supabase/schemas/02_servicos.sql`, `03_horarios_funcionamento.sql` | Policy removida do declarativo | ✓ VERIFIED | Nenhum `TO anon` executável restou nos schemas; as duas ocorrências de "TO anon" são comentário explicando a armadilha desarmada |
-| `.planning/REQUIREMENTS.md` | SEG-05 corrigido | ✓ VERIFIED | Linha 17 descreve o comportamento real (encerra com código 1 após nomear a variável) e nomeia o comando que prova; linha 151 saiu de `Partial` para `Complete` |
-| `.planning/ROADMAP.md` | Nota de execução com a evidência | ✓ VERIFIED | Nota nomeia `scripts/verificar-fail-fast-boot.sh` e os quatro vereditos, e registra honestamente que a primeira medição encontrou o processo sobrevivendo |
-| `docs/PENDENCIAS.md` | Coerente com o código | ⚠️ PARCIAL | Três blocos corretos (superfície fechada :647, hermeticidade :1170-1192, UAT honesto :806-880). **Quarto bloco stale**: :1071-1077 — ver gap 3 |
-| `src/lib/whatsapp-helper.ts` | Sem fallback inseguro | ⚠️ PARCIAL | Fallback `'secret-key'` extinto (grep vazio). Mas a chave de assinatura continua na URL publicada — gap 1 |
+| `src/lib/whatsapp-helper.ts` | URL publicada sem segredo; log sem corpo de gateway | ✓ VERIFICADO | `:158` sem query string; `:95`, `:178`, `:224` reduzidos a `http_<status>`. Restam `:107` e `:194`, que logam o erro de **rede** (não corpo de gateway) — aceitável |
+| `src/lib/__tests__/whatsapp-helper.test.ts` | Trava que pode falhar | ✓ VERIFICADO | Faz parte dos 228 casos herméticos; o fixture injeta a URL de destino e a chave no corpo e assere ausência — trava com poder de reprovar |
+| `src/app/book/[slug]/mensagens.ts` | Cópias contratadas, uma constante por caso | ✓ VERIFICADO | As três cópias do 01-UI-SPEC §Copywriting Contract conferidas byte a byte (`:27`, `:52`, `:58`). Os dois `Record<MotivoPublico, string>` tornam membro novo um erro de `tsc`, não um `undefined` na tela |
+| `src/app/book/[slug]/BookingApp.tsx` | Decisão por discriminante | ✓ VERIFICADO | `:282` compara `res.motivo === 'slot_indisponivel'`; nenhum `.includes()` de mensagem restou. ⚠️ WR-07: três cópias visíveis ao cliente continuam inline em `:258,264,268` |
+| `scripts/verificar-travessia-server-action.sh` | Harness de fronteira, id derivado do manifesto | ✓ VERIFICADO | 340 linhas. Rodado: exit 0, 5/5. Deriva o id do `server-reference-manifest.json` (conferi rodando a mesma derivação por fora: prefixo `70efdce3`), aborta com 2 se não derivar, e proíbe `setsid` pelo motivo certo |
+| `scripts/verificar-superficie-anon.sh` | Veredito por código específico e cobertura | ⚠️ **PARCIAL** | O eixo do NOME está consertado (confirmei: `000` vira INCONCLUSIVO, não ESPERADO). O eixo da IDENTIDADE DO ALVO não — gap 1 |
+| `scripts/verificar-fail-fast-boot.sh` | 4 vereditos, exit 0 só com os quatro | ✓ VERIFICADO | Rodado: exit 0, "4 vereditos, 0 reprovados" |
+| `supabase/migrations/20260722183153_…` | Default privilege cobrindo FUNCTIONS | ⚠️ PRESENTE, NÃO EXERCITADO | Conteúdo correto e assimetria conhecida (revoke global, grant por schema — WR-09). Aplicação não reproduzível aqui |
+| `supabase/migrations/20260722185755_…` | `UNIQUE` em `slug_gratuito` + `COMMENT ON CONSTRAINT` | ✓ VERIFICADO | Constraint **provada viva no banco** (sonda ON CONFLICT com controle negativo). `COMMENT ON CONSTRAINT` presente e escrito em intenção de negócio |
+| `src/app/actions/perfis-empresas.ts` | Checagem cruzada antes do upsert | ⚠️ PARCIAL | A guarda existe, usa `createAdminClient()` pelo motivo certo (sob RLS a consulta voltaria vazia e a checagem seria decorativa) e projeta uma coluna com `head: true`. Mas é **unidirecional** — WR-06 |
+| `src/lib/assinaturas.ts` | `{ plano, degradadoPorErro }` + reporte | ✓ VERIFICADO | Contrato presente e coberto por 11 casos herméticos. ⚠️ `:65` e `:133` ainda logam `.message` crua — WR-02 |
+| `src/app/api/webhooks/lembrete/route.ts` | `plano_indeterminado` distinguido | ✓ VERIFICADO | Ramo presente, devolve 500 para o QStash retentar. ⚠️ WR-10: o vocabulário não entrou no `COMMENT ON COLUMN` de `09_disparos_whatsapp.sql` |
+| `docs/PENDENCIAS.md` | Coerente com o código | ✓ VERIFICADO | Gap 3 da rodada anterior fechado. Contagem de UAT conferida por comando |
+| `package.json` | Porta de entrada para os harnesses | ✗ **AUSENTE** | `scripts` tem só `dev/build/start/lint/test/test:integracao`. Não há `.husky/` nem `.github/workflows/`. Os três harnesses só rodam se alguém lembrar do caminho completo — WR-03 |
 
-### Key Link Verification
+### Verificação dos elos (key links)
 
-| From | To | Via | Status | Details |
+| De | Para | Via | Status | Detalhes |
 |---|---|---|---|---|
-| `instrumentation.ts register()` | `process.exit(1)` | `validarEnvObrigatorio()` → `encerrarBootPorEnvAusente()` | ✓ **WIRED** | Era ⚠️ PARCIAL. Fecha agora: veredito MORTE mediu código 1 + porta recusando conexão |
-| `route.ts` | `verificarAssinaturaQstash` → `Receiver` | duas chaves, `url: req.url` | ✓ WIRED | 401×3 no harness; `JSON.parse` só depois de autenticado (l.39) |
-| `EXIGIR_INTEGRACAO=1` | `vitest.config.ts` `exclude` | `test:integracao` | ✓ WIRED | Único caminho que toca o banco; `pnpm test` mediu 381 ms |
-| `public-booking.ts:179` | `BookingApp.tsx:276` | substring "já foi preenchido" | ✗ **NOT_WIRED em produção** | As duas pontas casam no código-fonte, mas a mensagem **não atravessa** a Server Action em produção. A verificação anterior marcou ✓ WIRED por leitura; a medição diz o contrário |
-| `public-booking.ts:373` | caixa vermelha de slots | `err.message` | ✗ **NOT_WIRED em produção** | Mesmo mecanismo |
-| `whatsapp-helper.ts:147` | log de acesso / console do QStash | query string da URL publicada | ⚠️ **WIRED indevidamente** | Publica o segredo de autenticação. Gap 1 |
-| `ALTER DEFAULT PRIVILEGES … grant all to service_role` | `createAdminClient()` | privilégio em objetos futuros | ✓ WIRED | Sem isso a próxima tabela derrubaria o booking |
+| `agendarLembreteQStash` | QStash / log de acesso / console da Upstash | URL de destino publicada | ✓ **CORTADO** | Era ⚠️ WIRED INDEVIDAMENTE. Hoje publica sem query string |
+| `route.ts:29` | `verificarAssinaturaQstash` → `Receiver` | duas chaves, `url: req.url` | ✓ WIRED | 401×3 medidos. `JSON.parse` só depois de autenticado (`:38`) |
+| `obterSlotsPublicos` | `BookingApp` → caixa vermelha | discriminante `motivo` pela fronteira de flight | ✓ **WIRED em produção** | Era ✗ NOT_WIRED. Veredito `SLOTS_ERRO` |
+| `criarAgendamentoPublico` | `BookingApp:282` → aviso âmbar + `setTentativaSlots` | `res.motivo === 'slot_indisponivel'` | ✓ WIRED | Veredito `ESCRITA_VALIDACAO` + integração `:432`. É o elo que o SC4 da Phase 2 precisa vivo |
+| `salvarPerfilEmpresa` → `perfis_empresas` (UNIQUE) → `resolverPerfilPublicoPorSlug` | três camadas do namespace | recusa na escrita, constraint, recusa de ambiguidade | ⚠️ **WIRED, uma direção só** | As três camadas existem e a do meio está provada no banco; a guarda de escrita não cobre o sentido `slug_gratuito` sorteado × `slug` alheio — WR-06 |
+| `obterSlotsPublicos` | `gerarSlotsAntiBuraco` (laço) | `duracaoMinutos` cru do navegador | ⚠️ **WIRED INDEVIDAMENTE** | Gap 2. O elo transporta entrada hostil direto para a condição de parada de um laço síncrono |
+| `ALTER DEFAULT PRIVILEGES … grant … to service_role` | `createAdminClient()` | privilégio em objetos futuros | ⚠️ PRESENTE, NÃO EXERCITADO | Sem este elo a próxima RPC derruba o caminho público inteiro (D-02). WR-09: o grant de FUNCTIONS é por schema e o revoke é global |
 
-### Data-Flow Trace (Level 4)
+### Trace de dados (Nível 4)
 
-| Artifact | Data Variable | Source | Produces Real Data | Status |
+| Artefato | Variável | Origem | Produz dado real? | Status |
 |---|---|---|---|---|
-| `criarAgendamentoPublico` | `agendamento` (RETURNING) | INSERT real via `createAdminClient()` no Supabase de dev | Sim — `agendamento.id` truthy, `status='confirmado'`, linha conferida no banco com `tenant_id` e `servico_id` certos | ✓ FLOWING |
-| `clientes` (lookup por telefone) | `clienteId` | SELECT + INSERT reais | Sim — 1 linha só após dois agendamentos com o mesmo telefone; `telefone` gravado como `11988887777` (só dígitos) | ✓ FLOWING |
-| `obterSlotsPublicos` | `slots` | engine com `supabase: admin`, slug resolvido no servidor | Sim — grade não vazia, e o segundo primeiro-slot ≠ do primeiro (a grade se refaz) | ✓ FLOWING |
-| `err.message` → caixa de erro da UI | `mensagem` | Server Action → flight | **Não** — em produção chega `{"digest":"…"}` e o cliente monta a mensagem genérica em inglês | ✗ **HOLLOW** |
+| `obterSlotsPublicos` | `slots` | engine com `supabase: admin`, slug resolvido no servidor | Sim — medido por HTTP contra produção: `avantis`/2026-07-27 devolveu grade completa (2.179 bytes de slots) | ✓ FLUINDO |
+| `criarAgendamentoPublico` | `agendamento` (RETURNING) | INSERT real via `createAdminClient()` | Sim — 13/13 na suíte de integração, com reaproveitamento de cliente por telefone e recusa de slot ocupado | ✓ FLUINDO |
+| `res.motivo` → caixa vermelha / aviso âmbar | `motivo` | Server Action → flight → `mensagemDeMotivo` | Sim — o discriminante atravessa a fronteira em build de produção | ✓ FLUINDO (era ✗ HOLLOW) |
+| `obterPlanoVigentePublico` | `{ plano, degradadoPorErro }` | SELECT em `assinaturas` | Sim — 5 casos de integração com perfil real gravado, incluindo controles | ✓ FLUINDO |
 
-### Behavioral Spot-Checks
+### Spot-checks comportamentais
 
-| Behavior | Command | Result | Status |
+| Comportamento | Comando | Resultado | Status |
 |---|---|---|---|
-| Superfície anônima fechada | `bash scripts/verificar-superficie-anon.sh` | 11 checagens, 0 reprovadas, 0 inconclusivas, exit 0 | ✓ PASS |
-| Boot morre sem a chave | veredito `MORTE` do harness | código 1, variável nomeada em stderr, curl 7 | ✓ PASS |
-| Build imune ao fail-fast | veredito `BUILD` | `pnpm build` exit 0 com `QSTASH_NEXT_SIGNING_KEY` vazia | ✓ PASS |
-| App saudável (controle) | veredito `CONTROLE` | `GET /` → 200, processo vivo | ✓ PASS |
-| Webhook fechado | veredito `WEBHOOK` | `401,401,401,200` | ✓ PASS |
-| Escrita do booking ponta a ponta (servidor) | `pnpm test:integracao` | 1 arquivo, **6 testes**, 0 pulados, 6,35 s | ✓ PASS |
-| Definition of Done | `pnpm lint` / `pnpm test` / `pnpm build` | exit 0 / 13 arquivos, 198 testes / exit 0 | ✓ PASS |
-| Hermeticidade de `pnpm test` | duração e contagem | 381 ms, integração fora do glob | ✓ PASS |
-| **Mensagem de Server Action atravessa em produção** | `curl -X POST /book/qualquer -H 'Next-Action: 70efdce379…' --data '["slug-inexistente","2026-08-01",30]'` contra `next start` | `1:E{"digest":"2760064589"}` — **mensagem ausente** | ✗ **FAIL** |
-| Fallback `'secret-key'` extinto | `grep -rn "secret-key" src/ scripts/` | vazio | ✓ PASS |
-| Sem `select('*')` no caminho público | `grep "select('\*')" public-booking.ts assinaturas.ts booking-engine.ts` | vazio | ✓ PASS |
-| `service_role` fora de todo `revoke` | `grep -rniE "revoke.*service_role" supabase/migrations/` | 2 ocorrências, **ambas em comentário** | ✓ PASS |
+| Controle positivo de identidade do alvo | `curl` sob `service_role` em 4 tabelas + nome inventado | 200 com linhas reais ×4; `PGRST205` no inventado | ✓ PASS |
+| SC1 — `perfis_empresas` fechada a `anon` | `curl` anônimo, 5 projeções | 401/42501 em todas | ✓ PASS |
+| SC2a — escrita anônima rejeitada | `POST` anônimo em `clientes` e `agendamentos` | 401/42501 nas duas | ✓ PASS |
+| SC3 — colunas fechadas | `?select=cliente_id`, `?select=motivo` | 401/42501 | ✓ PASS |
+| Varredura das 9 tabelas declaradas | `curl` anônimo em cada | 9/9 → 401/42501 | ✓ PASS |
+| RPCs existentes fechadas a `anon` | `POST /rest/v1/rpc/…` com a chave publicável | 42501 nas duas | ✓ PASS |
+| `UNIQUE` de `slug_gratuito` vivo no banco | `POST ?on_conflict=slug_gratuito` vs. controle negativo | 201 vs. **42P10** | ✓ PASS |
+| Travessia de flight | `bash scripts/verificar-travessia-server-action.sh` | exit 0, 5 vereditos | ✓ PASS |
+| Fail-fast + webhook | `bash scripts/verificar-fail-fast-boot.sh` | exit 0, 4 vereditos | ✓ PASS |
+| Escrita ponta a ponta | `pnpm test:integracao` | 13/13, 8,40 s | ✓ PASS |
+| Definition of Done | `pnpm lint` / `npx tsc --noEmit` / `pnpm test` | exit 0 / exit 0 / 15 arquivos, 228 testes, 521 ms | ✓ PASS |
+| Hermeticidade de `pnpm test` | duração | 521 ms, sem rede | ✓ PASS |
+| **Harness anônimo com alvo inalcançável** | script isolado + `.env.local` para host inexistente | **exit 0** com 11 checagens em HTTP 000 e frase de fechamento | ✗ **FAIL** |
+| **DoS por `duracaoMinutos` negativo** | `POST Next-Action` anônimo contra `next start` | 30 → 525 ms/2 KB; **-5.000.000 → 26.751 ms/19,29 MB** | ✗ **FAIL** |
+| `dateStr` malformado no fluxo público | `["avantis","nao-e-uma-data",30]` | `{"ok":true,"slots":[]}` — grade errada, sem sintoma | ✗ FAIL |
+| Marcadores de dívida nos 20 arquivos da rodada | `grep -nE "TBD\|FIXME\|XXX"` | vazio | ✓ PASS |
 
-### Probe Execution
+### Execução de probes
 
-| Probe | Command | Result | Status |
+| Probe | Comando | Resultado | Status |
 |---|---|---|---|
-| Superfície anônima | `bash scripts/verificar-superficie-anon.sh` | exit 0 | ✓ PASS |
-| Fail-fast de boot | `bash scripts/verificar-fail-fast-boot.sh` | exit 0 — "4 vereditos, 0 reprovados" | ✓ PASS |
-| Escrita do booking | `pnpm test:integracao` | exit 0 — 6/6 | ✓ PASS |
+| Superfície anônima | `bash scripts/verificar-superficie-anon.sh` | exit 0 — 11 ESPERADO com 42501 real, COBERTURA 9/9 | ⚠️ PASS **com instrumento desacreditado** (gap 1) |
+| Travessia de Server Action | `bash scripts/verificar-travessia-server-action.sh` | exit 0 — 5 vereditos, 0 reprovados | ✓ PASS |
+| Fail-fast de boot | `bash scripts/verificar-fail-fast-boot.sh` | exit 0 — 4 vereditos, 0 reprovados | ✓ PASS |
+| Escrita do booking | `pnpm test:integracao` | exit 0 — 13/13 | ✓ PASS |
 
-### Requirements Coverage
+Sobre o primeiro: a execução real contra o alvo real deu 42501 em todas as 11 checagens, e
+isso bate com a minha medição independente — o **veredito está certo**. O que está errado é
+o **instrumento**, que emitiria a mesma frase e o mesmo exit 0 sem ter medido nada. Não uso
+o exit dele como evidência em lugar nenhum deste relatório.
 
-| Requirement | Source Plan | Description | Status | Evidence |
+### Cobertura de requisitos
+
+| Requisito | Planos que reivindicam | Descrição | Status | Evidência |
 |---|---|---|---|---|
-| SEG-01 | 01-04, 01-05, 01-07 | Visitante anônimo não insere agendamento nem cliente direto na Data API | ✓ SATISFIED | Truth 2. Fechado no portão (revoke) e no porteiro (policy substituída) |
-| SEG-02 | 01-01, 01-02, 01-04, 01-05, 01-08 | `perfis_empresas` deixa de ser enumerável com a chave publicável | ✓ SATISFIED | Truth 1. A extensão do 01-08 (cross-tenant por conta autenticada) também está satisfeita — truth 9, confirmada no banco pelo orquestrador |
-| SEG-03 | 01-02, 01-04, 01-05 | `agendamentos`/`excecoes_agenda` expõem a `anon` só as colunas da engine | ✓ SATISFIED | Truth 4 |
-| SEG-04 | 01-04, 01-05, 01-08 | Coluna/tabela nova nasce sem acesso `anon` (regra escrita + privilégio revogado) | ✓ SATISFIED | Truth 5. Regra escrita em `docs/03` §"Privilégios da Data API". ⚠️ WR-02 do review: a default privilege cobre TABLES e SEQUENCES, **não FUNCTIONS** — RPC nova nasce executável por `anon`. Não falsifica SEG-04 como escrito ("tabela"/"coluna"), mas é o mesmo modo de falha por outra porta |
-| SEG-05 | 01-03, 01-05, 01-06 | Webhook só aceita assinatura válida; a aplicação não sobe sem as chaves | ⚠️ **PARCIAL** | Segunda metade ✓ (truth 7, gap 1 fechado e reproduzido). Primeira metade satisfeita na LETRA (truth 6: 401×3) mas comprometida no ESPÍRITO pela chave publicada na URL (truth 8, gap 1 novo) |
+| SEG-01 | 01-04, 01-05, 01-07, 01-10, 01-12 | Visitante anônimo não insere agendamento nem cliente direto na Data API | ✓ SATISFEITO | Truth 2, medida por mim. Fechado no portão (`revoke`) e no porteiro (policies substituídas) |
+| SEG-02 | 01-01, 01-02, 01-04, 01-05, 01-08, 01-14, 01-16 | `perfis_empresas` deixa de ser enumerável com a chave publicável | ✓ SATISFEITO | Truth 1, medida por mim. A extensão do 01-14 (namespace de slug com dono) também está satisfeita — truth 10, com a constraint provada viva no banco. **`REQUIREMENTS.md:14` continua `- [ ]`; a marcação é do fluxo, não deste relatório** |
+| SEG-03 | 01-02, 01-04, 01-05, 01-15 | `agendamentos`/`excecoes_agenda` expõem a `anon` só as colunas da engine | ✓ SATISFEITO | Truth 4, medida por mim |
+| SEG-04 | 01-04, 01-05, 01-08, 01-15 | Coluna/tabela nova nasce sem acesso `anon` (regra escrita + privilégio revogado) | ⚠️ **NÃO EXERCITADO NESTA SESSÃO** | Truth 5. Regra escrita conferida em `docs/03` §"Privilégios da Data API", agora cobrindo função/RPC. O comportamento exige DDL — ver `behavior_unverified_items` |
+| SEG-05 | 01-03, 01-05, 01-06, 01-11, 01-13 | Webhook só aceita assinatura válida; a aplicação não sobe sem as chaves | ✓ SATISFEITO na parte de código | Truths 6, 7 e 8, todas medidas por mim. **Continua `- [ ]` em `REQUIREMENTS.md:17` por decisão deliberada dos planos 01-11 e 01-13, e a decisão está certa:** a metade criptográfica fechou, mas a chave já circulou em URL publicada e em log de acesso, e HMAC é simétrico — enquanto ela não for rotacionada, quem leu um log daquele período ainda forja um `Upstash-Signature` válido. Marcar o requisito como fechado com a chave velha em uso seria exatamente o tipo de "lê como satisfeito, medição diz outra coisa" que queimou esta fase duas vezes. A rotação é ação do owner, com data-limite 2026-08-05, em `docs/PENDENCIAS.md:806` |
 
-**Órfãos:** nenhum. Os 5 IDs mapeados para a Phase 1 em `REQUIREMENTS.md` §Traceability (:147-151) são reivindicados por planos, e todos os 9 planos declaram `requirements`.
+**Órfãos:** nenhum. Os 5 IDs mapeados para a Phase 1 em `REQUIREMENTS.md:147-151` são
+reivindicados por planos, e os 16 planos declaram `requirements`.
 
-⚠️ **`REQUIREMENTS.md:17` e `:151` marcam SEG-05 como `[x]`/`Complete`.** A correção do plano 01-09 está certa quanto ao fail-fast — eu reproduzi. Mas o texto declara SEG-05 fechado sem mencionar que a chave que autentica o webhook é publicada em toda mensagem. Rever junto do gap 1.
+**Nota sobre o estado da rastreabilidade:** `REQUIREMENTS.md:147-151` ainda registra os
+cinco como `Gaps Found`, e `SEG-01` está `[x]` enquanto `SEG-02`, `SEG-03` e `SEG-04` estão
+`[ ]` apesar de satisfeitos (SEG-02 e SEG-03) ou apenas não remedidos (SEG-04). Isso é
+consistente com o fato de a fase não ter fechado ainda — não é inconsistência a corrigir
+agora.
 
-### Anti-Patterns Found
+### Anti-padrões encontrados
 
-| File | Line | Pattern | Severity | Impact |
+| Arquivo | Linha | Padrão | Severidade | Impacto |
 |---|---|---|---|---|
-| — | — | `TBD`/`FIXME`/`XXX` nos 16 arquivos de código/script da fase | — | Nenhum. Scan limpo |
-| — | — | `TODO`/`HACK`/`PLACEHOLDER` nos mesmos arquivos | — | Nenhum. Scan limpo |
-| `src/lib/whatsapp-helper.ts` | 147 | Segredo de autenticação em query string | 🛑 **Blocker** | Gap 1 |
-| `src/lib/whatsapp-helper.ts` | 164-167 | `console.error(..., await response.text())` do QStash | 🛑 **Blocker** (agrava o 147) | Corpo de erro do QStash costuma ecoar a URL de destino → a chave vai para o log da aplicação |
-| `src/lib/whatsapp-helper.ts` | 87-99 | `console.error(..., await response.text())` da Evolution | ⚠️ Warning | CR-04 do review. `docs/09:123-125` afirma, como fato observado, que esse payload ecoa telefone e o texto já personalizado — e usa isso para justificar a trava de breadcrumb do Sentry. A trava foi ao Sentry; o log do Railway continua recebendo. Viola o invariante "nunca PII em log". Não é critério desta fase, mas vive num arquivo entregue por ela |
-| `src/app/actions/public-booking.ts` / `BookingApp.tsx` | 170-181, 366-374 / 157-165, 271-287 | Erro esperado modelado como `throw` através de Server Action | 🛑 **Blocker** | Gap 2 |
-| `supabase/schemas/01_perfis_empresas.sql` + `public-booking.ts:36-50` | 3-4 / 36-50 | `slug_gratuito` sem UNIQUE e sem checagem cruzada com `slug` | ⚠️ Warning | CR-03 do review. Pré-existente, mas é o furo de isolamento entre tenants que sobrou depois de a Data API ser fechada — e a fase é o hardening da superfície pública. Cenário: tenant A grava `slug = <slug_gratuito de B>`; a resolução tenta `slug` primeiro; o link público de B passa a servir a página de A e os agendamentos de B (com nome e telefone dos clientes finais) caem na base de A |
-| `supabase/migrations/20260722060000` | 55-68 | `ALTER DEFAULT PRIVILEGES` cobre TABLES/SEQUENCES, não FUNCTIONS | ⚠️ Warning | WR-02. Função nova no `public` nasce com `EXECUTE` para `PUBLIC` e o PostgREST a expõe como RPC — chamável com a chave publicável sem GRANT novo. O projeto já conhece o remédio (`03_horarios_funcionamento.sql:101` revoga à mão, uma por função) |
-| `scripts/verificar-superficie-anon.sh` | 148-158 | Classifica como ESPERADO qualquer código ≠ 200 | ℹ️ Info | WR-08. Nesta execução o risco não se materializou: as 11 checagens devolveram `42501` (permission denied), não `PGRST205`/404. Mas uma tabela renomeada numa fase futura ficaria verde para sempre |
-| `src/lib/assinaturas.ts` | 78-81 | Qualquer erro de leitura degrada o tenant a `gratuito` | ⚠️ Warning | WR-07. Depois desta fase a consequência mudou de escala: `resolverPerfilPublicoPorSlug` compara `obterSlugEfetivo(perfil, plano) !== slug`, então falha transitória em `assinaturas` faz `/book/<slug-customizado>` responder **404** para os clientes de um tenant pagante, sem alerta |
+| — | — | `TBD`/`FIXME`/`XXX` nos 20 arquivos da rodada | — | Varredura limpa |
+| `scripts/verificar-superficie-anon.sh` | 398-401 | Exit 0 com afirmação positiva a partir de zero medição | 🛑 **Blocker** | Gap 1 |
+| `src/app/actions/public-booking.ts` + `src/lib/booking-engine.ts` | 560-591 / 144 | Entrada anônima sem validação alimentando condição de parada de laço síncrono | 🛑 **Blocker** | Gap 2 |
+| `src/app/actions/public-booking.ts` | 179, 368, 398, 422, 500 | `.message` crua do Postgres no `console.error` do caminho público | ⚠️ Warning | WR-02. `:368` filtra por `telefone` e `:398` insere `nome`/`telefone` — é PII de terceiro indo para o log do Railway, contra o invariante permanente do projeto. O remédio existe e está importado no mesmo arquivo (`erroSinteticoSupabase`, usado três linhas abaixo para o contexto do Sentry) e foi aplicado nesta rodada **só** no `whatsapp-helper.ts` |
+| `src/lib/assinaturas.ts` / `src/lib/booking-engine.ts` | 65, 133 / 203, 226, 253, 292 | Mesmo padrão, mesma cadeia de chamada pública | ⚠️ Warning | WR-02 |
+| `package.json` + ausência de `.husky/` e `.github/` | — | Três harnesses sem porta de entrada nomeada | ⚠️ Warning | WR-03. Trava que ninguém roda não trava nada. O padrão certo é conhecido no projeto (`test:integracao` ganhou script) |
+| `src/app/actions/perfis-empresas.ts` | 184, 82-93 | Guarda cruzada de namespace unidirecional | ⚠️ Warning | WR-06. Consequência é 404 nos dois links (não vazamento entre tenants), sem sintoma em dashboard nenhum |
+| `supabase/migrations/20260722183153` | 93-101 | `REVOKE` global, `GRANT` para `service_role` por schema | ⚠️ Warning | WR-09. Função criada fora do schema `public` nasce inexecutável também pelo `createAdminClient()`, que atende todo o caminho público desde a D-02 |
+| `src/app/actions/public-booking.ts` | 224-226 | Condicional apresentada como guarda que não pode ser falsa | ⚠️ Warning | WR-01. Comportamento é o pretendido; o problema é que o próximo leitor vai acreditar numa restrição que não existe |
+| `src/app/book/__tests__/mensagens.test.ts` | 45-53 | `TODOS_OS_MOTIVOS` não é exaustivo por construção, e o JSDoc promete que é | ⚠️ Warning | WR-05. Sem buraco no comportamento (os dois `Record` quebram o `tsc`), mas com buraco na promessa do teste |
+| `src/app/book/[slug]/BookingApp.tsx` | 258, 264, 268 | Três cópias visíveis ao cliente fora de `mensagens.ts` | ⚠️ Warning | WR-07 |
+| `src/app/actions/public-booking.ts` | 70 | `ResolucaoPerfil` exportado e nunca importado | ℹ️ Info | WR-08. Superfície exportada crescendo por inércia num arquivo `'use server'` |
+| `supabase/schemas/09_disparos_whatsapp.sql` | `COMMENT ON COLUMN motivo` | `plano_indeterminado` não entrou no vocabulário documentado | ⚠️ Warning | WR-10 |
 
-### Human Verification Required
+### Verificação humana necessária
 
-Os sete itens registrados em `docs/PENDENCIAS.md:806-880` continuam **abertos e não aprovados** — o plano 01-09 honrou a proibição de fechá-los por conta própria, e conferi item a item. Dois foram reduzidos (não fechados) pelo 01-07:
+Oito itens, detalhados no frontmatter. Sete são os de `docs/PENDENCIAS.md:859`, que
+continuam **abertos e não aprovados** — conferi por comando: 7 abertas, 0 marcadas.
+Nenhum executor os tocou, o que está certo. Dois deles mudaram de prognóstico para
+melhor nesta rodada (recuperação de double-booking e caixa de erro de slots: o
+mecanismo que os matava foi consertado e eu medi o conserto), mas mecanismo consertado
+não é tela conferida.
 
-1. **Wizard completo de `/book/[slug]` na tela** — o servidor está provado por comando; a tela, não. O que falta: as etapas no navegador, a transição para "Horário confirmado!" e a linha aparecendo na agenda do dashboard, sem fricção nova.
-2. **Recuperação de double-booking na tela** — ⚠️ **agora com prognóstico negativo**: pelo gap 2 este item deve REPROVAR em build de produção. Testar em `next start`, não em `pnpm dev` (em dev funciona, e é isso que esconde o defeito).
-3. **Caixa de erro de slots na tela** — mesma ressalva: em produção a copy contratada não aparece.
-4. **Dashboard tela a tela sob as policies tenant-scoped** — incluindo reativar um serviço inativo (caso que passou a importar depois do DROP do 01-08).
-5. **Personalização por plano** — Pro exibe cor/logo/capa; gratuito não. Com o RLS bypassado no caminho público, a sanitização por plano é defesa ÚNICA.
-6. **Lembrete do QStash ponta a ponta** — um 401 no log indica mismatch de URL atrás do proxy (WR-04); o caminho de falha é inteiramente silencioso.
-7. **Backstops visuais com dado extremo** — 20+ serviços, `horizonte_maximo_dias = 30`, nomes longos.
+O oitavo é novo e é meu: **reconferir SC4 com DDL.** O orquestrador tem o MCP do Supabase;
+este subagente não.
 
-**Item novo desta reverificação:** nenhum. O único candidato — confirmar no banco a remoção das policies residuais — foi resolvido pelo orquestrador logo após a verificação, com o MCP do Supabase que o subagente não tinha. Ver `orchestrator_followup` no frontmatter.
+## Resumo dos gaps
 
-### Gaps Summary
+**A 2ª rodada entregou os três gaps que prometeu, e eu reproduzi cada prova em vez de
+aceitar SUMMARY.**
 
-**O fechamento de gaps entregou o que prometeu, e eu reproduzi cada prova em vez de aceitar o SUMMARY.**
+A chave HMAC saiu da URL publicada — e o mais importante, saiu **com a premissa técnica
+corrigida no registro**: a justificativa antiga ("a fila tem lembretes em voo e o webhook
+casa a assinatura contra a URL completa") era falsa, o `01-CONTEXT.md` foi anotado sem
+apagar o texto original, e o `COVERAGE.md` trocou a razão do OPT-OUT de `Client.publishJSON`
+por uma que sobrevive a escrutínio. O erro esperado voltou a atravessar a fronteira de
+flight, e isso não é leitura de código: é o veredito `SLOTS_ERRO` do harness contra
+`next start`, mais o `ESCRITA_VALIDACAO` que a rodada acrescentou para o caminho de escrita.
+O namespace do slug ganhou dono nas três camadas, e a do meio eu provei **viva no banco**,
+com controle negativo — não pelo ledger, não pelo arquivo da migration. A degradação de
+`assinaturas` virou dois eixos separados (permissiva na disponibilidade, restritiva no que é
+pago) com controles que impediriam a suíte de passar por recusar tudo. E o registro ficou
+honesto: sete itens de UAT abertos, rotação de chave com dono e data.
 
-O gap 1 fechou de verdade: o `next start` de produção com `QSTASH_NEXT_SIGNING_KEY` vazia agora encerra com código 1, nomeia a variável em `stderr` e a porta recusa conexão — o `curl 7` é a diferença entre um deploy que o Railway reverte sozinho e o falso verde de antes. O harness que prova isso é honesto: li o script antes de rodá-lo, confirmei que `setsid` está proibido (ele mascararia o código de saída), que o complemento de dev é idêntico nas duas execuções (isolando a variável alvo) e que a semântica do `@next/env` sustenta o contrafactual — `processEnv` só preenche a partir do `.env.local` quando `typeof l[chave] === 'undefined'`, e `env VAR=` deixa string vazia, não `undefined`. O gap 2 fechou pela metade que importava mais em termos de risco silencioso: o caminho de ESCRITA do booking agora é exercitado contra o Supabase de dev com escrita real, e `pnpm test` continua hermético (381 ms, sem rede). O gap 3 está correto no repositório, e a documentação da fase (`REQUIREMENTS`, `ROADMAP`, `PENDENCIAS`) foi reparada com uma honestidade que merece registro — os sete itens de UAT não foram fabricados como feitos.
+**O que impede o fechamento são dois achados do code review que eu não confirmei por
+leitura — eu medi.**
 
-**O que impede o fechamento formal são dois achados que a revisão de código levantou e que eu verifiquei por conta própria. Os dois procedem.**
+O primeiro é sobre o instrumento. Copiei `verificar-superficie-anon.sh` e os schemas para um
+diretório isolado, apontei o `.env.local` para um host que não existe, e rodei. As onze
+checagens registraram `HTTP 000 — não provou permissão negada`. O veredito COBERTURA passou.
+E a última linha foi `Resumo: 11 checagem(ns), 0 reprovada(s) — a role anon não devolveu
+linha nenhuma`, com **exit code 0**. Este é o script que o `ROADMAP.md:195` e o
+`01-04-PLAN.md:170` nomeiam como prova de SEG-01, SEG-02 e SEG-03, e cujo cabeçalho promete,
+com todas as letras, que "checagem que não prova nada não pode passar". O conserto do WR-08
+foi real — confirmei na mesma execução que o `000` vira INCONCLUSIVO e não ESPERADO —, mas
+o falso verde apenas mudou do eixo do NOME para o eixo da IDENTIDADE DO ALVO. Um harness que
+não consegue reprovar é pior que harness nenhum, porque documenta uma garantia inexistente,
+e esta fase já foi queimada duas vezes por exatamente esse mecanismo. É por isso que
+remedi SC1, SC2 e SC3 por caminho independente e com controle positivo de alvo — e é por
+isso que o gap não contamina o veredito daqueles três critérios.
 
-O primeiro é o mais grave, porque ataca exatamente a metade do goal que a fase se propôs a fechar. `whatsapp-helper.ts:147` publica `QSTASH_CURRENT_SIGNING_KEY` — a chave HMAC com que o webhook autentica desde o plano 01-03 — em texto claro na query string da URL de destino de todo lembrete. HMAC é simétrico: quem lê essa URL num log de acesso da Railway, no console do QStash (até 14 dias) ou na linha `console.error(..., await response.text())` logo abaixo, forja um `Upstash-Signature` válido e dispara WhatsApp em nome de qualquer tenant. A fase fechou a porta com uma fechadura criptográfica correta e deixou a chave no capacho. E a justificativa escrita no próprio código não se sustenta: conferi que `route.ts:29` valida contra `req.url`, ou seja, mensagens já em voo continuam casando com a URL antiga **independentemente** de as novas carregarem o parâmetro. Não existe problema de "duas gerações de URL" — a premissa que sustentou o deferimento no `01-CONTEXT.md:176` é falsa. Custa uma linha parar de publicar o parâmetro; a rotação das chaves fica para depois de a fila secar.
+O segundo é sobre a superfície. Contra o build de produção deste HEAD, com o slug público
+real, sem sessão, invoquei `obterSlotsPublicos` pelo id derivado do manifesto passando
+`duracaoMinutos = -5000000`. A resposta levou **26.751 ms** e trouxe **19,29 MB**. Com `30`,
+a mesma chamada leva 525 ms e traz 2 KB. O laço de `gerarSlotsAntiBuraco` é síncrono, então
+esses 26 segundos não são espera de I/O: são o event loop parado para **todas** as
+requisições em voo. O crescimento é linear e eu medi os dois pontos que definem a reta.
+E a inversão do modelo de confiança está escrita no próprio repositório: o fluxo
+**autenticado** valida `dateStr` com regex; o **anônimo** não valida nada — a ponto de
+`dateStr = "nao-e-uma-data"` devolver `{ ok: true, slots: [] }`, que é literalmente a "grade
+calculada errada, sem sintoma" que o JSDoc da função afirma ter eliminado.
 
-O segundo eu não inferi de leitura de código: medi. Contra o build de produção deste HEAD, invoquei a Server Action `obterSlotsPublicos` com um slug inexistente e recebi `1:E{"digest":"2760064589"}` — só o digest, mensagem nenhuma. Isso mata dois contratos desta fase de uma vez. A copy `Não foi possível carregar os horários. Tente de novo.` é contrato verbatim do `01-UI-SPEC` e nasceu **nesta fase** (em `master` a função não lançava, caía em fuso e regras padrão); em produção o cliente final vê texto de framework em inglês. E `mensagem.includes('já foi preenchido')` é sempre `false` em produção, então a recuperação de double-booking não acontece: o visitante fica preso na etapa de contato olhando para um horário que não existe mais. A suíte do 01-07 dá verde nos dois porque chama a action em processo — o comentário do teste admite não provar a renderização, mas o efeito é sinal verde num caminho morto. Em `pnpm dev` tudo funciona, que é precisamente o que fez o defeito atravessar nove planos, um review e uma verificação.
+Sou explícito sobre duas coisas aí, para não vender gravidade que não existe: **não é
+regressão desta fase** (o `master` tem a mesma ausência de validação) e **não falsifica a
+letra de nenhum dos cinco Success Criteria**, que falam da chave publicável e do webhook.
+Reporto como gap por três razões concretas: a fase se chama hardening da superfície pública;
+o milestone é abrir ao público; e a Fricção Zero proíbe CAPTCHA, o que faz da validação de
+entrada a única defesa disponível. Conferi o deferimento antes de reportar — a Phase 3 não
+cobre isto: o SC1 dela é teto de criação de agendamentos por repetição, e um rate limit
+deixa a primeira requisição passar. Uma requisição basta.
 
-O terceiro gap é pequeno e barato: `docs/PENDENCIAS.md:1071-1077` ainda descreve como aberto o que esta fase fechou (o fallback `'secret-key'`, extinto — grep vazio; a migração para assinatura real, feita) e não registra em lugar nenhum o risco que continua vivo. A Definition of Done do projeto exige esse arquivo coerente.
-
-**Uma ressalva de método, para não vender prova que não fiz:** o lado banco do gap 3 — `pg_policies` sem linha para `anon` e a contagem cross-tenant caindo de 2 para 1 — não foi reproduzido nesta sessão. Não tenho as ferramentas MCP do Supabase e o CLI não está autenticado. O harness anônimo devolve 401/42501 nas duas tabelas, mas isso prova o REVOKE, não o DROP: uma policy inerte produziria exatamente o mesmo erro. Fica como item de reconferência, não como afirmação.
-
-> **Ressalva resolvida (orquestrador, mesmo HEAD).** O orquestrador do `execute-phase` tem o MCP do Supabase e consultou `pg_policies` na sequência: 8 linhas nas duas tabelas, todas `{authenticated}`, e a única policy de SELECT restante em cada uma é `Permitir SELECT do próprio tenant para autenticados` com `qual = (tenant_id = ( SELECT (auth.jwt() ->> 'org_id'::text)))`. Como policies permissivas somam por `OR` e não sobrou segundo termo, o predicado efetivo é só o do próprio tenant — a contagem 2→1 é consequência aritmética disso. O verificador estava certo em não afirmar; a lacuna era de ferramenta, não de evidência. Detalhes em `orchestrator_followup` no frontmatter.
-
-**Nota de priorização honesta:** dos dois bloqueadores, o gap 1 é de segurança e o gap 2 é de produto. Nenhum dos dois é regressão introduzida pelo fechamento de gaps — os dois são dívida que a fase carregou desde o começo e que só apareceu quando alguém foi olhar a produção em vez do código. O gap 1 custa uma linha de código mais uma rotação agendada. O gap 2 custa uma refatoração de contrato (erro esperado como valor de retorno em vez de `throw`), e é insumo obrigatório do planejamento da Phase 2, cujo SC4 depende exatamente do mecanismo que está quebrado.
+**E uma ressalva de método que não posso omitir:** este subagente não recebeu as ferramentas
+MCP do Supabase, e `.env.local` não tem `DATABASE_URL` nem token de CLI. Tudo que passa por
+PostgREST eu medi — nove tabelas, duas funções, cinco projeções, dois POSTs, a constraint
+por sonda ON CONFLICT com controle negativo. O que exige DDL, não. Por isso **SC4 fica como
+"presente, comportamento não exercitado"**, e não como verificado: o mecanismo está nas duas
+migrations, a de tabelas eu provei aplicada por efeito colateral observável, a de funções não
+tem efeito observável, e a evidência de terceiro do `01-15-SUMMARY.md` é boa — inclusive
+reprovou o próprio conserto na primeira tentativa, que é o sinal de que a prova era de
+verdade — mas é de outra sessão, sobre objetos já destruídos. A lacuna é de ferramenta, não
+de evidência, e ela vai para reconferência em vez de virar afirmação.
 
 ---
 
-_Verified: 2026-07-22T15:51:28Z_
-_Verifier: Claude (gsd-verifier) — reverificação sobre HEAD `4596463`_
+## Adendo do orquestrador — SC4 remedido por `pg_default_acl`
+
+_Escrito por quem coordenou a execução, não pelo verificador. Motivo: o relatório acima
+nomeia "reconferir SC4 com DDL" como tarefa do orquestrador, que tem o MCP do Supabase._
+
+Medi o estado de repouso do mecanismo, sem escrever nada no banco — `pg_default_acl` é a
+tabela que decide a ACL que **toda** tabela ou função futura vai herdar. É a causa, não o
+efeito, então ela responde à pergunta do SC4 sem precisar criar objeto descartável:
+
+| Objeto | Criado por | ACL padrão herdada | concede `anon` | concede `authenticated` |
+|---|---|---|---|---|
+| tabela em `public` | `postgres` | `{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}` | **não** | **não** |
+| tabela em `public` | `supabase_admin` | `{postgres=…,anon=…,authenticated=…,service_role=…}` | sim | sim |
+| função (escopo global) | `postgres` | `{postgres=X/postgres}` | **não** | **não** |
+| função em `public` | `postgres` | `{postgres=X/postgres,service_role=X/postgres}` | **não** | **não** |
+
+**O que isto estabelece:** as duas migrations estão aplicadas e vigentes. Tabela nova e
+função nova criadas pelo `postgres` — que é a role sob a qual as migrations deste projeto
+rodam — nascem sem `anon` e sem `authenticated`. A linha global de funções (`{postgres=X/postgres}`,
+sem `IN SCHEMA`) é a confirmação estrutural de que a forma aplicada no `20260722183153` é a
+que funciona, e não o no-op por schema que o WR-02 prescrevia.
+
+**Um limite que o relatório principal não podia encontrar, e que vale mais que a confirmação:**
+o SC4 está escrito como "uma tabela nova criada no schema `public`", sem qualificar a role
+criadora. A medição mostra que a afirmação só vale para objetos criados pelo `postgres`.
+Tabela criada pelo `supabase_admin` continua herdando `anon` e `authenticated` — é o default
+de plataforma do Supabase, que a migration não tocou porque ela é `for role postgres`. Na
+prática do projeto isso não abre buraco (nossas migrations rodam como `postgres`), mas a
+extensão ou o recurso gerenciado que criar tabela em `public` pelo caminho da plataforma
+escapa da regra. **Vale registrar em `docs/03-PADROES_DE_BANCO_DE_DADOS.md` §Privilégios da
+Data API antes que alguém descubra por acidente.**
+
+**O que continua não medido:** a travessia ponta a ponta por PostgREST (criar tabela, ver o
+schema cache recarregar, receber 42501 no `curl` anônimo). O `01-15-SUMMARY.md` registra
+exatamente esse contrafactual — 200 antes / 401 depois — mas sobre objetos já destruídos, em
+outra sessão. O veredito honesto do SC4 sobe de *"presente, comportamento não exercitado"*
+para **"mecanismo medido e vigente; travessia ponta a ponta ainda por observar"**. Não muda
+o status da fase, que reprova pelos dois gaps acima.
+
+Consulta usada (reexecutável, não-mutante):
+
+```sql
+select coalesce(n.nspname,'(global)') as escopo, pg_get_userbyid(d.defaclrole) as criada_por,
+       d.defaclacl::text as acl_padrao
+from pg_default_acl d left join pg_namespace n on n.oid = d.defaclnamespace
+where d.defaclobjtype in ('r','f') order by d.defaclobjtype, escopo;
+```
+
+---
+
+_Verificado: 2026-07-22T20:07:30Z_
+_Verificador: Claude (gsd-verifier) — 3ª passagem, sobre o HEAD `8edb32d`_
+_Adendo de SC4: Claude (orquestrador da execute-phase), mesma data, mesmo HEAD_
