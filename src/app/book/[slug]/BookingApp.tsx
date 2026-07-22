@@ -6,6 +6,7 @@ import { diaLocal, somarDias, formatarDataHoraLonga, TIMEZONE_PADRAO } from '@/l
 import { capturarEvento } from '@/lib/analytics/client'
 import LuzAmbiente from '@/app/LuzAmbiente'
 import { classesAcento } from './acento'
+import { COPY_ERRO_SLOTS_FALLBACK, mensagemDeMotivo } from './mensagens'
 import { ORDEM_ETAPAS } from './passos'
 import CabecalhoEstabelecimento from './CabecalhoEstabelecimento'
 import PainelMarca from './PainelMarca'
@@ -151,17 +152,21 @@ export default function BookingApp({
                     dataSelecionada,
                     servicoSelecionado.duracao_minutos,
                 )
-                if (isMounted) {
-                    setSlots(res)
+                if (!isMounted) return
+                if (res.ok) {
+                    setSlots(res.slots)
+                } else {
+                    // Decisão pelo DISCRIMINANTE, nunca por `err.message`: em
+                    // build de produção a mensagem de uma exceção de Server
+                    // Action não atravessa a fronteira de flight (vira digest
+                    // opaco), e este `catch` recebia texto de framework em
+                    // inglês para renderizar verbatim ao cliente final.
+                    setErroSlots(mensagemDeMotivo(res.motivo))
                 }
-            } catch (err) {
-                if (isMounted) {
-                    setErroSlots(
-                        err instanceof Error
-                            ? err.message
-                            : 'Erro ao carregar horários disponíveis.',
-                    )
-                }
+            } catch {
+                // Só o INESPERADO de verdade chega aqui agora: a rede caiu no
+                // meio do POST e nenhum `motivo` voltou.
+                if (isMounted) setErroSlots(COPY_ERRO_SLOTS_FALLBACK)
             } finally {
                 if (isMounted) setCarregandoSlots(false)
             }

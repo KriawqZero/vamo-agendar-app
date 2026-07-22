@@ -6,6 +6,7 @@ import { obterSlotsDisponiveis } from '@/lib/booking-engine'
 import { diaLocal, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { dispararNotificacoesAgendamento } from '@/lib/notificacoes-agendamento'
 import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
+import type { PlanoId } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 import { ehHexValida } from '@/lib/cores'
 import { capturarEventoTenant } from '@/lib/analytics/server'
@@ -23,6 +24,59 @@ const COLUNAS_PERFIL_PUBLICO =
 const COLUNAS_SERVICO_PUBLICO = 'id, nome, descricao, preco, duracao_minutos'
 
 /**
+ * Discriminante FECHADO das falhas esperadas do fluxo público.
+ *
+ * Por que é um enum de literais e não texto livre: o valor atravessa a fronteira
+ * de flight e chega ao navegador de qualquer visitante. Texto livre é porta de
+ * saída para mensagem crua do Postgres, slug do visitante, `tenant_id` ou código
+ * PostgREST — os quatro proibidos numa caixa visível ao cliente final. A cópia
+ * em pt-BR mora no cliente (`src/app/book/[slug]/mensagens.ts`); o servidor
+ * devolve só o discriminante.
+ *
+ * Mesmo vocabulário de `src/lib/whatsapp-helper.ts` (`{ ok: false, motivo }`),
+ * que já era o formato do projeto. Os membros que o caminho de LEITURA não
+ * produz existem para o caminho de ESCRITA (plano 01-12) — declarar os sete de
+ * uma vez evita duas edições do mesmo tipo.
+ */
+export type MotivoPublico =
+    | 'campos_obrigatorios'
+    | 'telefone_invalido'
+    | 'data_invalida'
+    | 'slug_invalido'
+    | 'servico_invalido'
+    | 'slot_indisponivel'
+    | 'erro_interno'
+
+/** Falhas que a resolução de perfil e a busca de slots sabem produzir. */
+type MotivoLeituraPublica = Extract<MotivoPublico, 'slug_invalido' | 'erro_interno'>
+
+/**
+ * Linha de `perfis_empresas` projetada por `COLUNAS_PERFIL_PUBLICO`. O tipo é
+ * DERIVADO da própria consulta (o projeto usa SQL puro, sem tipos gerados): se
+ * um dia houver tipagem do banco, este alias a herda sem edição.
+ */
+type PerfilPublicoLinha = NonNullable<Awaited<ReturnType<typeof lerPerfilPor>>['data']>
+
+/** Slots devolvidos pela engine de disponibilidade — formato é contrato anti double-booking. */
+type SlotPublico = Awaited<ReturnType<typeof obterSlotsDisponiveis>>[number]
+
+export type ResolucaoPerfil =
+    | { ok: true; perfil: PerfilPublicoLinha; plano: PlanoId }
+    | { ok: false; motivo: MotivoLeituraPublica }
+
+export type ResultadoSlots =
+    { ok: true; slots: SlotPublico[] } | { ok: false; motivo: MotivoLeituraPublica }
+
+/** Leitura crua do perfil por uma das duas colunas de slug (customizado / provisionado). */
+async function lerPerfilPor(admin: SupabaseClient, coluna: 'slug' | 'slug_gratuito', slug: string) {
+    return admin
+        .from('perfis_empresas')
+        .select(COLUNAS_PERFIL_PUBLICO)
+        .eq(coluna, slug)
+        .maybeSingle()
+}
+
+/**
  * Resolve o estabelecimento a partir do slug da URL — sempre no SERVIDOR.
  *
  * É a única porta de entrada do caminho público: o `tenant_id` (org_id do Clerk)
@@ -30,21 +84,21 @@ const COLUNAS_SERVICO_PUBLICO = 'id, nome, descricao, preco, duracao_minutos'
  * `slug_gratuito` do provisionamento e só devolve o perfil se o slug acessado
  * for o efetivo do plano vigente (downgrade invalida o customizado na hora).
  *
+ * Devolve valor DISCRIMINADO, nunca `null`: "slug não existe" é condição de
+ * negócio (`slug_invalido`) e "não consegui ler" é falha de infraestrutura
+ * (`erro_interno`, que já vai ao Sentry). Colapsar as duas em `null` era o que
+ * transformava indisponibilidade do banco em 404 silencioso.
+ *
  * Recebe o cliente PRIVILEGIADO: a role anon perdeu a Data API nesta fase.
  */
-async function resolverPerfilPublicoPorSlug(admin: SupabaseClient, slug: string) {
-    let { data: perfil, error: pError } = await admin
-        .from('perfis_empresas')
-        .select(COLUNAS_PERFIL_PUBLICO)
-        .eq('slug', slug)
-        .maybeSingle()
+async function resolverPerfilPublicoPorSlug(
+    admin: SupabaseClient,
+    slug: string,
+): Promise<ResolucaoPerfil> {
+    let { data: perfil, error: pError } = await lerPerfilPor(admin, 'slug', slug)
 
     if (!perfil && !pError) {
-        const fallback = await admin
-            .from('perfis_empresas')
-            .select(COLUNAS_PERFIL_PUBLICO)
-            .eq('slug_gratuito', slug)
-            .maybeSingle()
+        const fallback = await lerPerfilPor(admin, 'slug_gratuito', slug)
         perfil = fallback.data
         pError = fallback.error
     }
@@ -58,11 +112,13 @@ async function resolverPerfilPublicoPorSlug(admin: SupabaseClient, slug: string)
             fluxo: 'booking_publico',
             etapa: 'resolver_perfil',
         })
-        return null
+        return { ok: false, motivo: 'erro_interno' }
     }
 
     if (!perfil) {
-        return null
+        // Condição de NEGÓCIO: link errado ou agenda que não existe. Não vai ao
+        // Sentry — encheria a fila de erro com digitação de visitante.
+        return { ok: false, motivo: 'slug_invalido' }
     }
 
     // Plano vigente com o MESMO cliente privilegiado (ver JSDoc de
@@ -70,10 +126,10 @@ async function resolverPerfilPublicoPorSlug(admin: SupabaseClient, slug: string)
     // para gratuito em silêncio. O tenant_id vem do perfil resolvido acima.
     const plano = await obterPlanoVigentePublico(admin, perfil.tenant_id)
     if (obterSlugEfetivo(perfil, plano) !== slug) {
-        return null
+        return { ok: false, motivo: 'slug_invalido' }
     }
 
-    return { perfil, plano }
+    return { ok: true, perfil, plano }
 }
 
 interface AgendamentoPublicoParams {
@@ -124,7 +180,11 @@ export async function criarAgendamentoPublico({
     // do plano vigente) e obter o fuso e as regras de acesso.
     const resolvido = await resolverPerfilPublicoPorSlug(admin, slug)
 
-    if (!resolvido) {
+    // O caminho de ESCRITA continua lançando nesta rodada, com a mesma mensagem
+    // de sempre: a conversão dele para valor de retorno discriminado é o plano
+    // 01-12, e misturar as duas migrações num commit só apagaria a fronteira
+    // entre o que o harness de travessia prova e o que ele ainda não prova.
+    if (!resolvido.ok) {
         throw new Error('Estabelecimento inválido ou indisponível.')
     }
 
@@ -309,7 +369,9 @@ export async function obterDadosBookingPublico(slug: string) {
     // validar que o slug acessado é o efetivo do plano vigente.
     const resolvido = await resolverPerfilPublicoPorSlug(admin, slug)
 
-    if (!resolvido) {
+    // `null` aqui é o contrato com `page.tsx`, que o converte em `notFound()`:
+    // esta função é chamada de Server Component, não de código de cliente.
+    if (!resolvido.ok) {
         return null
     }
 
@@ -327,6 +389,11 @@ export async function obterDadosBookingPublico(slug: string) {
 
     if (sError) {
         console.error('Erro ao buscar serviços públicos:', sError.message)
+        // `throw` é LEGÍTIMO aqui, e a regra da rodada cabe numa frase: `throw`
+        // só vale onde nenhum `catch` de cliente consome a `.message`. Esta
+        // função é chamada de `page.tsx` (Server Component) — a exceção cai no
+        // error boundary do servidor, nunca numa caixa vermelha do navegador,
+        // então a mensagem não precisa (nem consegue) atravessar flight.
         throw new Error('Não foi possível carregar os serviços.')
     }
 
@@ -359,23 +426,35 @@ export async function obterDadosBookingPublico(slug: string) {
  * no servidor. Se o slug não resolver (caso real: downgrade de plano invalida o
  * slug customizado com a aba do cliente aberta), a função FALHA — antes ela caía
  * em fuso e regras padrão e devolvia uma grade calculada errada, sem sintoma.
+ *
+ * ⚠️ Falha esperada é VALOR DE RETORNO, nunca `throw`, e isto foi medido, não
+ * inferido: com `throw`, a resposta de flight em build de produção era, na
+ * íntegra, `1:E{"digest":"…"}` — a mensagem é apagada pelo React em produção
+ * (`emitErrorChunk(request, id, digest)`, contra a assinatura de seis
+ * argumentos do bundle de desenvolvimento). O cliente via texto de framework em
+ * inglês na caixa vermelha, e em `pnpm dev` tudo parecia funcionar.
+ * `scripts/verificar-travessia-server-action.sh` é a trava que impede a
+ * regressão voltar sem ninguém ver.
  */
-export async function obterSlotsPublicos(slug: string, dateStr: string, duracaoMinutos: number) {
+export async function obterSlotsPublicos(
+    slug: string,
+    dateStr: string,
+    duracaoMinutos: number,
+): Promise<ResultadoSlots> {
     const admin = createAdminClient()
 
     const resolvido = await resolverPerfilPublicoPorSlug(admin, slug)
 
-    if (!resolvido) {
-        // Esta mensagem é renderizada VERBATIM ao cliente final na caixa de erro
-        // da etapa de data/hora (o botão "Tentar de novo" é a saída). Nunca
-        // trocar por texto técnico nem vazar slug, tenant ou código do Postgres.
-        console.error('Slug público não resolvido ao buscar horários.')
-        throw new Error('Não foi possível carregar os horários. Tente de novo.')
+    if (!resolvido.ok) {
+        // Só o discriminante atravessa: a cópia em pt-BR da caixa vermelha vive
+        // em `src/app/book/[slug]/mensagens.ts` e é escolhida no cliente.
+        console.error('Slug público não resolvido ao buscar horários:', resolvido.motivo)
+        return resolvido
     }
 
     const { perfil } = resolvido
 
-    return obterSlotsDisponiveis({
+    const slots = await obterSlotsDisponiveis({
         tenantId: perfil.tenant_id,
         dateStr,
         duracaoServicoMinutos: duracaoMinutos,
@@ -386,4 +465,6 @@ export async function obterSlotsPublicos(slug: string, dateStr: string, duracaoM
             horizonteDias: perfil.horizonte_maximo_dias ?? 14,
         },
     })
+
+    return { ok: true, slots }
 }
