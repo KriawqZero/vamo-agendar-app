@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
-status: ready_to_execute
-stopped_at: Completed 01-18-PLAN.md
-last_updated: "2026-07-22T21:31:55.134Z"
+status: verifying
+stopped_at: Completed 01-19-PLAN.md
+last_updated: "2026-07-22T21:48:19.713Z"
 last_activity: 2026-07-22
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 19
-  completed_plans: 18
-last_activity_desc: "3ª rodada planejada: 01-17 conserta o instrumento que certifica fechamento sem ter medido, 01-18 fecha o DoS por entrada não validada na superfície pública anônima, 01-19 escreve o alcance real da D-03 e reexecuta as 8 provas sobre o HEAD final"
+  completed_plans: 19
+last_activity_desc: "3ª rodada EXECUTADA: 01-17 consertou o instrumento que certificava fechamento sem ter medido, 01-18 fechou o DoS por entrada não validada na superfície pública anônima, e 01-19 reexecutou as 8 provas sobre o HEAD final (todas exit 0) antes de escrever o alcance real da D-03 e o registro de pendências. Aguardando a 4ª verificação"
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 ## Current Position
 
 Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
-Plan: 3 of 19
+Plan: 19 of 19
 
 ### Planejamento da 3ª rodada (2026-07-22, branch `fase-01-gaps-rodada-3`)
 
@@ -69,7 +69,7 @@ Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
 Last activity: 2026-07-22
 
-Progress: [██████████] 95% (16/19 planos executados; os 3 da 3ª rodada estão planejados e não executados. A fase permanece **reprovada** na verificação — 11/13 must-haves — até que 01-17, 01-18 e 01-19 rodem e uma 4ª verificação meça o resultado)
+Progress: [██████████] 100% (19/19 planos executados; a 3ª rodada — 01-17, 01-18 e 01-19 — rodou em 2026-07-22. A fase continua **reprovada** na 3ª verificação — 11/13 must-haves — até que uma 4ª verificação meça o resultado dos três)
 
 ## Performance Metrics
 
@@ -113,6 +113,7 @@ Progress: [██████████] 95% (16/19 planos executados; os 3 da
 | Phase 01 P16 | ~65min | 2 tasks | 7 files |
 | Phase 01 P17 | ~25min | 2 tasks | 2 files |
 | Phase 01 P18 | ~31min | 2 tasks | 5 files |
+| Phase 01 P19 | ~30min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -197,6 +198,10 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: [Phase 01]: 01-18: vista estreita de uniao fechada e alias PROPRIO (MotivoSlotsPublicos), nunca alargamento do alias do vizinho — MotivoLeituraPublica descreve o que a resolucao de perfil produz, e ela nao sabe produzir data_invalida nem servico_invalido
 - [Phase ?]: [Phase 01]: 01-18: teto de duracao (1440 min) e seguro por construcao, nao restricao de produto — janelas de funcionamento sao horas dentro de um dia, entao duracao acima disso ja devolvia lista vazia silenciosa; o teto troca a lista vazia por discriminante honesto, com CONTROLE POSITIVO provando que a grade legitima nao mudou
 - [Phase ?]: [Phase 01]: 01-18: entrada hostil de visitante nao e logada nem reportada ao Sentry — e condicao esperada, e logar cada uma transformaria o mesmo endpoint anonimo num vetor de inundacao de log
+- [Phase 01]: 01-19: a medição de pg_default_acl foi reexecutada nesta sessão pelo MCP da Supabase, com identidade do alvo conferida antes — o docs/03 registra medição própria (HEAD f473437) concordante com a do adendo (HEAD 8edb32d), em vez de citar medição de terceiro
+- [Phase 01]: 01-19: a condição que sustenta a citação do exit 0 do harness anônimo foi escrita nos TRÊS pontos onde o PENDENCIAS o cita, não só na seção nova — quem remover scripts/verificar-controle-harness-anon.sh remove o direito de citar o exit code
+- [Phase 01]: 01-19: os dez warnings da 2ª rodada de review entraram no PENDENCIAS como ponteiros (rótulo + uma linha + seção), sem conserto proposto, e a colisão de rótulos WR-* entre a 1ª e a 2ª rodada foi resolvida por escrito com o comando que recupera o relatório antigo do git
+- [Phase 01]: 01-19: escapada de plataforma aceita com registro (T-01-19-02) — tabela criada por supabase_admin herda anon/authenticated; item aberto com dono (quem habilitar a extensão) e gatilho (próxima habilitação), sem conserto preventivo
 
 ### Pending Todos
 
@@ -250,6 +255,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T21:31:39.113Z
-Stopped at: Completed 01-18-PLAN.md
+Last session: 2026-07-22T21:47:18.380Z
+Stopped at: Completed 01-19-PLAN.md
 Resume file: None
