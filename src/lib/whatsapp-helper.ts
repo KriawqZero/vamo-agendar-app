@@ -85,10 +85,14 @@ export async function enviarMensagemWhatsApp(
         })
 
         if (!response.ok) {
-            console.error(
-                `Erro ao disparar WhatsApp via Evolution (${response.status}):`,
-                await response.text(),
-            )
+            // O corpo da resposta NÃO é lido para log: `docs/09` registra, como fato
+            // observado, que o payload de erro da Evolution ecoa o telefone e o texto
+            // já com `{{cliente}}` substituído — PII do cliente final, que o
+            // invariante do projeto proíbe em log. O `reportarFalhaSilenciosa` logo
+            // abaixo já mandava só `statusCode`: o `console.error` contradizia o
+            // próprio vizinho, e a trava anti-PII do Sentry não alcança o log do
+            // Railway.
+            console.error(`Erro ao disparar WhatsApp via Evolution: http_${response.status}`)
             // Falha de transporte vira linha de log e some — só `disparos_whatsapp`
             // guarda, e ninguém consulta antes do painel da Phase 11. Contexto
             // carrega SÓ o código HTTP: nunca telefone, nome ou texto da mensagem.
@@ -125,9 +129,11 @@ export async function agendarLembreteQStash(
         return { ok: false, motivo: 'qstash_sem_token' }
     }
 
-    // Sem chave de assinatura não se publica: o default embutido que existia
-    // aqui transformava configuração ausente em porta destrancada — quem
-    // adivinhasse o valor disparava WhatsApp em nome de qualquer tenant.
+    // Sem chave de assinatura não se publica. A chave NÃO entra mais na URL (ver
+    // comentário da publicação abaixo): esta guarda existe só para recusar
+    // publicar um lembrete que o webhook depois não conseguiria autenticar —
+    // publicação assim é falha silenciosa garantida, descoberta só pelo cliente
+    // final que não recebeu a mensagem.
     const chaveAssinatura = process.env.QSTASH_CURRENT_SIGNING_KEY
     if (!chaveAssinatura?.trim()) {
         console.warn(
@@ -140,11 +146,16 @@ export async function agendarLembreteQStash(
     const scheduledSeconds = Math.floor(targetTimestampMs / 1000)
 
     try {
-        // O parâmetro `secret` continua na URL publicada de propósito: a fila do QStash
-        // tem lembretes em voo (até 14 dias) e o webhook casa a assinatura
-        // contra a URL completa. Quem autentica agora é o header assinado — o
-        // parâmetro virou redundante e sai numa fase posterior, com a fila seca.
-        const webhookUrl = `${APP_URL}/api/webhooks/lembrete?secret=${chaveAssinatura}`
+        // A URL publicada NÃO carrega segredo nenhum: quem autentica o webhook é o
+        // header assinado (`Upstash-Signature`), verificado por `Receiver` em
+        // `qstash-assinatura.ts`. A chave HMAC é simétrica — publicá-la em query
+        // string a entregava ao log de acesso de cada hop e ao console da Upstash.
+        //
+        // Lembretes já enfileirados continuam válidos: `route.ts` verifica contra
+        // `req.url` — a URL que a requisição de fato traz —, então publicação antiga
+        // (com parâmetro) e nova (sem) convivem, cada uma casando com a própria
+        // claim `sub`. O webhook não lê mais esse parâmetro desde o 01-03.
+        const webhookUrl = `${APP_URL}/api/webhooks/lembrete`
         const publishUrl = `${QSTASH_URL}/v2/publish/${webhookUrl}`
 
         const response = await fetch(publishUrl, {
@@ -161,10 +172,10 @@ export async function agendarLembreteQStash(
         })
 
         if (!response.ok) {
-            console.error(
-                `Falha ao registrar agendamento no QStash (${response.status}):`,
-                await response.text(),
-            )
+            // O corpo da resposta NÃO é lido para log: o erro do QStash costuma
+            // ecoar a URL de destino, e log de aplicação não é lugar de URL de
+            // publicação.
+            console.error(`Falha ao registrar agendamento no QStash: http_${response.status}`)
             return { ok: false, motivo: `http_${response.status}` }
         }
 
@@ -172,7 +183,9 @@ export async function agendarLembreteQStash(
         const messageId = dataRes?.messageId
 
         if (!messageId) {
-            console.error('QStash não retornou messageId no publish:', dataRes)
+            // Mesma disciplina do bloco acima: registra-se a ausência do campo, não
+            // o objeto de resposta — que também pode ecoar a URL de destino.
+            console.error('QStash não retornou messageId no publish.')
             return { ok: false, motivo: 'sem_message_id' }
         }
 
@@ -206,10 +219,9 @@ export async function cancelarLembreteQStash(messageId: string): Promise<Resulta
             return { ok: true }
         }
 
-        console.error(
-            `Falha ao cancelar lembrete no QStash (${response.status}):`,
-            await response.text(),
-        )
+        // O corpo da resposta NÃO é lido para log: o erro do QStash costuma ecoar a
+        // URL de destino da mensagem referenciada.
+        console.error(`Falha ao cancelar lembrete no QStash: http_${response.status}`)
         return { ok: false, motivo: `http_${response.status}` }
     } catch (err) {
         console.error('Erro de conexão ao cancelar job no QStash:', err)
