@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: executing
-stopped_at: Completed 01-15-PLAN.md
-last_updated: "2026-07-22T18:52:53.522Z"
+stopped_at: Completed 01-14-PLAN.md
+last_updated: "2026-07-22T19:11:03.488Z"
 last_activity: 2026-07-22
-last_activity_desc: "plano 01-15 executado: função futura nasce fechada para a chave publicável (o SQL que o code review prescrevia era um no-op, medido e substituído pela forma global) e o harness de superfície anônima passou a exigir código específico, reprovar nome desconhecido e reprovar tabela declarada sem checagem"
+last_activity_desc: "plano 01-14 executado: o namespace público de slug ganhou dono em três camadas (UNIQUE no banco, checagem cruzada na escrita, recusa de ambiguidade na leitura), com o sequestro do CR-03 visto VERMELHO servindo a página do sequestrador"
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 16
-  completed_plans: 14
+  completed_plans: 15
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 ## Current Position
 
 Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTANDO a 2ª rodada de fechamento de gaps
-Plan: 14 de 16 concluídos (01-01 a 01-13 e 01-15). Próximo: **01-14**
+Plan: 15 de 16 concluídos (01-01 a 01-15). Próximo e último: **01-16**
 Status: **a fase continua incompleta.** Os dois bloqueadores da reverificação estão fechados NO CÓDIGO; o que resta em cada um não é código:
 
   1. `whatsapp-helper.ts` publicava `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — a mesma chave HMAC com que o webhook autentica desde o 01-03. **METADE DE CÓDIGO FECHADA no 01-11**: a URL publicada é agora a rota limpa, e quatro `console.error` deixaram de despejar corpo de gateway no log (o da Evolution ecoava telefone e texto personalizado — CR-04). Cinco testes travam os dois defeitos, provados vermelhos na reversão. **CONTINUA ABERTO o que código não conserta**: a chave já circulou por log de acesso e pelo console da Upstash, e a rotação é ação do owner no painel, depois de a fila secar (≤ 14 dias). **O 01-13 transformou isso em item escrito**: `docs/PENDENCIAS.md` §"🔑 Rotação das signing keys do QStash" — dono nomeado (só o owner fecha), data-limite **2026-08-05**, etapa 1 registrada como feita e etapa 2 nascida aberta, com o passo-a-passo de depois da troca. Por isso SEG-05 continua NÃO marcado como concluído em REQUIREMENTS.md
@@ -36,14 +36,16 @@ Status: **a fase continua incompleta.** Os dois bloqueadores da reverificação 
 
   3. **FECHADO NO 01-15** — WR-02 e WR-08. A default privilege passou a cobrir FUNCTIONS, e a prova empírica exigida pelo plano **reprovou o conserto na primeira tentativa**: o SQL que o code review e o plano prescreviam (`... in schema public revoke all on functions from public`) é um no-op nomeado pela própria doc do PostgreSQL 17 ("per-schema default privileges can only add, not remove, global privileges"). A forma global foi aplicada (migration `20260722183153`, ledger 19 = 19 arquivos) e o buraco foi medido pelos dois lados: função descartável criada ANTES respondia `HTTP 200` com o próprio retorno a `POST /rest/v1/rpc/<nome>` com a chave publicável; a criada DEPOIS responde `42501 permission denied`. `service_role` preservado (suíte de integração verde). O harness `verificar-superficie-anon.sh` deixou de classificar qualquer não-200 como esperado — exige `42501`, reprova nome de tabela ausente dos schemas declarativos e reprova tabela declarada sem checagem (veredito `COBERTURA`), com as três reprovações vistas VERMELHAS antes do commit. **Consequência para a fase: o script volta a ser evidência FORTE** — o 01-12 o havia rebaixado a sinal fraco justamente por causa do WR-08
 
+  4. **FECHADO NO 01-14** — CR-03, o furo de isolamento entre tenants que sobrou depois de a Data API ser fechada. `slug` e `slug_gratuito` são lidos pela MESMA URL: são dois membros de um namespace só, e o namespace não tinha dono. O tenant A gravava em `slug` o `slug_gratuito` de B — que é o link que B divulga depois de um downgrade — e a página de A passava a ser servida no link de B, com os agendamentos de B (nome e telefone de clientes finais) caindo na base de A. Fechado em três camadas, porque a de baixo não expressa a regra sozinha (a colisão é ENTRE LINHAS): `UNIQUE` em `slug_gratuito` (migration `20260722185755`, ledger **20 versions = 20 arquivos**), checagem cruzada em `salvarPerfilEmpresa` antes do upsert, e recusa de resolução ambígua em `resolverPerfilPublicoPorSlug` (as duas buscas passam a ser feitas sempre, em paralelo). **As duas camadas foram vistas VERMELHAS separadamente**: com o fallback encadeado restaurado, o teste devolveu o perfil do sequestrador com o nome dele no corpo; com a constraint derrubada do banco, o INSERT duplicado passou. Pré-voo obrigatório rodado antes do DDL — duas consultas, as duas vazias. `verificar-superficie-anon.sh` continua 11/0 com cobertura 9/9
+
 Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code review: CR-03 (`slug_gratuito` sem UNIQUE → sequestro de link público entre tenants, com PII de cliente final) em 01-14; WR-02 (default privileges não cobre FUNCTIONS) e WR-08 (harness de superfície com falso verde) em 01-15; WR-07 (`assinaturas.ts` degrada tenant pago a gratuito) em 01-16. WR-01, WR-03, WR-04 e WR-06 ficaram fora, diferidos com razão e gatilho escritos no 01-13.
 
 Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
 
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
-Last activity: 2026-07-22 — plano 01-15 executado: função futura nasce fechada para a chave publicável (provado por RPC real, com o SQL prescrito pelo review refutado por medição) e o harness de superfície anônima passou a reprovar quando não está provando nada
+Last activity: 2026-07-22 — plano 01-14 executado: o namespace público de slug ganhou dono em três camadas, com o sequestro do CR-03 visto VERMELHO servindo a página do sequestrador
 
-Progress: [█████████░] 88% (14/16 planos executados; verificação ainda reprovada, correção em andamento)
+Progress: [█████████░] 94% (15/16 planos executados; verificação ainda reprovada, correção em andamento)
 
 ## Performance Metrics
 
@@ -83,6 +85,7 @@ Progress: [█████████░] 88% (14/16 planos executados; verific
 | Phase 01 P12 | 17min | 3 tasks | 6 files |
 | Phase 01 P13 | ~30min | 2 tasks | 3 files |
 | Phase 01 P15 | ~50min | 2 tasks | 3 files |
+| Phase 01 P14 | ~35min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -146,6 +149,11 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: [Phase 01]: 01-15: prova de privilegio de funcao e dupla — catalogo (has_function_privilege) E rede (POST /rest/v1/rpc/<nome> com a chave publicavel); o contrafactual foi HTTP 200 devolvendo o retorno na funcao criada ANTES do conserto contra 42501 na criada DEPOIS
 - [Phase ?]: [Phase 01]: 01-15: no harness de superficie, nome de tabela desconhecido REPROVA em vez de ficar inconclusivo — inconclusivo nao derruba exit code, e o defeito do WR-08 e exatamente a checagem que fica verde para sempre
 - [Phase ?]: [Phase 01]: 01-15: veredito COBERTURA obriga toda tabela declarada em supabase/schemas a aparecer em alguma checagem; lista derivada da fonte da verdade com piso de sanidade que aborta (codigo 2) em vez de ficar verde
+- [Phase ?]: [Phase 01]: 01-14: slug e slug_gratuito sao UM namespace publico, nao duas colunas — a regra de unicidade vale sobre o namespace e a colisao entre elas e ENTRE LINHAS, portanto fora do alcance de qualquer constraint; fecha em tres camadas (UNIQUE no banco, checagem na action, recusa de ambiguidade no resolver)
+- [Phase ?]: [Phase 01]: 01-14: checagem cross-tenant sob RLS e decorativa por construcao — a policy do proprio tenant faz a consulta voltar SEMPRE vazia; usa createAdminClient com projecao de uma coluna e head:true, e o que sai e o veredito, nunca o dado do vizinho
+- [Phase ?]: [Phase 01]: 01-14: constraint nomeada perfis_empresas_slug_gratuito_key (padrao <tabela>_<coluna>_key) e nao o uq_ sugerido pelo review — e o nome que o Postgres da a um UNIQUE inline, e e o que impede db diff futuro de propor dropar e recriar
+- [Phase ?]: [Phase 01]: 01-14: desambiguar slug usa duas consultas .eq() em paralelo, nunca or() interpolando o slug do visitante — filtro do PostgREST montado com dado de URL e injecao de filtro
+- [Phase ?]: [Phase 01]: 01-14: no teste do sequestro, a assinatura pro do tenant vizinho E parte da prova — sem plano com link personalizado o sequestro nem acontece e o caso ficaria verde sem provar nada
 
 ### Pending Todos
 
@@ -170,6 +178,9 @@ Nenhum ainda.
 - Dashboard nunca percorrido à mão sob o regime pós-DROP do 01-08 — em especial **reativar um serviço inativo**, que é o caso que a prova SQL cobre no banco e não na tela (Pitfall 3: policy quebrada degrada em silêncio). Entra no UAT humano da Phase 1
 - Rotação das signing keys do QStash no painel da Upstash (ação do owner, depois de a fila secar em ≤ 14 dias) — sem ela, a chave que já circulou continua válida. Item datado no 01-13
 - **Custo colateral aceito no 01-15 (não é bloqueador, é aviso para as fases 2, 7 e 9):** a revogação de `EXECUTE` para `PUBLIC` em funções futuras é **global** por obrigação do Postgres (por-schema não remove privilégio global). Consequência: função criada pelo role `postgres` em **qualquer** schema — extensão inclusive — nasce sem `EXECUTE` para `PUBLIC`, e chamá-la por `anon`/`authenticated` exige `GRANT EXECUTE` explícito. A falha é alta e clara (`permission denied for function ...`), nunca silenciosa; a regra e o checklist estão em `docs/03` §"Privilégios da Data API"
+
+- **Ponto de atenção do 01-14 (não é bloqueador, é aviso para revisão futura de privilégio):** `salvarPerfilEmpresa` passou a usar `createAdminClient()` numa consulta — é a única forma de a checagem cruzada entre tenants não ser decorativa (sob RLS ela voltaria sempre vazia). O escopo é mínimo: projeção de UMA coluna (`tenant_id`), `head: true` e `.neq('tenant_id', orgId)`, e o que sai da função é o veredito. Ainda assim é um ponto a mais onde o cliente privilegiado aparece **fora** do fluxo público, e merece o olho de qualquer revisão de privilégio
+- **Dívida aceita e datada por gatilho no 01-14:** a decisão `add-alongside` (duas colunas + constraint + duas camadas de aplicação) **não** cobre manter mais de um alias vivo (redirecionar link antigo depois de trocar o slug) nem um terceiro identificador público (domínio próprio, alias por campanha). Qualquer um dos dois virar requisito força a **promoção** para uma tabela de identificadores públicos — nunca uma terceira coluna. A Phase 7 (fim do Plus) revisita a relação plano↔slug e é o momento natural de reavaliar
 
 ### Quick Tasks Completed
 
@@ -196,6 +207,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T18:52:37.997Z
-Stopped at: Completed 01-15-PLAN.md
+Last session: 2026-07-22T19:11:03.478Z
+Stopped at: Completed 01-14-PLAN.md
 Resume file: None
