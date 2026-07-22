@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/nextjs'
 
-import { validarEnvObrigatorio } from './lib/env'
+import { validarEnvObrigatorio, encerrarBootPorEnvAusente } from './lib/env'
 
 /**
  * Hook de instrumentação do Next. Faz duas coisas, nesta ordem obrigatória.
@@ -9,14 +9,32 @@ import { validarEnvObrigatorio } from './lib/env'
  * instalado (`dist/server/lib/router-utils/instrumentation-globals.external.js`
  * retorna cedo quando `NEXT_PHASE === 'phase-production-build'`). Por isso o
  * `pnpm build` local sem secrets continua funcionando de graça, sem precisar de
- * nenhum guard extra aqui. Em `next start`, uma rejeição aqui sobe e mata o
- * boot ANTES da primeira requisição — que é exatamente o comportamento pedido.
+ * nenhum guard extra aqui. Em `next start`, a validação de env encerra o
+ * processo explicitamente (ver o bloco abaixo), porque o framework sozinho não
+ * encerra.
  */
 export async function register() {
     // 1) Fail-fast de configuração ANTES de qualquer import dinâmico de
     //    terceiro. Invertido, um env faltando estouraria dentro do init do
     //    Sentry com a mensagem errada.
-    validarEnvObrigatorio()
+    //
+    //    O try/catch existe por um fato MEDIDO no plano 01-05: o Next 16.2.10
+    //    converte a rejeição saída daqui em `unhandledRejection` e SEGUE
+    //    escutando na porta, respondendo 500 em toda rota. Para um healthcheck
+    //    de liveness isso é um deploy verde com 100% do tráfego falhando — pior
+    //    de detectar que um crash loop, que ao menos dispara rollback sozinho.
+    //    Por isso o encerramento é explícito.
+    //
+    //    Guarda de runtime: só no `nodejs`. No runtime edge não existe
+    //    `process.exit`, e lá o comportamento anterior (relançar) é preservado.
+    try {
+        validarEnvObrigatorio()
+    } catch (erro) {
+        if (process.env.NEXT_RUNTIME === 'nodejs') {
+            encerrarBootPorEnvAusente(erro instanceof Error ? erro.message : String(erro))
+        }
+        throw erro
+    }
 
     // 2) Import DINÂMICO, e isso não é cosmético: o SDK de Node precisa
     //    inicializar antes que as libs instrumentadas (http, undici, pg) sejam
