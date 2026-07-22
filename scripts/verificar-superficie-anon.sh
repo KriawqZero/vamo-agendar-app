@@ -37,6 +37,35 @@
 #                precisa aparecer em pelo menos uma checagem. Pulado quando há
 #                filtro na linha de comando (execução de escopo reduzido não
 #                reprova por cobertura).
+#   ALVO         veredito de bateria, rodado ANTES de todas as checagens: prova
+#                que o alvo é o banco DESTE projeto. Duas sondas — uma tabela
+#                declarada que responde com permissão negada (referência) e um
+#                nome que não consta dos schemas declarativos (canário) que
+#                responde fora do schema cache. Indistinguíveis, o script sai 2
+#                em vez de exibir ESPERADO. Roda SEMPRE, inclusive com filtro:
+#                escopo reduzido pode dispensar cobertura, nunca identidade.
+#
+# ── Por que uma checagem "ESPERADA" passou a ser exigida ──────────────────
+# Até 2026-07-22 o exit code era decidido só por `REPROVADAS -eq 0`, e
+# `INCONCLUSIVAS` era impresso e descartado. Com o alvo inalcançável, as 11
+# checagens registravam `HTTP 000`, nenhuma reprovava, e a última linha era uma
+# afirmação positiva de fechamento com exit 0 — zero medição, verde na tela.
+# Agora um contador de PROVA POSITIVA decide junto: nenhuma checagem ESPERADA
+# significa que nada foi medido, e nada medido sai 2.
+#
+# ── O que o exit 0 passa a significar, enumerado ──────────────────────────
+#   1. pelo menos uma checagem produziu PROVA POSITIVA de fechamento;
+#   2. o alvo foi identificado como o banco deste projeto (veredito ALVO);
+#   3. nenhuma checagem REPROVOU;
+#   4. toda tabela declarada em supabase/schemas/ está coberta (sem filtro).
+# Faltando 1 ou 2, o script sai 2 ("não tenho como medir"), nunca 0.
+#
+# ── Quem confere o conferente ─────────────────────────────────────────────
+# `bash scripts/verificar-controle-harness-anon.sh` sobe os três estados de
+# falha do instrumento (alvo morto, projeto errado, alvo que nega tudo) e exige
+# que ESTE script reprove nos três e aprove contra o alvo real. Ele nasceu
+# vermelho de propósito, antes deste conserto: harness escrito depois nunca
+# prova que mediria a falha.
 #
 # ── Por que nome desconhecido REPROVA em vez de ficar inconclusivo ────────
 # Até 2026-07-22 este script classificava como ESPERADO QUALQUER código diferente
@@ -51,8 +80,9 @@
 # Para tornar o POST conclusivo, informe um tenant_id que exista:
 #   TENANT_TESTE=org_xxxxx bash scripts/verificar-superficie-anon.sh clientes
 #
-# Sai com 0 quando nenhuma checagem REPROVOU; 1 quando alguma reprovou; 2 quando
-# o próprio harness não tem como medir (env ausente, schemas ilegíveis).
+# Sai com 0 quando os quatro itens acima valem; 1 quando alguma checagem
+# reprovou; 2 quando o próprio harness não tem como medir (env ausente, schemas
+# ilegíveis, zero prova positiva, identidade do alvo indistinguível).
 
 set -uo pipefail
 
@@ -69,6 +99,12 @@ MINIMO_TABELAS_DECLARADAS=9
 # "não achei a tabela no schema cache" do PostgREST.
 CODIGO_PERMISSAO_NEGADA='42501'
 CODIGO_FORA_DO_CACHE='PGRST205'
+
+# Nome que NÃO consta dos schemas declarativos — a sonda de canário do veredito
+# ALVO. O sufixo aleatório existe para que ninguém crie uma tabela com esse nome
+# por acidente; se algum dia ele aparecer em supabase/schemas/, o script ABORTA
+# em vez de seguir com um canário sem função.
+TABELA_CANARIO='tabela_canario_do_harness_9f3a2b'
 
 abortar() {
     echo "ERRO: $1" >&2
@@ -167,6 +203,10 @@ TENANT_TESTE=${TENANT_TESTE:-org_teste}
 TOTAL=0
 REPROVADAS=0
 INCONCLUSIVAS=0
+# Contador de PROVA POSITIVA. Sem ele o exit code era decidido só pela ausência
+# de reprovação — e ausência de reprovação, num alvo que não responde, é o
+# mesmo que ausência de medição.
+ESPERADAS=0
 LISTA_REPROVADAS=()
 LISTA_INCONCLUSIVAS=()
 
@@ -185,6 +225,7 @@ registrar() {
         printf '  [INCONCLUSIVO] %-55s %s\n' "$descricao" "$detalhe"
         ;;
     *)
+        ESPERADAS=$((ESPERADAS + 1))
         printf '  [ESPERADO]     %-55s %s\n' "$descricao" "$detalhe"
         ;;
     esac
@@ -340,6 +381,84 @@ echo "Tabelas derivadas de $DIR_SCHEMAS/*.sql (${#TABELAS_DECLARADAS[@]}): ${TAB
 echo "ESPERADO exige $CODIGO_PERMISSAO_NEGADA no corpo, ou $CODIGO_FORA_DO_CACHE/404 em nome declarado."
 echo
 
+# --- Veredito ALVO: a identidade do alvo, ANTES de qualquer checagem ---------
+# Sem este par de sondas, "esta tabela está fechada" e "este não é o banco que
+# eu penso que é" são INDISTINGUÍVEIS: basta a URL apontar para outro projeto
+# (troca de ambiente, .env.local desatualizado, staging) para nenhuma das nove
+# tabelas existir lá, o PostgREST devolver PGRST205, o script conferir os nomes
+# contra arquivos LOCAIS e tudo virar ESPERADO. Foi assim que o falso verde do
+# WR-08 mudou de eixo em vez de acabar. Este veredito NÃO entra na contagem de
+# checagens nem no contador de prova positiva — é veredito de bateria, da mesma
+# categoria da COBERTURA — e roda SEMPRE, inclusive com filtro na linha de
+# comando: escopo reduzido pode dispensar cobertura, nunca identidade do alvo.
+
+SONDA_CODIGO=''
+SONDA_CORPO=''
+
+sondar_tabela() {
+    local tabela="$1" resposta
+    resposta=$(curl -s -w $'\n%{http_code}' "$SUPABASE_URL/rest/v1/$tabela?select=*&limit=1" \
+        -H "apikey: $ANON_KEY" -H "Authorization: Bearer $ANON_KEY" 2>/dev/null)
+    SONDA_CODIGO=$(printf '%s' "$resposta" | tail -n1)
+    SONDA_CORPO=$(printf '%s' "$resposta" | sed '$d')
+    [ -z "$SONDA_CODIGO" ] && SONDA_CODIGO='000'
+}
+
+# Canário sem função é o mesmo defeito por outra porta: se o nome passar a
+# existir nos schemas declarativos, ele deixa de distinguir qualquer coisa.
+if tabela_declarada "$TABELA_CANARIO"; then
+    abortar "o canário '$TABELA_CANARIO' consta de $DIR_SCHEMAS/*.sql — um canário que existe não distingue nada, e a bateria voltaria a não saber dizer se o alvo é este banco."
+fi
+
+# Referência: a primeira tabela declarada que responder com permissão negada.
+# Essa resposta prova três coisas de uma vez — o host respondeu, é um PostgREST,
+# e o sistema de privilégios do Postgres se pronunciou sobre uma tabela que este
+# projeto declara. PGRST205/404 na referência NÃO serve: é precisamente o sinal
+# ambíguo que este veredito existe para desfazer.
+REFERENCIA_TABELA=''
+REFERENCIA_OBSERVADO=''
+REFERENCIA_TENTATIVAS=()
+for tabela in "${TABELAS_DECLARADAS[@]}"; do
+    sondar_tabela "$tabela"
+    REFERENCIA_TENTATIVAS+=("$tabela:HTTP $SONDA_CODIGO")
+    if corpo_tem_codigo "$SONDA_CORPO" "$CODIGO_PERMISSAO_NEGADA"; then
+        REFERENCIA_TABELA="$tabela"
+        REFERENCIA_OBSERVADO="HTTP $SONDA_CODIGO/$CODIGO_PERMISSAO_NEGADA"
+        break
+    fi
+    REFERENCIA_OBSERVADO="HTTP $SONDA_CODIGO sem $CODIGO_PERMISSAO_NEGADA: $(resumir "$SONDA_CORPO")"
+done
+
+# Canário: nome que não existe em lugar nenhum. Tem de responder fora do schema
+# cache e NÃO pode responder permissão negada — um alvo que nega tudo
+# indiscriminadamente (gateway hostil, proxy autenticando na frente, rate limit
+# respondendo 401) é indistinguível de fechamento real, e só o canário denuncia.
+sondar_tabela "$TABELA_CANARIO"
+CANARIO_CODIGO="$SONDA_CODIGO"
+CANARIO_CORPO="$SONDA_CORPO"
+CANARIO_OBSERVADO="HTTP $CANARIO_CODIGO: $(resumir "$CANARIO_CORPO")"
+
+CANARIO_OK=0
+if ! corpo_tem_codigo "$CANARIO_CORPO" "$CODIGO_PERMISSAO_NEGADA"; then
+    if corpo_tem_codigo "$CANARIO_CORPO" "$CODIGO_FORA_DO_CACHE" || [ "$CANARIO_CODIGO" = '404' ]; then
+        CANARIO_OK=1
+    fi
+fi
+
+if [ -n "$REFERENCIA_TABELA" ] && [ "$CANARIO_OK" -eq 1 ]; then
+    printf '  [ALVO]         %-55s %s\n' \
+        "identidade confirmada por referência + canário" \
+        "referência '$REFERENCIA_TABELA' $REFERENCIA_OBSERVADO | canário '$TABELA_CANARIO' $CANARIO_OBSERVADO"
+    echo
+else
+    echo 'ERRO: não consigo provar que o alvo é o banco DESTE projeto.' >&2
+    echo "  referência: ${REFERENCIA_TABELA:-nenhuma das ${#TABELAS_DECLARADAS[@]} declaradas respondeu $CODIGO_PERMISSAO_NEGADA} — $REFERENCIA_OBSERVADO" >&2
+    echo "  tentativas: ${REFERENCIA_TENTATIVAS[*]}" >&2
+    echo "  canário '$TABELA_CANARIO' (exigido $CODIGO_FORA_DO_CACHE/404 e NUNCA $CODIGO_PERMISSAO_NEGADA): $CANARIO_OBSERVADO" >&2
+    echo 'Sem este par, "fechado" e "não é este banco" são indistinguíveis — e foi assim que o falso verde do WR-08 mudou de eixo em vez de acabar.' >&2
+    exit 2
+fi
+
 # --- Critério 1: perfis_empresas não é enumerável ---
 checar_leitura perfis_empresas 'select=*'
 checar_leitura perfis_empresas 'select=tenant_id,telefone_contato'
@@ -395,8 +514,17 @@ if [ "$INCONCLUSIVAS" -gt 0 ]; then
     echo
 fi
 
+# Prova positiva antes de qualquer linha de "Resumo": sem uma única checagem
+# ESPERADA, a ausência de reprovação não é fechamento — é ausência de medição.
+if [ "$ESPERADAS" -eq 0 ]; then
+    echo 'ERRO: nenhuma checagem produziu PROVA POSITIVA de fechamento.' >&2
+    echo "  $TOTAL checagem(ns) executada(s), $ESPERADAS esperada(s), $INCONCLUSIVAS inconclusiva(s), $REPROVADAS reprovada(s)." >&2
+    echo 'Causa provável: alvo inalcançável, projeto errado ou rede caída — isto NÃO é um verde.' >&2
+    exit 2
+fi
+
 if [ "$REPROVADAS" -eq 0 ]; then
-    echo "Resumo: $TOTAL checagem(ns), $REPROVADAS reprovada(s) — a role anon não devolveu linha nenhuma."
+    echo "Resumo: $TOTAL checagem(ns), $ESPERADAS com prova positiva, $REPROVADAS reprovada(s) — a role anon não devolveu linha nenhuma."
     exit 0
 fi
 
