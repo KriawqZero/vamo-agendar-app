@@ -67,6 +67,27 @@ export type ResolucaoPerfil =
 export type ResultadoSlots =
     { ok: true; slots: SlotPublico[] } | { ok: false; motivo: MotivoLeituraPublica }
 
+/** Linha devolvida pelo `RETURNING` do INSERT de agendamento — forma inalterada. */
+export interface AgendamentoCriado {
+    id: string
+    data_hora: string
+    status: string
+}
+
+/**
+ * Retorno do caminho de ESCRITA do booking público.
+ *
+ * Mesma regra da leitura, pelo mesmo motivo medido: em build de produção a
+ * `.message` de uma exceção de Server Action NÃO atravessa a fronteira de
+ * flight (vira `1:E{"digest":"…"}`), então erro esperado precisa ser VALOR. A
+ * consequência concreta de não ser: `BookingApp` decidia a recuperação de
+ * double-booking comparando a mensagem com uma substring, comparação que era
+ * sempre falsa em produção — o visitante que perdia a corrida ficava preso na
+ * etapa de contato olhando para um horário que não existe mais.
+ */
+export type ResultadoAgendamentoPublico =
+    { ok: true; agendamento: AgendamentoCriado } | { ok: false; motivo: MotivoPublico }
+
 /** Leitura crua do perfil por uma das duas colunas de slug (customizado / provisionado). */
 async function lerPerfilPor(admin: SupabaseClient, coluna: 'slug' | 'slug_gratuito', slug: string) {
     return admin
@@ -146,6 +167,10 @@ interface AgendamentoPublicoParams {
  *
  * Recebe o `slug` da URL, nunca o `tenant_id`: o tenant é resolvido no servidor,
  * então nenhum valor vindo do navegador escolhe em qual tenant se escreve.
+ *
+ * ⚠️ Falha ESPERADA é valor de retorno discriminado, nunca `throw` — ver o JSDoc
+ * de `ResultadoAgendamentoPublico`. A cópia em pt-BR de cada motivo mora no
+ * cliente (`src/app/book/[slug]/mensagens.ts`); daqui sai só o discriminante.
  */
 export async function criarAgendamentoPublico({
     slug,
@@ -154,20 +179,20 @@ export async function criarAgendamentoPublico({
     clienteNome,
     clienteTelefone,
     clienteEmail,
-}: AgendamentoPublicoParams) {
+}: AgendamentoPublicoParams): Promise<ResultadoAgendamentoPublico> {
     // 1. Sanitizar e validar dados de entrada básicos
     if (!slug || !servicoId || !dataHora || !clienteNome || !clienteTelefone) {
-        throw new Error('Preencha todos os campos obrigatórios.')
+        return { ok: false, motivo: 'campos_obrigatorios' }
     }
 
     const telefoneLimpo = clienteTelefone.replace(/\D/g, '')
     if (telefoneLimpo.length < 10 || telefoneLimpo.length > 11) {
-        throw new Error('Número de WhatsApp inválido. Informe o DDD e o número.')
+        return { ok: false, motivo: 'telefone_invalido' }
     }
 
     const dataLocal = new Date(dataHora)
     if (isNaN(dataLocal.getTime())) {
-        throw new Error('Data e horário inválidos.')
+        return { ok: false, motivo: 'data_invalida' }
     }
 
     // Todo o caminho público (leituras e escritas) usa o cliente PRIVILEGIADO:
@@ -180,12 +205,12 @@ export async function criarAgendamentoPublico({
     // do plano vigente) e obter o fuso e as regras de acesso.
     const resolvido = await resolverPerfilPublicoPorSlug(admin, slug)
 
-    // O caminho de ESCRITA continua lançando nesta rodada, com a mesma mensagem
-    // de sempre: a conversão dele para valor de retorno discriminado é o plano
-    // 01-12, e misturar as duas migrações num commit só apagaria a fronteira
-    // entre o que o harness de travessia prova e o que ele ainda não prova.
+    // O motivo é PROPAGADO, não achatado em `slug_invalido`: "link errado" e
+    // "não consegui ler o perfil" são condições diferentes (negócio x
+    // infraestrutura, e só a segunda já foi ao Sentry lá dentro), e o cliente
+    // merece a cópia certa de cada uma.
     if (!resolvido.ok) {
-        throw new Error('Estabelecimento inválido ou indisponível.')
+        return { ok: false, motivo: resolvido.motivo }
     }
 
     const { perfil: tenant } = resolvido
@@ -211,7 +236,7 @@ export async function criarAgendamentoPublico({
         .single()
 
     if (sError || !servico) {
-        throw new Error('Serviço inválido ou indisponível.')
+        return { ok: false, motivo: 'servico_invalido' }
     }
 
     // 4. Validar se o slot de horário escolhido ainda está livre
@@ -229,15 +254,17 @@ export async function criarAgendamentoPublico({
 
     const horarioEscolhidoValido = slotsLivres.some((sl) => sl.datetime === dataHora)
     if (!horarioEscolhidoValido) {
-        // Funil: abandono por double-booking. Nunca pode afetar o throw abaixo.
+        // Funil: abandono por double-booking. Nunca pode afetar o retorno abaixo
+        // (antes protegia um `throw`; a intenção é a mesma, o transporte mudou).
         try {
             capturarEventoTenant('booking_failed', tenantId, { motivo: 'slot_indisponivel' })
         } catch (analyticsErr) {
             console.error('[analytics] booking_failed não capturado (ignorado):', analyticsErr)
         }
-        throw new Error(
-            'Este horário já foi preenchido ou está indisponível. Por favor, selecione outro.',
-        )
+        // ⚠️ É ESTE discriminante que a recuperação de double-booking em
+        // `BookingApp` consome (solta o slot morto, refaz a grade, mostra o
+        // aviso âmbar) e é dele que o Success Criteria 4 da Phase 2 depende.
+        return { ok: false, motivo: 'slot_indisponivel' }
     }
 
     // As ESCRITAS abaixo dependem do mesmo cliente privilegiado: o visitante é
@@ -260,14 +287,16 @@ export async function criarAgendamentoPublico({
     if (cError) {
         console.error('Erro ao buscar cliente existente:', cError.message)
         // Fluxo B2C: a mensagem amigável apaga a causa raiz e o cliente final
-        // vai embora sem reclamar. Reportar ANTES do throw, sem nenhum dado
+        // vai embora sem reclamar. Reportar ANTES de devolver, sem nenhum dado
         // do cliente — nem no contexto, nem no objeto de erro: a `.message` do
         // Postgres embute literais do input (`invalid input syntax … "…"`).
+        // Virar valor de retorno não pode apagar este detector: `erro_interno`
+        // é o que o visitante vê, o `etapa` é o que quem investiga vê.
         reportarExcecao(erroSinteticoSupabase(cError), {
             fluxo: 'booking_publico',
             etapa: 'buscar_cliente',
         })
-        throw new Error('Erro ao processar dados de contato.')
+        return { ok: false, motivo: 'erro_interno' }
     }
 
     if (clienteExistente) {
@@ -291,7 +320,7 @@ export async function criarAgendamentoPublico({
                 fluxo: 'booking_publico',
                 etapa: 'cadastrar_cliente',
             })
-            throw new Error('Erro ao processar dados de contato.')
+            return { ok: false, motivo: 'erro_interno' }
         }
         clienteId = novoCliente.id
     }
@@ -318,13 +347,13 @@ export async function criarAgendamentoPublico({
             etapa: 'criar_agendamento',
         })
         // Funil: sem isto o visitante que passou da validação de slot mas caiu
-        // no INSERT sumiria do funil sem motivo. Nunca afeta o throw abaixo.
+        // no INSERT sumiria do funil sem motivo. Nunca afeta o retorno abaixo.
         try {
             capturarEventoTenant('booking_failed', tenantId, { motivo: 'erro_interno' })
         } catch (analyticsErr) {
             console.error('[analytics] booking_failed não capturado (ignorado):', analyticsErr)
         }
-        throw new Error('Erro ao confirmar o agendamento.')
+        return { ok: false, motivo: 'erro_interno' }
     }
 
     // Funil: agendamento público concluído (sem nome/telefone — nunca PII).
@@ -349,7 +378,7 @@ export async function criarAgendamentoPublico({
         timezone,
     })
 
-    return agendamento
+    return { ok: true, agendamento }
 }
 
 /**
@@ -389,11 +418,16 @@ export async function obterDadosBookingPublico(slug: string) {
 
     if (sError) {
         console.error('Erro ao buscar serviços públicos:', sError.message)
-        // `throw` é LEGÍTIMO aqui, e a regra da rodada cabe numa frase: `throw`
-        // só vale onde nenhum `catch` de cliente consome a `.message`. Esta
-        // função é chamada de `page.tsx` (Server Component) — a exceção cai no
-        // error boundary do servidor, nunca numa caixa vermelha do navegador,
-        // então a mensagem não precisa (nem consegue) atravessar flight.
+        // ⚠️ ÚNICA exceção que sobrou neste arquivo, e ela é legítima — a regra
+        // cabe numa frase: `throw` só vale onde nenhum `catch` de navegador
+        // consome a `.message`. Esta função é chamada de `page.tsx` (Server
+        // Component), não de código de cliente: a exceção cai no error boundary
+        // do SERVIDOR, nunca numa caixa vermelha do navegador, e por isso a
+        // mensagem não precisa (nem consegue) atravessar flight.
+        //
+        // Não "consertar" por simetria com as outras dez: convertê-la em valor
+        // obrigaria `page.tsx` a distinguir "não achei" de "não consegui ler"
+        // para chamar `notFound()`, sem nenhum ganho para o cliente final.
         throw new Error('Não foi possível carregar os serviços.')
     }
 
