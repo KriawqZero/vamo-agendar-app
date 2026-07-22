@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: executing
-stopped_at: Completed 01-06-PLAN.md
-last_updated: "2026-07-22T14:54:06.029Z"
+stopped_at: Completed 01-08-PLAN.md
+last_updated: "2026-07-22T15:08:56.923Z"
 last_activity: 2026-07-22
-last_activity_desc: 01-06 concluído (boot de produção morre de verdade; harness de quatro vereditos)
+last_activity_desc: 01-08 concluído (policies residuais removidas; cross-tenant medido 2→1 sob role authenticated)
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 ## Current Position
 
 Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
-Plan: 7 de 9 concluídos (01-01 a 01-07)
-Status: Ready to execute — próximo na serialização estrita do gap closure: **01-08**, depois 01-09
-Last activity: 2026-07-22 — 01-06 concluído (boot de produção morre de verdade; harness de quatro vereditos)
+Plan: 8 de 9 concluídos (01-01 a 01-08)
+Status: Ready to execute — último da serialização estrita do gap closure: **01-09**
+Last activity: 2026-07-22 — 01-08 concluído (policies residuais removidas; cross-tenant medido 2→1 sob role authenticated)
 
-Progress: [████████░░] 78%
+Progress: [█████████░] 89%
 
 ## Performance Metrics
 
@@ -65,6 +65,7 @@ Progress: [████████░░] 78%
 | Phase 01 P05 | ~45min | 3 tasks | 1 files |
 | Phase 01 P07 | ~28min | 3 tasks | 4 files |
 | Phase 01 P06 | ~50min | 2 tasks | 5 files |
+| Phase 01 P08 | ~22min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -105,6 +106,10 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: [Phase 01]: Harness nasce ANTES do conserto e a primeira execucao tem de REPROVAR — harness escrito depois nunca prova que mediria a falha
 - [Phase ?]: [Phase 01]: Complemento de env identico nas duas execucoes do harness: quatro das quatorze obrigatorias nao existem no .env.local, e sem injeta-las o CONTROLE seria impossivel e a mensagem do MORTE listaria cinco nomes em vez de um
 - [Phase ?]: [Phase 01]: Tres diagnosticos de Edge Runtime (process.stderr/process.exit em env.ts) registrados em PENDENCIAS, nao silenciados — aliasar process por globalThis esconderia o sinal em vez de resolve-lo
+- [Phase ?]: [Phase 01]: Policies PERMISSIVAS se somam por OR — uma policy compartilhada sem clausula de tenant ANULA o escopo da tenant-scoped que convive com ela; foi como servicos/horarios_funcionamento vazavam catalogo e tenant_id cross-tenant para toda conta logada
+- [Phase ?]: [Phase 01]: Prova de RLS sem navegador — transacao revertida com set_config('request.jwt.claims') + set local role authenticated, e um tenant vizinho DESCARTAVEL criado dentro da propria transacao quando o banco de dev tem um tenant so; converte veredito INCONCLUSIVO em conclusivo sem persistir nada
+- [Phase ?]: [Phase 01]: Nao-regressao de dashboard depois de DROP POLICY se mede pela linha INATIVA do proprio tenant — as ativas passavam pelas duas policies e nao distinguem nada; a inativa e o unico caso que a 1b cobre a mais e o que sustenta reativar servico e o RETURNING
+- [Phase ?]: [Phase 01]: DDL e INSERT no ledger emitidos numa UNICA chamada de execute_sql, portanto na mesma transacao — fecha a janela de desalinhamento repo/ledger que o procedimento em dois passos deixava aberta
 
 ### Pending Todos
 
@@ -125,7 +130,8 @@ Nenhum ainda.
 - Caixa de erro de slots nunca vista renderizando a copy nova do 01-02 ("Não foi possível carregar os horários. Tente de novo."); teste barato no UAT do 01-05: chamar `obterSlotsPublicos('slug-inexistente', …)`
 - UAT do dashboard sob as policies tenant-scoped novas do 01-04 (agenda, agendamento manual com RETURNING, exceção de agenda, perfil) — Pitfall 3: policy substituta errada deixa a tela VAZIA sem estourar erro. Escopo do 01-05
 - UAT humano da Phase 1 NAO EXECUTADO (7 itens: wizard completo, double-booking, dashboard tela a tela, personalizacao Pro x gratuito, lembrete QStash ponta a ponta, caixa de erro de slots, backstops visuais). Checklist com o motivo de cada um em docs/PENDENCIAS.md secao 'UAT humano pendente da Phase 1'. Owner ausente na execucao do 01-05 — registrado como pendente, nunca aprovado
-- Duas policies de SELECT ainda {anon,authenticated} com USING (ativo = true) em servicos e horarios_funcionamento: leitura cross-tenant por autenticado hoje, e um GRANT futuro a anon reabre tudo sem policy nova. Conserto e DROP puro (a 1b ja cobre o tenant). Precisa de sessao com acesso a banco
+- ✅ **RESOLVIDO no 01-08 — as duas policies de SELECT {anon,authenticated} com USING (ativo = true).** Removidas do banco e do schema declarativo pela migration `20260722145948_fecha_policies_residuais_servicos_horarios.sql`. Medido sob role `authenticated` com claim `org_id` em transação revertida: **2 tenants distintos visíveis antes, 1 depois**; a linha INATIVA do próprio tenant continua visível (a `1b` cobre, o `RETURNING` não regrediu). Ledger em 18 versions = 18 arquivos. Falta só a edição de `docs/PENDENCIAS.md`, que é do 01-09 por desenho
+- Dashboard nunca percorrido à mão sob o regime pós-DROP do 01-08 — em especial **reativar um serviço inativo**, que é o caso que a prova SQL cobre no banco e não na tela (Pitfall 3: policy quebrada degrada em silêncio). Entra no UAT humano da Phase 1
 
 ### Quick Tasks Completed
 
@@ -152,6 +158,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T14:53:25.873Z
-Stopped at: Completed 01-06-PLAN.md
+Last session: 2026-07-22T15:08:41.650Z
+Stopped at: Completed 01-08-PLAN.md
 Resume file: None
