@@ -151,7 +151,7 @@ precisa ser sabido antes.
   4. Uma tabela nova criada no schema `public` não aparece na Data API sem GRANT explícito
   5. POST sem assinatura válida do QStash no webhook de lembrete é rejeitado, e a aplicação não sobe se as chaves de assinatura não estiverem configuradas
 
-**Plans**: 16/16 plans executed
+**Plans**: 19 plans (16/19 executed; 3 planejados na 3ª rodada de fechamento de gaps)
 
 Plans:
 **Wave 1**
@@ -194,7 +194,19 @@ Plans:
 
 **Por que o 01-15 vem antes do 01-14** (ordem trocada na revisão de planos): o 01-14 usa `scripts/verificar-superficie-anon.sh` como portão de não-regressão, mas o defeito WR-08 é **do próprio harness** — ele classifica como ESPERADO qualquer código diferente de 200, e só o 01-15 conserta isso. Medir fechamento de banco com o instrumento cuja calibração esta rodada admite estar quebrada é a circularidade que já queimou a fase duas vezes. Não há dependência técnica entre a constraint de slug e a default privilege de FUNCTIONS, então a troca custou apenas renumerar duas waves. O 01-12 (wave 3) também usa o harness e **não** pôde ser movido sem quebrar a ordem tracer→expansão; lá o exit 0 está registrado explicitamente como sinal fraco.
 
-**Fora do escopo desta rodada, por decisão do owner:** WR-01 (a Server Action pública devolve `tenant_id` e `slug_gratuito` — o mais barato e o mais aderente ao tema da fase), WR-03 (escrita pública sem limite de tamanho nem validação de e-mail), WR-04 (verificação por `req.url` pode matar todos os lembretes atrás do proxy) e WR-06 (falha de transporte gera lembrete duplicado). Registrados com razão e gatilho de retorno em `docs/PENDENCIAS.md` pelo plano 01-13 — nenhum foi descartado.
+**3ª rodada de fechamento de gaps** *(planejada em 2026-07-22 a partir da reverificação sobre o HEAD `8edb32d`, que REPROVOU com 11/13 must-haves e dois gaps bloqueantes NOVOS — ambos vindos do `01-REVIEW.md` e ambos REPRODUZIDOS POR MEDIÇÃO pelo verificador, não confirmados por leitura; waves próprias, os dezesseis planos acima já estão concluídos)*
+
+⛔ **Serialização estrita mantida — um plano por wave, nunca em paralelo.** Os três modos de falha nomeados na rodada 1 (`.next/` compartilhado, fixture do tenant de teste apagada no meio, contagem cross-tenant poluída) continuam valendo integralmente; o 01-18 e o 01-19 constroem, e o 01-19 mede o HEAD final.
+
+- [ ] 01-17-PLAN.md — **Tracer:** o instrumento de superfície ganha prova positiva e controle de identidade do alvo, com controle re-executável que nasce vermelho (gap 1 / CR-02) (wave 1)
+- [ ] 01-18-PLAN.md — A superfície pública anônima deixa de entregar um jeito de derrubar o processo com uma requisição: validação na fronteira + guarda de profundidade na engine (gap 2 / CR-01) (wave 2, depende de 01-17)
+- [ ] 01-19-PLAN.md — Alcance da D-03 escrito no `docs/03`, registro coerente em `PENDENCIAS`, e gate de reexecução de todas as provas sobre o HEAD final (wave 3, depende de 01-18)
+
+**Por que o 01-17 vem antes do 01-18** (mesma lógica que moveu o 01-15 à frente do 01-14 na rodada anterior): o 01-18 afirma que a superfície pública ficou mais fechada, e a única bateria automatizada que mede superfície é a que o verificador acabou de reprovar. Com o alvo inalcançável ela registrava 11 checagens em `HTTP 000`, o veredito COBERTURA passava, e a última linha era `0 reprovada(s) — a role anon não devolveu linha nenhuma` com **exit 0**. Medir fechamento com o instrumento cuja calibração esta rodada admite estar quebrada é a circularidade que já queimou a fase duas vezes. Conserte o instrumento antes de usá-lo para medir.
+
+**Fora do escopo desta rodada, por decisão registrada:** os quatro achados já deferidos em `docs/PENDENCIAS.md` pelo plano 01-13 (numeração da 1ª rodada de review) — em especial o WR-03 de lá, "escrita pública sem limite de tamanho nem validação de e-mail", que é vizinho do gap 2 e **distinto dele**: o gap 2 é o caminho público de LEITURA, com DoS medido; aquele é o caminho de ESCRITA. Também ficam fora os sete itens de UAT humano (só o owner os fecha) e os dez avisos do `01-REVIEW.md` da 2ª rodada que não foram aprovados — o plano 01-19 os registra como abertos, sem resolver nenhum.
+
+**Fora do escopo da 2ª rodada, por decisão do owner:** WR-01 (a Server Action pública devolve `tenant_id` e `slug_gratuito` — o mais barato e o mais aderente ao tema da fase), WR-03 (escrita pública sem limite de tamanho nem validação de e-mail), WR-04 (verificação por `req.url` pode matar todos os lembretes atrás do proxy) e WR-06 (falha de transporte gera lembrete duplicado). Registrados com razão e gatilho de retorno em `docs/PENDENCIAS.md` pelo plano 01-13 — nenhum foi descartado.
 
 **Notas de execução:**
 
