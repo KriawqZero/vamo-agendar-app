@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: executing
-stopped_at: Completed 01-10-PLAN.md
-last_updated: "2026-07-22T17:31:38.992Z"
+stopped_at: Completed 01-11-PLAN.md
+last_updated: "2026-07-22T17:48:54.182Z"
 last_activity: 2026-07-22
-last_activity_desc: "plano 01-10 executado: erro esperado do booking passou a atravessar a fronteira de flight, com harness que reprovava antes do conserto"
+last_activity_desc: "plano 01-11 executado: a chave HMAC saiu da URL publicada e o corpo dos gateways saiu do log; rotação da chave pendente com o owner"
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 16
-  completed_plans: 10
+  completed_plans: 11
 ---
 
 # Project State
@@ -28,10 +28,10 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 ## Current Position
 
 Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTANDO a 2ª rodada de fechamento de gaps
-Plan: 10 de 16 concluídos (01-01 a 01-10). Próximo: **01-11**
-Status: **a fase continua incompleta.** Dos dois bloqueadores da reverificação, um foi fechado nesta sessão e o outro segue vivo no código:
+Plan: 11 de 16 concluídos (01-01 a 01-11). Próximo: **01-12**
+Status: **a fase continua incompleta.** Dos dois bloqueadores da reverificação, o primeiro teve a metade de código fechada e o segundo segue meio vivo:
 
-  1. `whatsapp-helper.ts:147` publica `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — é a mesma chave HMAC com que o webhook autentica desde o 01-03. Ataca diretamente a segunda metade do goal da fase. **ABERTO. Fecha em 01-11** (código) + **01-13** (rotação datada como item do owner, PENDENCIAS, e correção dos dois documentos cuja premissa o verificador refutou)
+  1. `whatsapp-helper.ts` publicava `QSTASH_CURRENT_SIGNING_KEY` em texto claro na query string de todo lembrete — a mesma chave HMAC com que o webhook autentica desde o 01-03. **METADE DE CÓDIGO FECHADA no 01-11**: a URL publicada é agora a rota limpa, e quatro `console.error` deixaram de despejar corpo de gateway no log (o da Evolution ecoava telefone e texto personalizado — CR-04). Cinco testes travam os dois defeitos, provados vermelhos na reversão. **CONTINUA ABERTO o que código não conserta**: a chave já circulou por log de acesso e pelo console da Upstash, e a rotação é ação do owner no painel, depois de a fila secar (≤ 14 dias) — **item datado no 01-13**. Por isso SEG-05 NÃO foi marcado como concluído em REQUIREMENTS.md
   2. Em build de produção o React só transporta o `digest` do erro da Server Action, então a copy contratada no `01-UI-SPEC` e a recuperação de double-booking (`includes('já foi preenchido')`) estão mortas na tela. **METADE FECHADA no 01-10**: o caminho de LEITURA (`obterSlotsPublicos`) devolve `{ ok: false, motivo }`, e `scripts/verificar-travessia-server-action.sh` prova a travessia contra `next start` (reprovava antes, aprova depois). O caminho de ESCRITA continua lançando e `includes('já foi preenchido')` continua sempre `false` em produção — **fecha em 01-12**. Insumo obrigatório do SC4 da Phase 2
 
 Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code review: CR-03 (`slug_gratuito` sem UNIQUE → sequestro de link público entre tenants, com PII de cliente final) em 01-14; WR-02 (default privileges não cobre FUNCTIONS) e WR-08 (harness de superfície com falso verde) em 01-15; WR-07 (`assinaturas.ts` degrada tenant pago a gratuito) em 01-16. WR-01, WR-03, WR-04 e WR-06 ficaram fora, diferidos com razão e gatilho escritos no 01-13.
@@ -39,9 +39,9 @@ Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code rev
 Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
 
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar) — dois deles com prognóstico negativo até o bloqueador 2 fechar
-Last activity: 2026-07-22 — plano 01-10 executado: erro esperado do booking passou a atravessar a fronteira de flight, com harness que reprovava antes do conserto
+Last activity: 2026-07-22 — plano 01-11 executado: a chave HMAC saiu da URL publicada e o corpo dos gateways saiu do log; rotação da chave pendente com o owner
 
-Progress: [██████░░░░] 63% (10/16 planos executados; verificação ainda reprovada, correção em andamento)
+Progress: [███████░░░] 69% (11/16 planos executados; verificação ainda reprovada, correção em andamento)
 
 ## Performance Metrics
 
@@ -77,6 +77,7 @@ Progress: [██████░░░░] 63% (10/16 planos executados; verific
 | Phase 01 P08 | ~22min | 3 tasks | 3 files |
 | Phase 01 P09 | ~35min | 3 tasks | 5 files |
 | Phase 01 P10 | ~33min | 2 tasks | 6 files |
+| Phase 01 P11 | ~35min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -128,6 +129,8 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: Erro esperado de Server Action e valor de retorno discriminado, nunca throw: em build de producao o React so transporta o digest (medido: 1:E{"digest":"2760064589"}). throw so vale onde nenhum catch de cliente consome a .message
 - [Phase ?]: Copia de UI publica mora no cliente numa constante unica que alimenta a tela e a assercao de teste — copia divergente fica impossivel por construcao (src/app/book/[slug]/mensagens.ts)
 - [Phase ?]: Harness de fronteira de flight: o id da Server Action e sempre derivado de .next/server/server-reference-manifest.json, nunca literal — id colado a mao sobrevive a refatoracao que o invalida e deixa o harness verde para sempre
+- [Phase ?]: 01-11: a guarda de QSTASH_CURRENT_SIGNING_KEY foi preservada com papel novo — não monta mais a URL, só recusa publicar lembrete que o webhook depois não conseguiria autenticar
+- [Phase ?]: 01-11: SEG-05 NÃO foi marcado como concluído — a metade criptográfica está fechada, mas a chave já circulou e a rotação é ação do owner rastreada no 01-13
 
 ### Pending Todos
 
@@ -150,6 +153,7 @@ Nenhum ainda.
 - UAT humano da Phase 1 NAO EXECUTADO (7 itens: wizard completo, double-booking, dashboard tela a tela, personalizacao Pro x gratuito, lembrete QStash ponta a ponta, caixa de erro de slots, backstops visuais). Checklist com o motivo de cada um em docs/PENDENCIAS.md secao 'UAT humano pendente da Phase 1'. Owner ausente na execucao do 01-05 — registrado como pendente, nunca aprovado
 - ✅ **RESOLVIDO no 01-08 — as duas policies de SELECT {anon,authenticated} com USING (ativo = true).** Removidas do banco e do schema declarativo pela migration `20260722145948_fecha_policies_residuais_servicos_horarios.sql`. Medido sob role `authenticated` com claim `org_id` em transação revertida: **2 tenants distintos visíveis antes, 1 depois**; a linha INATIVA do próprio tenant continua visível (a `1b` cobre, o `RETURNING` não regrediu). Ledger em 18 versions = 18 arquivos. A edição de `docs/PENDENCIAS.md` foi feita no 01-09: a seção "Superfície remanescente" e o bloco 🔴 de enumeração de `org_id` estão marcados como fechados, com migration, version e evidências
 - Dashboard nunca percorrido à mão sob o regime pós-DROP do 01-08 — em especial **reativar um serviço inativo**, que é o caso que a prova SQL cobre no banco e não na tela (Pitfall 3: policy quebrada degrada em silêncio). Entra no UAT humano da Phase 1
+- Rotação das signing keys do QStash no painel da Upstash (ação do owner, depois de a fila secar em ≤ 14 dias) — sem ela, a chave que já circulou continua válida. Item datado no 01-13
 
 ### Quick Tasks Completed
 
@@ -176,6 +180,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T17:30:52.378Z
-Stopped at: Completed 01-10-PLAN.md
+Last session: 2026-07-22T17:47:54.993Z
+Stopped at: Completed 01-11-PLAN.md
 Resume file: None
