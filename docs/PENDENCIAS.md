@@ -809,15 +809,25 @@ Sanitização de plano quebrada não estoura erro — o tenant gratuito passa a 
 personalização paga. Lembrete rejeitado não estoura erro — mensageria falha em silêncio
 por design. Nenhum desses modos de falha aparece em `lint`, `test`, `build` ou `curl`.
 
+**Reduzido pelo plano 01-07 (2026-07-22):** o **lado servidor** de três destes itens saiu
+da lista de olho humano e virou comando — `pnpm test:integracao` exercita, contra o
+Supabase de dev, a criação de agendamento pelo slug (cliente novo, `RETURNING`), o
+reaproveitamento de cliente por telefone, a rejeição de horário ocupado com a mensagem que
+a UI reconhece e a cópia exata da caixa de erro de slots. O que continua aqui é
+estritamente o que acontece **na tela** — e continua não aprovado.
+
 - [ ] **Wizard completo de `/book/[slug]`** — serviço → data/hora → nome + WhatsApp →
       confirmar → "Horário confirmado!", com o agendamento caindo na agenda do dashboard.
       Nenhuma etapa, campo ou atraso novo (Fricção Zero). *Agravado pelo plano 01-02*,
       que trocou o identificador que as duas Server Actions públicas recebem
-      (`tenantId` → `slug`). Provado por automação até aqui: apenas que a página responde
-      200 e que o payload monta com dados reais.
+      (`tenantId` → `slug`). Provado por automação até aqui: que a página responde 200,
+      que o payload monta com dados reais e — desde o plano 01-07 — que o caminho de
+      **escrita** funciona ponta a ponta pelo servidor. Falta a tela.
 - [ ] **Recuperação de double-booking** — duas abas no mesmo slot; a segunda deve voltar
       à etapa de data/hora com o aviso âmbar e a grade refeita, nunca uma caixa vermelha
-      estática no formulário de contato.
+      estática no formulário de contato. O plano 01-07 pinou o acoplamento de string nas
+      duas pontas (a action produz "já foi preenchido", `BookingApp.tsx` casa exatamente
+      essa substring); o que falta é ver a **recuperação visual** acontecer.
 - [ ] **Dashboard sob as policies tenant-scoped novas, tela a tela** — agenda carrega os
       agendamentos; agendamento manual salva **e a linha volta** (o `RETURNING` depende de
       passar na policy de SELECT); bloqueio/exceção salva; aba Perfil salva; serviços
@@ -833,9 +843,11 @@ por design. Nenhum desses modos de falha aparece em `lint`, `test`, `build` ou `
       indica mismatch de URL atrás de proxy; plano B: montar a URL de `APP_URL` depois
       que a fila drenar.
 - [ ] **Caixa de erro de slots** renderizando a copy nova do plano 01-02 ("Não foi
-      possível carregar os horários. Tente de novo."). Teste barato: chamar
-      `obterSlotsPublicos('slug-inexistente', …)`. A copy está no código
-      (`src/app/actions/public-booking.ts:373`) e compila; nunca foi vista na tela.
+      possível carregar os horários. Tente de novo."). ~~Teste barato: chamar
+      `obterSlotsPublicos('slug-inexistente', …)`~~ — **feito no plano 01-07**: a suíte de
+      integração assere a string por igualdade estrita e que ela não vaza slug, `tenant`,
+      `org_` nem `PGRST`. Continua pendente **só o lado visual**: a caixa vermelha com
+      `role="alert"` e o botão "Tentar de novo" nunca foram vistos na tela.
 - [ ] **Backstops visuais com dado extremo** — 20+ serviços ativos na lista da etapa;
       `horizonte_maximo_dias = 30` alongando a fileira de datas; nome de serviço, nome de
       cliente, `nome_estabelecimento`, descrição e endereço longos no resumo, na tela de

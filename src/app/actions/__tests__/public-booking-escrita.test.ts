@@ -154,6 +154,14 @@ const TRECHO_DOUBLE_BOOKING = 'já foi preenchido'
 const CAMINHO_BOOKING_APP = 'src/app/book/[slug]/BookingApp.tsx'
 const CAMINHO_ACTION_PUBLICA = 'src/app/actions/public-booking.ts'
 
+/**
+ * Cópia renderizada VERBATIM ao cliente final na caixa vermelha da etapa de
+ * data/hora quando o slug não resolve (caso real: downgrade de plano invalida o
+ * slug customizado com a aba do cliente aberta). Contrato de copy do
+ * 01-UI-SPEC §"Regra sobre erros novos" — asserção por igualdade estrita.
+ */
+const COPIA_ERRO_SLOTS = 'Não foi possível carregar os horários. Tente de novo.'
+
 const TELEFONE_FORMATADO = '(11) 98888-7777'
 const TELEFONE_SANITIZADO = '11988887777'
 
@@ -388,6 +396,42 @@ describe.skipIf(!temCredenciais)(
 
             const fonteBookingApp = readFileSync(CAMINHO_BOOKING_APP, 'utf8')
             expect(fonteBookingApp).toContain(`mensagem.includes('${TRECHO_DOUBLE_BOOKING}')`)
+        })
+
+        // Este caminho de falha NASCEU com a troca de identificador do plano
+        // 01-02 (`tenantId` → `slug`, per D-04): antes o slug não resolver não
+        // era um erro, era uma grade calculada com fuso e regras padrão — errada
+        // e sem sintoma. Hoje a action LANÇA, e a string inteira é renderizada
+        // VERBATIM ao cliente final na caixa vermelha da etapa de data/hora.
+        //
+        // ⚠️ O que este caso NÃO cobre: que a cópia chega à TELA dentro da caixa
+        // vermelha com role="alert" e que o botão "Tentar de novo" funciona.
+        // Isso continua sendo item de olho humano em docs/PENDENCIAS.md
+        // §"UAT humano pendente da Phase 1". Aqui se prova que a action produz a
+        // string certa — não que a UI a renderiza.
+        it('produz a cópia exata da caixa de erro de slots quando o slug não resolve', async () => {
+            const slugInexistente = 'slug-que-nao-existe-integracao-9f3a2b'
+
+            const erro = await obterSlotsPublicos(
+                slugInexistente,
+                dataAlvo,
+                DURACAO_SERVICO_TESTE,
+            ).then(
+                () => null,
+                (e: unknown) => e,
+            )
+
+            expect(erro).toBeInstanceOf(Error)
+            // Igualdade ESTRITA, não `contains`: a string inteira vai para a tela.
+            expect((erro as Error).message).toBe(COPIA_ERRO_SLOTS)
+
+            // Nunca vazar erro cru do Supabase nem identificador interno para uma
+            // caixa visível ao cliente final (regra do CLAUDE.md).
+            const mensagem = (erro as Error).message
+            expect(mensagem).not.toContain(slugInexistente)
+            expect(mensagem).not.toContain('tenant')
+            expect(mensagem).not.toContain('org_')
+            expect(mensagem).not.toContain('PGRST')
         })
     },
 )
