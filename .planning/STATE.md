@@ -5,14 +5,14 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: ready_to_execute
-stopped_at: Completed 01-17-PLAN.md
-last_updated: "2026-07-22T21:17:22.156Z"
+stopped_at: Completed 01-18-PLAN.md
+last_updated: "2026-07-22T21:31:55.134Z"
 last_activity: 2026-07-22
 progress:
   total_phases: 1
   completed_phases: 0
   total_plans: 19
-  completed_plans: 17
+  completed_plans: 18
 last_activity_desc: "3ª rodada planejada: 01-17 conserta o instrumento que certifica fechamento sem ter medido, 01-18 fecha o DoS por entrada não validada na superfície pública anônima, 01-19 escreve o alcance real da D-03 e reexecuta as 8 provas sobre o HEAD final"
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 ## Current Position
 
 Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
-Plan: 2 of 19
+Plan: 3 of 19
 
 ### Planejamento da 3ª rodada (2026-07-22, branch `fase-01-gaps-rodada-3`)
 
@@ -69,7 +69,7 @@ Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
 Last activity: 2026-07-22
 
-Progress: [█████████░] 89% (16/19 planos executados; os 3 da 3ª rodada estão planejados e não executados. A fase permanece **reprovada** na verificação — 11/13 must-haves — até que 01-17, 01-18 e 01-19 rodem e uma 4ª verificação meça o resultado)
+Progress: [██████████] 95% (16/19 planos executados; os 3 da 3ª rodada estão planejados e não executados. A fase permanece **reprovada** na verificação — 11/13 must-haves — até que 01-17, 01-18 e 01-19 rodem e uma 4ª verificação meça o resultado)
 
 ## Performance Metrics
 
@@ -112,6 +112,7 @@ Progress: [█████████░] 89% (16/19 planos executados; os 3 da
 | Phase 01 P14 | ~35min | 3 tasks | 5 files |
 | Phase 01 P16 | ~65min | 2 tasks | 7 files |
 | Phase 01 P17 | ~25min | 2 tasks | 2 files |
+| Phase 01 P18 | ~31min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -191,6 +192,11 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase 01]: 01-17: identidade do alvo e veredito de BATERIA (add-alongside, ao lado de COBERTURA) — nao conta como checagem, nao alimenta o contador de prova positiva, e roda SEMPRE inclusive com filtro: escopo reduzido dispensa cobertura, nunca identidade
 - [Phase 01]: 01-17: o canario tem guarda propria que aborta com 2 se o nome passar a constar dos schemas declarativos — canario que existe nao distingue nada, e a guarda foi vista FALHANDO (canario=assinaturas) antes de a constante ser revertida
 - [Phase 01]: 01-17: o terceiro eixo de falso verde (alvo que nega TUDO uniformemente — gateway hostil, proxy autenticando na frente, rate limit em 401) nao estava no code review nem no relatorio de verificacao; sem o veredito TUDO_NEGADO o conserto fecharia um eixo e abriria outro pela terceira vez
+- [Phase ?]: [Phase 01]: 01-18: validacao de entrada na fronteira da Server Action publica vem ANTES de createAdminClient() e da resolucao do slug — a ordem e a diferenca entre recusar de graca e recusar depois de pagar duas consultas, e e provada por asserção NEGATIVA (ausencia de slug_invalido no corpo), nunca so pelo discriminante esperado
+- [Phase ?]: [Phase 01]: 01-18: o invariante mora em DOIS lugares — fronteira da action (porteiro, recusa antes de I/O) e funcao pura exportada (contrato que um terceiro chamador futuro herda); guarda so na action deixaria gerarSlotsAntiBuraco desprotegida
+- [Phase ?]: [Phase 01]: 01-18: vista estreita de uniao fechada e alias PROPRIO (MotivoSlotsPublicos), nunca alargamento do alias do vizinho — MotivoLeituraPublica descreve o que a resolucao de perfil produz, e ela nao sabe produzir data_invalida nem servico_invalido
+- [Phase ?]: [Phase 01]: 01-18: teto de duracao (1440 min) e seguro por construcao, nao restricao de produto — janelas de funcionamento sao horas dentro de um dia, entao duracao acima disso ja devolvia lista vazia silenciosa; o teto troca a lista vazia por discriminante honesto, com CONTROLE POSITIVO provando que a grade legitima nao mudou
+- [Phase ?]: [Phase 01]: 01-18: entrada hostil de visitante nao e logada nem reportada ao Sentry — e condicao esperada, e logar cada uma transformaria o mesmo endpoint anonimo num vetor de inundacao de log
 
 ### Pending Todos
 
@@ -244,6 +250,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T21:16:39.413Z
-Stopped at: Completed 01-17-PLAN.md
+Last session: 2026-07-22T21:31:39.113Z
+Stopped at: Completed 01-18-PLAN.md
 Resume file: None
