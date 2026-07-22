@@ -4,15 +4,15 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 1
 current_phase_name: Hardening da superfície pública
-status: planning
-stopped_at: Quick task 260721-jif entregue no código; Gate 1 e Gate 2 aguardam o owner (projetos Sentry/PostHog, secrets no Railway, validação visual)
-last_updated: "2026-07-21T22:43:11.935Z"
-last_activity: 2026-07-21
-last_activity_desc: etapa preparatória executada; Gate 1 e Gate 2 aguardam o owner
+status: ready_to_execute
+stopped_at: Phase 1 planejada (5 planos, 4 waves, verificação passou) — pronta para /gsd-execute-phase 1; Gate 1 e Gate 2 da etapa preparatória seguem aguardando o owner
+last_updated: "2026-07-22T02:30:00.000Z"
+last_activity: 2026-07-22
+last_activity_desc: Phase 1 planejada — 5 planos verificados, requisitos e decisões 100% cobertos
 progress:
   total_phases: 1
   completed_phases: 0
-  total_plans: 0
+  total_plans: 5
   completed_plans: 0
 ---
 
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 1 de 12 (Hardening da superfície pública) — **bloqueada** até os gates da etapa preparatória fecharem
-Plan: — (nenhum plano criado ainda)
-Status: Ready to plan (a Phase 1 depende da etapa preparatória "Fundação operacional")
-Last activity: 2026-07-21 — etapa preparatória executada; Gate 1 e Gate 2 aguardam o owner
+Phase: 1 de 12 (Hardening da superfície pública) — planejada; execução das waves de banco depende do MCP do Supabase autenticado (ou psql liberado) e os Gates 1/2 da etapa preparatória seguem com o owner
+Plan: 5 planos criados (0/5 executados) — waves 1–4 em `.planning/phases/01-hardening-da-superf-cie-p-blica/`
+Status: Ready to execute (`/gsd-execute-phase 1`)
+Last activity: 2026-07-22 — Phase 1 planejada: 5 planos, verificação passou na 1ª iteração, 5/5 requisitos e 7/7 decisões cobertos
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -108,6 +108,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-21T16:40:22.774Z
-Stopped at: Phase 1 context gathered — pronto para /gsd-plan-phase 1
-Resume file: .planning/phases/01-hardening-da-superf-cie-p-blica/01-CONTEXT.md
+Last session: 2026-07-22T02:30:00.000Z
+Stopped at: Phase 1 planejada — pronto para /gsd-execute-phase 1 (pré-requisito de owner: MCP do Supabase autenticado OU psql pelo pooler liberado, ver user_setup dos planos 01-01/01-04)
+Resume file: .planning/phases/01-hardening-da-superf-cie-p-blica/01-01-PLAN.md
