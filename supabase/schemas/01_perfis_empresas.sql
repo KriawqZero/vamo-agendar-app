@@ -1,7 +1,7 @@
 CREATE TABLE perfis_empresas (
     tenant_id text PRIMARY KEY, -- O org_id do Clerk
     slug text NOT NULL UNIQUE, -- O slug para o link público, ex: 'barbearia-do-ze'
-    slug_gratuito text NOT NULL, -- Slug aleatório gerado na criação; é o slug efetivo quando o plano não tem link personalizado
+    slug_gratuito text NOT NULL UNIQUE, -- Slug aleatório gerado na criação; é o slug efetivo quando o plano não tem link personalizado
     nome_estabelecimento text NOT NULL,
     descricao text,
     telefone_contato text,
@@ -55,7 +55,10 @@ COMMENT ON COLUMN perfis_empresas.slug IS 'Slug único utilizado na URL pública
 COMMENT ON COLUMN perfis_empresas.nome_estabelecimento IS 'Nome fantasia exibido no cabeçalho do agendamento.';
 COMMENT ON COLUMN perfis_empresas.cor_marca IS 'Cor de destaque (#rrggbb) aplicada como acento na página pública de booking (recurso do plano Pro). A página pública ignora o valor quando o plano vigente não inclui o recurso.';
 COMMENT ON COLUMN perfis_empresas.logo_url IS 'URL pública do logo no bucket imagens-perfis (upload próprio do tenant no dashboard; recurso do plano Pro). A página pública ignora o valor quando o plano vigente não inclui o recurso.';
-COMMENT ON COLUMN perfis_empresas.slug_gratuito IS 'Slug aleatório gerado no provisionamento do perfil. É o slug efetivo quando o plano não inclui link personalizado; o slug customizado fica reservado em `slug` e volta a valer no re-upgrade.';
+COMMENT ON COLUMN perfis_empresas.slug_gratuito IS 'Slug aleatório gerado no provisionamento do perfil. É o slug efetivo quando o plano não inclui link personalizado; o slug customizado fica reservado em `slug` e volta a valer no re-upgrade. ÚNICO (perfis_empresas_slug_gratuito_key): compartilha com `slug` um só namespace público.';
+
+COMMENT ON CONSTRAINT perfis_empresas_slug_gratuito_key ON perfis_empresas IS
+'`slug` e `slug_gratuito` não são duas colunas independentes: são dois membros de UM namespace público — o identificador do tenant na URL /book/<slug>. Sem esta constraint, dois tenants podiam carregar o mesmo `slug_gratuito` e os DOIS links viravam 404 (o maybeSingle do fallback erra com múltiplas linhas). Ela é a camada de baixo de três: a colisão `slug` de um tenant contra `slug_gratuito` de OUTRO é entre linhas e não cabe em constraint — fica em salvarPerfilEmpresa (recusa na escrita) e em resolverPerfilPublicoPorSlug (recusa de ambiguidade na leitura). O furo que as três fecham: o tenant A reivindicava o link de provisionamento do tenant B e passava a receber os agendamentos de B, com nome e telefone dos clientes finais dele.';
 COMMENT ON COLUMN perfis_empresas.capa_url IS 'URL pública da imagem de capa no bucket imagens-perfis (upload próprio do tenant no dashboard; recurso do plano Pro). A página pública ignora o valor quando o plano vigente não inclui o recurso.';
 COMMENT ON COLUMN perfis_empresas.instagram IS 'Handle do Instagram do estabelecimento, sem @ e em minúsculas (normalizado na action). Exibido como link na página pública; disponível em todos os planos.';
 COMMENT ON COLUMN perfis_empresas.endereco IS 'Endereço em texto livre exibido na página pública (vira link de busca no Google Maps). Disponível em todos os planos.';
