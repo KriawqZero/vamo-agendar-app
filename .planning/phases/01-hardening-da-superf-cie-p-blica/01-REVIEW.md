@@ -1,11 +1,17 @@
 ---
-phase: 01-hardening-da-superficie-publica
-reviewed: 2026-07-22T18:55:00Z
-depth: deep
-diff_base: b50d7e1
-rodada: 2 (planos 01-10 a 01-16)
-files_reviewed: 19
+phase: 01-hardening-da-superf-cie-p-blica
+rodada: 3 (planos 01-17 a 01-19, revisão de fase completa)
+reviewed: 2026-07-22T22:01:42Z
+depth: standard
+diff_base: 22b94f5
+head: f97677f
+files_reviewed: 43
 files_reviewed_list:
+  - docs/03-PADROES_DE_BANCO_DE_DADOS.md
+  - docs/09-OBSERVABILIDADE_E_EMAIL.md
+  - docs/PENDENCIAS.md
+  - scripts/verificar-controle-harness-anon.sh
+  - scripts/verificar-fail-fast-boot.sh
   - scripts/verificar-superficie-anon.sh
   - scripts/verificar-travessia-server-action.sh
   - src/app/actions/__tests__/public-booking-escrita.test.ts
@@ -15,522 +21,664 @@ files_reviewed_list:
   - src/app/api/webhooks/lembrete/route.ts
   - src/app/book/[slug]/BookingApp.tsx
   - src/app/book/[slug]/mensagens.ts
+  - src/app/book/[slug]/page.tsx
   - src/app/book/__tests__/mensagens.test.ts
+  - src/instrumentation.ts
   - src/lib/__tests__/assinaturas.test.ts
+  - src/lib/__tests__/booking-engine.test.ts
+  - src/lib/__tests__/env.test.ts
+  - src/lib/__tests__/qstash-assinatura.test.ts
   - src/lib/__tests__/whatsapp-helper.test.ts
   - src/lib/assinaturas.ts
+  - src/lib/booking-engine.ts
+  - src/lib/env.ts
   - src/lib/notificacoes-agendamento.ts
+  - src/lib/qstash-assinatura.ts
+  - src/lib/supabase/admin.ts
   - src/lib/whatsapp-helper.ts
+  - supabase/migrations/20260722044858_revoga_anon_assinaturas.sql
+  - supabase/migrations/20260722055941_fecha_policies_anon.sql
+  - supabase/migrations/20260722060000_fecha_data_api_para_anon.sql
+  - supabase/migrations/20260722145948_fecha_policies_residuais_servicos_horarios.sql
   - supabase/migrations/20260722183153_fecha_data_api_para_funcoes_futuras.sql
   - supabase/migrations/20260722185755_slug_gratuito_unico.sql
   - supabase/schemas/01_perfis_empresas.sql
-  - docs/03-PADROES_DE_BANCO_DE_DADOS.md
+  - supabase/schemas/02_servicos.sql
+  - supabase/schemas/03_horarios_funcionamento.sql
+  - supabase/schemas/04_excecoes_agenda.sql
+  - supabase/schemas/06_clientes.sql
+  - supabase/schemas/07_agendamentos.sql
+  - supabase/schemas/08_assinaturas.sql
+  - CLAUDE.md
 findings:
   critical: 2
   warning: 10
-  info: 0
-  total: 12
+  info: 6
+  total: 18
 status: issues_found
 ---
 
-# Phase 1 — 2ª rodada (01-10 a 01-16): Relatório de Code Review
+# Phase 1: Relatório de Code Review (3ª rodada)
 
-**Revisado:** 2026-07-22T18:55:00Z
-**Profundidade:** deep (grafo de imports, cadeia de chamadas, contratos entre módulos)
-**Base do diff:** `b50d7e1..HEAD`
-**Arquivos revisados:** 19
+**Revisado:** 2026-07-22T22:01:42Z
+**Profundidade:** standard
+**Base do diff:** `22b94f5` → `f97677f`
+**Arquivos revisados:** 43
 **Status:** issues_found
-
-> Este arquivo substitui o relatório da 1ª rodada (achados já fechados; versão
-> anterior preservada no histórico do git).
 
 ## Resumo
 
-Os cinco objetivos declarados da rodada foram alcançados, e a maioria com prova
-real — não com prosa:
+Esta revisão cobre a fase inteira, com peso na 3ª rodada (planos 01-17 a 01-19). O
+fechamento do portão de privilégio está correto e bem argumentado: as cinco migrations
+de `REVOKE`/`ALTER DEFAULT PRIVILEGES` são coerentes entre si, `service_role` nunca
+entra em linha de revogação, nenhuma policy `TO anon` sobrou nos schemas declarativos,
+e a decisão de fazer a revogação de funções **global** (sem `IN SCHEMA`) está certa e
+justificada. A guarda de profundidade do plano 01-18 foi conferida por execução:
+`gerarSlotsAntiBuraco` recusa duração ≤ 0, não-inteira, `NaN` e `±Infinity`, e a
+fronteira de `obterSlotsPublicos` recusa antes de qualquer `await` — o veredito
+`ENTRADA_HOSTIL`, exigindo a **ausência** de `slug_invalido` no corpo, realmente prova a
+ordem e não só o discriminante. `ehDataDeCalendario` também foi conferido por execução:
+`2027-02-30` e `2027-13-45` são recusados.
 
-- **Retorno discriminado.** A exaustividade é genuína: os dois
-  `Record<MotivoPublico, string>` (`mensagens.ts:102,126`) fazem membro novo
-  quebrar o `tsc` em vez de renderizar `undefined`. Nenhum caminho da caixa
-  vermelha ou do aviso âmbar consegue receber texto que não seja uma das onze
-  constantes do módulo. `pnpm test` roda em 442 ms, 228 casos, 15 arquivos, sem
-  rede e sem banco — a suíte de integração está de fato fora do glob
-  (`vitest.config.ts`) e só entra com `EXIGIR_INTEGRACAO=1`.
-- **Chave HMAC fora da query string.** `agendarLembreteQStash` publica
-  `${APP_URL}/api/webhooks/lembrete` sem parâmetro, e os quatro `console.error`
-  que ecoavam corpo de gateway foram reduzidos a `http_<status>`. As travas de
-  `whatsapp-helper.test.ts:205-271` medem isso de forma que pode falhar (o
-  fixture injeta a URL de destino e a chave no corpo e assere ausência).
-- **Namespace de slug.** As três camadas (constraint, recusa na escrita, recusa
-  de ambiguidade na leitura) existem, e a suíte de integração monta o
-  sequestrador de verdade com um caso de **CONTROLE** ao lado — sem ele, um
-  resolver que recusasse tudo passaria nos dois casos positivos.
-- **Eixos separados na degradação.** A metade restritiva
-  (`public-booking.ts:528`) força `PLANOS.gratuito.recursos` explicitamente e
-  está asserida contra um perfil com `cor_marca`/`logo_url`/`capa_url`
-  realmente gravados no banco. Não encontrei caminho em que o ramo permissivo
-  libere recurso pago: `dispararNotificacoesAgendamento` e o webhook releem o
-  plano e caem no ramo conservador; a personalização é a única superfície paga
-  da tela pública e é neutralizada nas duas pontas (`personalizacao` **e** os
-  campos crus do `perfil`).
+Os dois blockers estão em cima do que a fase mais promete. O primeiro é no instrumento
+de medição: o conserto do 01-17 fechou o falso verde no eixo "bateria inteira" e o
+deixou aberto no eixo "tabela a tabela" — o gate de prova positiva é um contador
+**global** e a `COBERTURA` conta *tentativas de curl*, não provas. Uma tabela que
+regredir para aberta-mas-vazia (`200 []`) ou que existir só no schema declarativo
+(`PGRST205` num nome declarado) é contabilizada como coberta, não reprova, e a última
+linha do relatório continua sendo uma afirmação positiva de fechamento com exit 0. É o
+WR-08 de novo, uma granularidade abaixo. O segundo está no caminho de ESCRITA anônimo,
+que ficou de fora do endurecimento de entrada que o caminho de LEITURA recebeu:
+`clienteNome` e `clienteEmail` chegam sem limite de tamanho e sem validação de formato e
+vão direto para `INSERT` com cliente privilegiado (RLS bypassado), tendo
+`serverActions.bodySizeLimit` de 6 MB como único teto.
 
-O que **não** está fechado, e por isso o status:
+Além disso, a guarda de horizonte da engine é uma comparação **lexicográfica** de
+strings, e o caminho de escrita — que não valida o formato de `dataHora` — consegue
+alimentá-la com um `dateStr` de ano com 5 dígitos que a derrota (medido:
+`"19999-12-31" > "2026-08-05"` é `false`).
 
-1. As duas Server Actions de slots continuam recebendo `duracaoMinutos` do
-   navegador sem validação nenhuma, e esse número alimenta direto a condição de
-   parada do laço de `gerarSlotsAntiBuraco`. Um valor negativo grande
-   transforma uma requisição anônima em segundos de event loop travado e
-   centenas de MB de heap — **medido nesta revisão**, não inferido (CR-01).
-2. `verificar-superficie-anon.sh` sai `0` e imprime uma afirmação de fechamento
-   mesmo quando nenhuma checagem mediu coisa alguma. O defeito WR-08 foi
-   corrigido no eixo do *nome da tabela* e reapareceu no eixo da *identidade do
-   endpoint* (CR-02).
+## Structural Findings (fallow)
 
-O resto são avisos: uma condicional que não pode ser falsa apresentada como
-guarda, a `.message` crua do Postgres ainda indo ao log no caminho público
-(exatamente o que esta rodada removeu do `whatsapp-helper.ts`) e os dois
-harnesses sem porta de entrada nenhuma.
+Nenhum bloco `<structural_findings>` foi fornecido nesta execução. Todas as observações
+abaixo são narrativas.
 
-`pnpm lint` e `pnpm test` foram executados nesta revisão e passaram.
-`pnpm build` **não** foi executado.
+## Narrative Findings (AI reviewer)
 
 ## Critical Issues
 
-### CR-01: `obterSlotsPublicos` aceita `duracaoMinutos` do navegador sem validação — laço praticamente ilimitado numa Server Action anônima
+### CR-01: O harness de superfície anônima ainda sai 0 declarando fechamento com tabelas que não provaram nada
 
-**Arquivo:** `src/app/actions/public-booking.ts:560-591` (consumidor:
-`src/lib/booking-engine.ts:144`)
+**Arquivo:** `scripts/verificar-superficie-anon.sh:167-184, 227-231, 282-292, 302-311, 490-507, 519-528`
 
 **Issue:**
-`obterSlotsPublicos(slug, dateStr, duracaoMinutos)` é um endpoint POST público
-— qualquer um lê o `Next-Action` id no bundle de `/book/<slug>` e chama com o
-payload que quiser. Os três argumentos são repassados sem nenhuma validação:
+O conserto do plano 01-17 acrescentou um gate de prova positiva, mas ele é um contador
+**global** (`ESPERADAS`), não por tabela. Combinado com outros três pontos, isso
+reintroduz o falso verde do WR-08 na granularidade de tabela:
 
-```ts
-const slots = await obterSlotsDisponiveis({
-    tenantId: perfil.tenant_id,
-    dateStr,                               // sem validação
-    duracaoServicoMinutos: duracaoMinutos, // sem validação
-    ...
-})
-```
+1. `marcar_checada "$tabela"` (linhas 168 e 320) é chamado **antes** do `curl`. A
+   `COBERTURA` (linha 493) só pergunta `tabela_foi_checada` — ou seja, mede "houve
+   tentativa de requisição", não "houve prova de fechamento".
+2. `HTTP 200` com array vazio vira `INCONCLUSIVO` (linhas 286-291), e `INCONCLUSIVAS`
+   não entra em gate nenhum de exit code.
+3. `PGRST205`/`404` num nome **declarado** vira `ESPERADO` e **incrementa `ESPERADAS`**
+   (linhas 303-306). Uma tabela que existe em `supabase/schemas/` mas nunca chegou ao
+   banco (drift entre schema declarativo e ledger de migrations — modo de falha que o
+   próprio `CLAUDE.md` documenta em cima de `apply_migration`) conta como prova positiva
+   de fechamento.
+4. O gate final só exige `ESPERADAS -gt 0` (linha 519) e `REPROVADAS -eq 0` (linha 526).
 
-Em `booking-engine.ts:144` o valor entra na condição de parada:
+Cenário concreto que passa hoje: uma fase futura reconcede `SELECT` a `anon` em
+`clientes`; a tabela está vazia no ambiente medido → `200 []` → `INCONCLUSIVO`;
+`perfis_empresas` continua devolvendo `42501` → `ESPERADAS = 1`; nenhuma reprovação →
+**exit 0**, com `[COBERTURA] todas as tabelas declaradas` na tela e a frase
+`a role anon não devolveu linha nenhuma` na última linha. A afirmação é literalmente
+verdadeira (a tabela estava vazia) e operacionalmente falsa (o portão está aberto).
 
-```ts
-for (let candidato = a; candidato + duracaoMinutos <= b; candidato += 15) {
-    candidatos.add(candidato)
+O veredito `[ALVO]` não cobre isso — ele só exige que **uma** tabela responda `42501`. E
+`verificar-controle-harness-anon.sh` também não: seus três cenários negativos são
+estados globais do alvo (morto, projeto errado, nega tudo), e nenhum deles monta um alvo
+**parcialmente** aberto.
+
+**Fix:**
+Tornar prova positiva e cobertura **por tabela**, e marcar a tabela só depois de saber o
+veredito:
+
+```bash
+declare -A VEREDITO_POR_TABELA=()
+
+registrar_tabela() { # $1 = tabela, $2 = veredito
+    local anterior="${VEREDITO_POR_TABELA[$1]:-}"
+    # ESPERADO ganha de tudo; os demais só preenchem vazio
+    if [ "$2" = 'ESPERADO' ] || [ -z "$anterior" ]; then
+        VEREDITO_POR_TABELA[$1]="$2"
+    fi
 }
+
+# COBERTURA passa a exigir PROVA, não tentativa
+for tabela in "${TABELAS_DECLARADAS[@]}"; do
+    if [ "${VEREDITO_POR_TABELA[$tabela]:-AUSENTE}" != 'ESPERADO' ]; then
+        registrar REPROVADO "COBERTURA — $tabela" \
+            "veredito ${VEREDITO_POR_TABELA[$tabela]:-AUSENTE} — nenhuma checagem PROVOU fechamento nesta tabela"
+    fi
+done
 ```
 
-Com `duracaoMinutos` negativo, a condição deixa de limitar a grade ao intervalo
-livre e passa a limitá-la a `|duracaoMinutos|`. Medição feita nesta revisão
-sobre a função pura, com um único intervalo `[480, 1080]`:
-
-| `duracaoMinutos` | entradas no `Set` | tempo |
-|---|---|---|
-| `-1_000_000` | 66.708 | 5 ms |
-| `-100_000_000` | 6.666.708 | 909 ms |
-
-O crescimento é linear: `-10_000_000_000` produz ~666 M entradas — OOM do
-processo Node antes de qualquer resposta, e o event loop bloqueado (não é I/O,
-é laço síncrono) durante todo o percurso, o que derruba **todas** as
-requisições em voo, não só a do atacante. Depois do laço ainda vem o `.filter()`
-com um `intervalos.find()` por candidato, que multiplica o custo.
-
-O caminho é alcançável com qualquer slug público válido (é o produto) e uma
-data dentro do horizonte (hoje serve). O produto **proíbe CAPTCHA** por
-invariante de Fricção Zero, então não existe camada acima que absorva isso: a
-validação de entrada é a única defesa disponível.
-
-Contraste que mostra que a inversão do modelo de confiança é acidental: o fluxo
-**autenticado** `obterSlotsDashboard` (`src/app/actions/agendamentos.ts:189`)
-valida `dateStr` com regex; o fluxo **público e anônimo** não valida nada.
-`dateStr` inválido hoje só não estoura por acaso — a comparação de string
-`dateStr > limiteData` (`booking-engine.ts:185`) devolve `[]` para qualquer
-lixo alfabético, e `obterSlotsPublicos` responde `{ ok: true, slots: [] }` a uma
-entrada malformada: exatamente a "grade calculada errada, sem sintoma" que o
-JSDoc da função afirma ter eliminado.
-
-**Fix:** validar na fronteira da action pública (e replicar em
-`obterSlotsDashboard`), devolvendo discriminante em vez de lançar:
-
-```ts
-// src/app/actions/public-booking.ts
-const DURACAO_MAXIMA_MINUTOS = 24 * 60
-
-export async function obterSlotsPublicos(
-    slug: string,
-    dateStr: string,
-    duracaoMinutos: number,
-): Promise<ResultadoSlots> {
-    // Os três argumentos vêm do navegador de um visitante sem sessão: entrada
-    // hostil por definição. `duracaoMinutos` alimenta a condição de parada do
-    // laço de gerarSlotsAntiBuraco — valor negativo vira laço praticamente
-    // ilimitado, e basta uma requisição para travar o processo.
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        return { ok: false, motivo: 'data_invalida' }
-    }
-    if (
-        !Number.isInteger(duracaoMinutos) ||
-        duracaoMinutos <= 0 ||
-        duracaoMinutos > DURACAO_MAXIMA_MINUTOS
-    ) {
-        return { ok: false, motivo: 'servico_invalido' }
-    }
-    ...
-}
-```
-
-`data_invalida` e `servico_invalido` já são membros de `MotivoPublico`, então
-os dois `Record` de `mensagens.ts` continuam compilando sem edição, e
-`mensagemDeMotivo` mapeia ambos para `COPY_ERRO_SLOTS` — a cópia contratada da
-caixa de horários. Recomendo **também** a guarda de profundidade na função
-pura, porque ela é o invariante de verdade e sobrevive a um terceiro chamador
-futuro:
-
-```ts
-// src/lib/booking-engine.ts, topo de gerarSlotsAntiBuraco
-if (!Number.isInteger(duracaoMinutos) || duracaoMinutos <= 0) return []
-```
+E fechar o buraco 3 junto (ver WR-06): `PGRST205` num nome declarado deve ser
+`INCONCLUSIVO`, nunca prova positiva. Acrescentar em
+`verificar-controle-harness-anon.sh` um quinto veredito `ALVO_PARCIAL` — um stub que
+responde `42501` num caminho e `200 []` nos demais —, exigindo que o harness **reprove**.
 
 ---
 
-### CR-02: `verificar-superficie-anon.sh` sai 0 afirmando fechamento quando não mediu nada — o falso verde do WR-08 mudou de eixo
+### CR-02: Escrita anônima grava campos de texto sem limite de tamanho nem validação, com RLS bypassado
 
-**Arquivo:** `scripts/verificar-superficie-anon.sh:390-407` (classificação em
-`:236-273` e `:290-329`)
+**Arquivo:** `src/app/actions/public-booking.ts:313-334, 444-464`
 
 **Issue:**
-O script é o artefato de prova de SEG-01 e o cabeçalho diz, corretamente, que
-"checagem que não prova nada não pode passar". O código não implementa isso em
-dois cenários concretos.
+`criarAgendamentoPublico` endureceu `clienteTelefone` (10–11 dígitos) e `dataHora`
+(`isNaN`), mas `clienteNome` e `clienteEmail` só passam por `!clienteNome` (truthy) e
+`?.trim() || null`. Não há limite de comprimento, não há validação de formato de e-mail,
+e `clientes.nome`/`clientes.email` são `text` sem `CHECK`
+(`supabase/schemas/06_clientes.sql:4-6`). O `INSERT` usa `createAdminClient()` — o RLS
+não filtra nada ali, e a própria action é, por desenho, "o porteiro que substitui o RLS"
+(comentário das linhas 408-413).
 
-**(a) Alvo inalcançável ⇒ tudo INCONCLUSIVO ⇒ exit 0 com frase de sucesso.**
-`INCONCLUSIVO` por decisão explícita não derruba o exit code (`:33-35`). Se o
-host não resolver ou a rede cair, `curl -s -w '%{http_code}'` devolve `000`;
-`[ -z "$codigo" ]` é **falso** (a string `000` não é vazia), a execução cai no
-ramo final e registra INCONCLUSIVO. Com as 11 checagens nesse estado,
-`REPROVADAS` é `0` e a linha 399 imprime:
+Consequência: qualquer visitante que conheça um slug público pode gravar, por
+requisição, até o teto de `serverActions.bodySizeLimit` (6 MB) de texto arbitrário na
+tabela `clientes` de um profissional qualquer, sem sessão e sem freio. O e-mail entra sem
+checagem sintática e é o campo que os e-mails transacionais do Resend vão consumir na
+fase seguinte.
 
-> `Resumo: 11 checagem(ns), 0 reprovada(s) — a role anon não devolveu linha nenhuma.`
+Esta é exatamente a assimetria que a 3ª rodada se propôs a eliminar: o caminho de
+LEITURA ganhou teto (`DURACAO_MAXIMA_MINUTOS`), formato (`FORMATO_DATA_ISO`) e semântica
+(`ehDataDeCalendario`) antes do primeiro `await`; o caminho de ESCRITA — o único que
+**persiste** dado de terceiro — não ganhou nenhum dos três para os campos que grava. O
+rate limiting está deferido em `docs/PENDENCIAS.md` e isso é decisão do owner; o limite
+de campo não está deferido em lugar nenhum e não depende de infraestrutura nova.
 
-Uma afirmação positiva de segurança emitida a partir de zero medição, com
-`exit 0`. É o que um agente, um `&&` de shell ou um humano com pressa lê.
+**Fix:**
 
-**(b) Projeto errado ⇒ tudo ESPERADO ⇒ exit 0 com linguagem de "prova
-positiva".** Basta `NEXT_PUBLIC_SUPABASE_URL` apontar para outro projeto
-Supabase (troca de ambiente, `.env.local` desatualizado, staging): nenhuma das
-nove tabelas existe lá, o PostgREST devolve `PGRST205`, `tabela_declarada`
-confirma o nome contra `supabase/schemas/*.sql` — que é **local**, não remoto —
-e todas as checagens viram ESPERADO. A COBERTURA também passa. O WR-08 foi
-fechado no eixo "o nome da tabela envelheceu"; o mesmo falso verde segue aberto
-no eixo "o alvo não é o banco que eu penso que é".
+```ts
+// junto de DURACAO_MAXIMA_MINUTOS, na mesma seção de constantes de fronteira
+const MAX_NOME_CLIENTE = 120
+const MAX_EMAIL_CLIENTE = 254 // RFC 5321
+const FORMATO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
-O script irmão desta mesma rodada já tem o remédio e não o compartilhou: o
-veredito `CONTROLE` de `verificar-travessia-server-action.sh:253-261` existe
-justamente para que um build quebrado não seja lido como falha (ou sucesso) do
-que se queria medir. Aqui não há controle positivo nenhum.
+// dentro de criarAgendamentoPublico, junto das guardas das linhas 321-334
+const nomeLimpo = clienteNome.trim()
+if (!nomeLimpo || nomeLimpo.length > MAX_NOME_CLIENTE) {
+    return { ok: false, motivo: 'campos_obrigatorios' }
+}
 
-**Fix:** exigir prova positiva antes de permitir o exit 0, e acrescentar um
-controle de identidade do alvo:
-
-```bash
-# Contador novo, ao lado de REPROVADAS/INCONCLUSIVAS
-ESPERADAS=0
-# ...em registrar(), no ramo *)
-ESPERADAS=$((ESPERADAS + 1))
-
-# ...antes do "Resumo:" final
-if [ "$ESPERADAS" -eq 0 ]; then
-    echo 'ERRO: nenhuma checagem produziu PROVA POSITIVA de fechamento.' >&2
-    echo 'Alvo inalcançável, projeto errado ou rede caída — isto NÃO é um verde.' >&2
-    exit 2
-fi
+const emailLimpo = clienteEmail?.trim() || null
+if (emailLimpo && (emailLimpo.length > MAX_EMAIL_CLIENTE || !FORMATO_EMAIL.test(emailLimpo))) {
+    return { ok: false, motivo: 'campos_obrigatorios' }
+}
 ```
 
-E um controle de alvo: um nome de tabela sabidamente inexistente
-(`tabela_canario_que_nao_existe`) tem de responder o **mesmo** `PGRST205` que
-uma tabela declarada e fechada. Se os dois forem indistinguíveis para o script,
-a bateria não está medindo fechamento — está medindo ausência, e precisa dizer
-isso em voz alta (exit 2) em vez de exibir ESPERADO.
-
-Enquanto isso não existir, o exit code deste script não deve ser usado como
-evidência de que a superfície anônima está fechada — só a leitura linha a linha
-do relatório serve, e é exatamente isso que ele foi escrito para evitar.
+Usar `nomeLimpo`/`emailLimpo` no `INSERT` (linhas 448-450) e na chamada de
+`dispararNotificacoesAgendamento` (linha 513). Espelhar o teto no banco
+(`CHECK (char_length(nome) <= 120)` em `supabase/schemas/06_clientes.sql`, migration via
+`db diff`) — mesmo padrão já usado em `perfis_empresas.endereco`. Acrescentar ao
+`verificar-travessia-server-action.sh` uma sonda com `clienteNome` de tamanho absurdo
+exigindo `campos_obrigatorios`, para a guarda não sumir sem aviso.
 
 ## Warnings
 
-### WR-01: a condicional que sustenta a "janela de plano indeterminado" não pode ser falsa
+### WR-01: A guarda de horizonte da engine é comparação lexicográfica, e o caminho de escrita a derrota
 
-**Arquivo:** `src/app/actions/public-booking.ts:224-226`
+**Arquivo:** `src/lib/booking-engine.ts:197-202`; `src/app/actions/public-booking.ts:331-334, 382`
 
-**Issue:** o bloco é apresentado como o limite exato do afrouxamento ("O
-afrouxamento é ESTE e nada mais: aceita-se o slug acessado se ele for uma das
-duas colunas do namespace público do perfil já encontrado"), mas a condição é
-tautologicamente falsa. `perfil` só pode ter vindo de `lerPerfilPor(admin,
-'slug', slug)` — e então `perfil.slug === slug` — ou de `lerPerfilPor(admin,
-'slug_gratuito', slug)` — e então `perfil.slug_gratuito === slug`. Não existe
-terceira origem: `const perfil = porCustomizado.data ?? porProvisionamento.data`
-(`:173`). Logo `slug !== perfil.slug && slug !== perfil.slug_gratuito` nunca é
-verdadeira, e o `return` interno é código morto.
+**Issue:**
+`if (dateStr > limiteData) return []` compara **strings**. A comparação só equivale à
+ordem cronológica enquanto os dois lados forem exatamente `YYYY-MM-DD` com 4 dígitos de
+ano — o que `obterSlotsPublicos` garante com `FORMATO_DATA_ISO`, mas
+`criarAgendamentoPublico` **não** garante.
 
-O comportamento resultante é o pretendido (durante a degradação aceita-se
-qualquer slug do namespace do perfil encontrado), mas quem ler depois vai
-acreditar que existe uma restrição ali. Regra permanente desta fase: asserção
-que não pode falhar não é asserção — e isso vale para o código de produção
-também, não só para os harnesses.
+Ali `dataHora` só é checado com `isNaN(new Date(dataHora).getTime())`, e `dateStr` sai de
+`diaLocal(dataLocal, timezone)`, que usa `Intl.DateTimeFormat` com `year: 'numeric'` e
+emite anos de 5 dígitos sem preencher. Medido:
 
-**Fix:** apagar o `if` interno e deixar o ramo explícito sobre o que de fato
-acontece.
+```
+new Date('+020000-01-01T00:00:00Z')  → válido
+diaLocal(...)                        → '19999-12-31'
+'19999-12-31' > '2026-08-05'         → false   // horizonte NÃO barra
+```
+
+A igualdade exata `sl.datetime === dataHora` ainda impede a gravação, então não há
+escrita indevida — mas a guarda de horizonte é contornável por entrada anônima e a
+requisição compra a cadeia inteira de consultas (perfil ×2, assinatura, serviço,
+horários, exceções, serviços ativos, agendamentos) antes de ser recusada. Mesma classe do
+defeito que o 01-18 corrigiu em `duracaoMinutos`, só que no operador em vez de na
+ausência de guarda.
+
+**Fix:**
 
 ```ts
-if (degradadoPorErro) {
-    // Plano desconhecido: NENHUMA comparação por slug efetivo. O perfil já foi
-    // encontrado por uma das duas colunas do namespace (é o invariante de
-    // `resolverPerfilPublicoPorSlug`), e a recusa de ambiguidade entre tenants
-    // já rodou acima — não há restrição adicional a aplicar aqui.
-} else if (obterSlugEfetivo(perfil, plano) !== slug) {
-    return { ok: false, motivo: 'slug_invalido' }
+// public-booking.ts — as mesmas guardas de fronteira do caminho de leitura
+const dataLocal = new Date(dataHora)
+if (isNaN(dataLocal.getTime())) return { ok: false, motivo: 'data_invalida' }
+const dateStr = diaLocal(dataLocal, timezone)
+if (!FORMATO_DATA_ISO.test(dateStr) || !ehDataDeCalendario(dateStr)) {
+    return { ok: false, motivo: 'data_invalida' }
+}
+
+// booking-engine.ts — comparação por instante, não por string
+if (regrasAcesso?.horizonteDias != null) {
+    const limiteData = somarDias(diaLocal(agora, timezone), regrasAcesso.horizonteDias)
+    if (Date.parse(`${dateStr}T00:00:00Z`) > Date.parse(`${limiteData}T00:00:00Z`)) return []
 }
 ```
 
 ---
 
-### WR-02: a `.message` crua do Postgres continua indo ao log no caminho público — a mesma higiene que esta rodada aplicou ao `whatsapp-helper.ts`
+### WR-02: `processarMensagemTemplate` expande padrões `$` vindos do nome digitado pelo visitante
 
-**Arquivos:** `src/app/actions/public-booking.ts:179, 368, 398, 422, 500`;
-`src/lib/assinaturas.ts:65, 133`
+**Arquivo:** `src/lib/whatsapp-helper.ts:34-40`
 
-**Issue:** o projeto tem o helper certo, criado exatamente para isto —
-`erroSinteticoSupabase()` reduz o erro a `supabase:<sqlstate>` porque, nas
-palavras do próprio arquivo, "mensagem do Postgres embute literais do input". O
-contexto do Sentry usa o helper; o `console.error` da linha imediatamente
-anterior manda a `.message` inteira ao log do Railway.
+**Issue:**
+`String.prototype.replace` com *replacement string* interpreta `$&`, `` $` ``, `$'` e
+`$n`. `clienteNome` é digitado por um visitante anônimo em `/book/[slug]` e vai cru para
+o `replace`. Medido:
 
-`public-booking.ts:368` é o caso mais grave: a consulta é
-`.eq('telefone', telefoneLimpo)`, ou seja, o literal que um erro de sintaxe do
-Postgres ecoaria é o **telefone do cliente final** — PII de terceiro num log de
-aplicação, contra o invariante permanente do projeto. E a ironia está escrita
-três linhas abaixo, no comentário que justifica o `erroSinteticoSupabase`.
+```js
+'Ola {{cliente}}, tudo bem?'.replace(/{{cliente}}/g, "$`")  // → 'Ola Ola , tudo bem?'
+'Ola {{cliente}}!'.replace(/{{cliente}}/g, '$&')            // → 'Ola {{cliente}}!'
+'Ola {{cliente}}!'.replace(/{{cliente}}/g, "$'")            // → 'Ola !!'
+```
 
-É a mesma contradição que a rodada acabou de resolver em
-`whatsapp-helper.ts:88-95` ("o `console.error` contradizia o próprio vizinho, e
-a trava anti-PII do Sentry não alcança o log do Railway"). O raciocínio está
-escrito, o remédio existe e foi aplicado em um arquivo só.
+O impacto direto é baixo (a mensagem vai para o WhatsApp do próprio visitante), mas é
+entrada hostil produzindo saída não prevista num caminho anônimo, e com `/g` mais um
+template que repete `{{cliente}}` a expansão se amplifica. Vale para os três valores
+substituídos, e a suíte `whatsapp-helper.test.ts` não tem nenhum caso com `$`.
 
-**Fix:** logar o rótulo derivado, não a mensagem — o `import` já está no
-arquivo.
+**Fix:** usar a forma de função, que não interpreta padrões:
 
 ```ts
-console.error('Erro ao buscar cliente existente:', erroSinteticoSupabase(cError).message)
+return template
+    .replace(/{{cliente}}/g, () => clienteNome)
+    .replace(/{{empresa}}/g, () => empresaNome)
+    .replace(/{{data_hora}}/g, () => dataHoraStr)
+    .replace(/{{data}}/g, () => dataPart || '')
+    .replace(/{{hora}}/g, () => horaPart || '')
 ```
-
-Vale para as sete ocorrências. `booking-engine.ts:203,226,253,292` está na mesma
-cadeia de chamada pública e merece a mesma passagem.
-
----
-
-### WR-03: nenhum dos dois harnesses tem porta de entrada — não há script, hook nem CI
-
-**Arquivos:** `scripts/verificar-superficie-anon.sh`,
-`scripts/verificar-travessia-server-action.sh`, `package.json`
-
-**Issue:** `package.json` tem `test` e `test:integracao`; não tem nada para os
-dois scripts. Não existe `.husky/` nem `.github/workflows/`. A única menção fora
-de `.planning/` é um comentário dentro de um teste. Os dois arquivos declaram no
-cabeçalho que existem para impedir uma regressão de voltar "sem ninguém ver" — e
-ambos dependem de alguém lembrar do caminho completo e digitar
-`bash scripts/...`. Trava que ninguém roda não trava nada, e a suíte de
-integração desta mesma rodada mostra que o padrão certo é conhecido (ganhou
-`pnpm test:integracao`).
-
-**Fix:** dar entrada nomeada aos dois e citá-los na Definition of Done do
-`CLAUDE.md` (ou em `docs/PENDENCIAS.md`, se o gate for manual por decisão
-consciente):
-
-```json
-"verificar:anon": "bash scripts/verificar-superficie-anon.sh",
-"verificar:travessia": "bash scripts/verificar-travessia-server-action.sh"
-```
-
----
-
-### WR-04: a "trava anti-afrouxamento" do harness anônimo não protege nada
-
-**Arquivo:** `scripts/verificar-superficie-anon.sh:78-82`
-
-**Issue:** a guarda compara `CODIGO_PERMISSAO_NEGADA` com a literal `'42501'` —
-escrita duas linhas acima, no mesmo arquivo. Quem afrouxar a constante lê a
-comparação no mesmo parágrafo e edita as duas; e um revisor que olhe o diff veria
-a mudança da constante de qualquer forma. Custo zero, benefício zero — e o
-efeito colateral não é neutro: dá a impressão de que o harness é auto-protegido,
-o que reduz a atenção de quem revisa o próximo diff dele.
-
-**Fix:** remover o bloco, ou trocá-lo por proteção real — tirar os códigos do
-arquivo (fixture versionado com hash conferido) ou simplesmente usar os literais
-inline nos pontos de uso, deixando óbvio que não há indireção a afrouxar.
-
----
-
-### WR-05: `TODOS_OS_MOTIVOS` não é exaustivo por construção, e o JSDoc do teste promete que é
-
-**Arquivo:** `src/app/book/__tests__/mensagens.test.ts:45-53, 127-153`
-
-**Issue:** `as const satisfies readonly MotivoPublico[]` reprova um literal que
-**não pertence** à união (renomeação quebra — essa parte do comentário está
-certa), mas não exige que todos os membros estejam presentes. Acrescente um
-oitavo membro a `MotivoPublico` e este array continua compilando: os três casos
-que dizem "para TODOS os membros" passariam cobrindo sete de oito, em silêncio.
-
-A exaustividade real existe e está no lugar certo — os dois
-`Record<MotivoPublico, string>` de `mensagens.ts` quebram o `tsc` —, então **não
-há buraco no comportamento entregue**. O buraco é na promessa do teste, que é
-justamente onde a próxima pessoa vai confiar em vez de reler o mapeador.
-
-**Fix:** derivar a lista do próprio mapeamento, em vez de redigitá-la:
 
 ```ts
-// mensagens.ts
-export const MOTIVOS_CONHECIDOS = Object.keys(COPIA_DO_ENVIO) as MotivoPublico[]
-
-// mensagens.test.ts
-import { MOTIVOS_CONHECIDOS } from '@/app/book/[slug]/mensagens'
+// whatsapp-helper.test.ts
+it('não expande padrões de replacement vindos do nome do cliente', () => {
+    expect(processarMensagemTemplate({
+        template: 'Ola {{cliente}}, tudo bem?', clienteNome: "$`",
+        empresaNome: 'E', dataHoraStr: '01/01/2027 às 10:00',
+    })).toBe('Ola $`, tudo bem?')
+})
 ```
-
-Membro novo entra na iteração sem ninguém lembrar, e o `Record` continua sendo o
-portão de compilação.
 
 ---
 
-### WR-06: a guarda cruzada de namespace em `salvarPerfilEmpresa` é unidirecional
+### WR-03: A justificativa do deferimento do rate limiting em PENDENCIAS ficou falsa depois desta fase
 
-**Arquivo:** `src/app/actions/perfis-empresas.ts:206-221` (origem dos valores não
-checados em `:184` e `:82-93`)
+**Arquivo:** `docs/PENDENCIAS.md:807-838`
 
-**Issue:** a checagem cobre `slugFinal` (o que vai para a coluna `slug`) contra o
-`slug_gratuito` dos outros tenants. A direção oposta não é coberta por ninguém: o
-`slug_gratuito` **recém-sorteado** nunca é comparado com o `slug` de outro
-tenant, e nenhuma constraint expressa esse cruzamento
-(`perfis_empresas_slug_gratuito_key` é `slug_gratuito` × `slug_gratuito`;
-`perfis_empresas_slug_key` é `slug` × `slug`). Duas origens:
+**Issue:**
+A seção "Rate limiting e proteção contra agendamentos falsos/abuso" não foi tocada no
+diff da fase (`git diff 22b94f5..HEAD -- docs/PENDENCIAS.md` não a traz) e continua
+afirmando:
 
-- `:184` — perfil novo já em plano pago: `slugGratuito = gerarSlugAleatorio()`, e
-  o `if (slugFinal !== slugGratuito)` roda a checagem só sobre `slugFinal`;
-- `:82-93` (`obterPerfilEmpresa`, auto-provisionamento) — grava o mesmo sorteio
-  nas duas colunas sem checagem cruzada alguma.
+> **Pior:** o INSERT direto pela Data API contorna qualquer proteção que fosse colocada
+> na action — **este item depende do item de integridade acima**.
 
-A probabilidade é baixa (8 caracteres base36, com um leve viés de módulo em
-`gerarSlugAleatorio`), mas a consequência não é benigna nem simétrica ao CR-03
-original: com o resolver novo, a colisão não entrega a página ao tenant errado —
-ela faz `resolverPerfilPublicoPorSlug` recusar por ambiguidade e **os dois links
-caem em 404**, sem sintoma no dashboard de nenhum dos dois profissionais. É o
-"caso degenerado" que a própria migration `20260722185755` descreve, por uma
-porta que ela não fecha.
+Isso deixou de ser verdade em `20260722060000_fecha_data_api_para_anon.sql`
+(`revoke all on all tables in schema public from anon`) somado a
+`20260722055941_fecha_policies_anon.sql`, que removeu as policies de `INSERT` anônimo de
+`clientes` e `agendamentos`. Não existe mais caminho de escrita anônima pela Data API,
+então a dependência declarada não existe e o rate limit na action passou a ser
+suficiente — ou seja, este item foi **destravado** por esta fase.
 
-**Fix:** checar as duas direções (duas queries `.eq()` separadas — nunca um
-`or()` montado com o valor) e re-sortear em caso de colisão:
+O `CLAUDE.md` §"Definition of Done" item 6 exige atualizar `docs/PENDENCIAS.md` quando a
+mudança criar ou adiar tarefas; aqui ela destravou uma, e o documento segue descrevendo o
+mundo anterior. Quem ler o backlog na próxima fase vai deferir de novo pelo motivo errado.
+
+**Fix:**
+
+```md
+**Estado atual verificado (Phase 1, 2026-07-22):** nenhuma proteção existe (sem rate
+limit, honeypot ou CAPTCHA). O bypass pela Data API **deixou de existir**: a role `anon`
+perdeu todo privilégio (`20260722060000`) e as policies de INSERT anônimo foram removidas
+(`20260722055941`), então `criarAgendamentoPublico` é hoje o único caminho de escrita
+pública — proteção posta na action não é mais contornável.
+
+**Dependências/decisões:** ~~item de integridade primeiro~~ — **destravado pela Phase 1**.
+Falta escolher os limites iniciais e a chave (IP, telefone, tenant).
+```
+
+---
+
+### WR-04: A confirmação síncrona de WhatsApp é aguardada no caminho anônimo sem timeout
+
+**Arquivo:** `src/app/actions/public-booking.ts:510-517`; `src/lib/whatsapp-helper.ts:75-85, 161-172, 210-215`
+
+**Issue:**
+`await dispararNotificacoesAgendamento(...)` acontece depois de o `INSERT` já ter sido
+confirmado, mas antes de `criarAgendamentoPublico` retornar. Dentro dele há dois `fetch`
+para terceiros (Evolution API na Railway e QStash) sem `AbortSignal` e sem timeout. O
+`fetch` do Node (undici) usa `headersTimeout`/`bodyTimeout` padrão de 300 s: um gateway
+pendurado segura a requisição de um visitante anônimo por até cinco minutos, com o
+agendamento já gravado.
+
+O invariante "mensageria jamais quebra a criação de um agendamento"
+(`notificacoes-agendamento.ts:28`) é respeitado no *erro*, mas não na *latência*. Como o
+link é público e sem sessão, isso é superfície de esgotamento de conexões acessível a
+qualquer um.
+
+**Fix:**
 
 ```ts
-const { count: colideComoGratuito } = await admin
-    .from('perfis_empresas').select('tenant_id', { count: 'exact', head: true })
-    .eq('slug_gratuito', slugFinal).neq('tenant_id', orgId)
+const TIMEOUT_GATEWAY_MS = 8_000
 
-const { count: colideComoCustomizado } = await admin
-    .from('perfis_empresas').select('tenant_id', { count: 'exact', head: true })
-    .eq('slug', slugGratuito).neq('tenant_id', orgId)
+const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: instanceToken },
+    body: JSON.stringify({ number: destinatario, text: texto }),
+    signal: AbortSignal.timeout(TIMEOUT_GATEWAY_MS),
+})
 ```
 
----
-
-### WR-07: três cópias visíveis ao cliente final ficaram fora de `mensagens.ts`
-
-**Arquivo:** `src/app/book/[slug]/BookingApp.tsx:258, 264, 268`
-
-**Issue:** `mensagens.ts:121` afirma "fonte única de cópia continua valendo: cada
-string existe uma vez, neste arquivo". Três strings que o cliente final lê na
-caixa vermelha do formulário de contato continuam inline no componente:
-`'Escolha o serviço e o horário antes de confirmar.'`, `'Informe seu nome.'` e
-`'Informe o WhatsApp com DDD (10 ou 11 dígitos).'`. Não vazam nada, mas ficam
-fora do pino byte a byte de `mensagens.test.ts` e fora da varredura de
-identificadores proibidos que itera o módulo (`:163-174`) — que é exatamente a
-garantia que o arquivo diz oferecer.
-
-**Fix:** movê-las para `mensagens.ts` como `COPY_*` e importá-las; entram
-automaticamente nas duas asserções de módulo já existentes.
+O `catch` existente já converte o `TimeoutError` em `{ ok: false, motivo: 'erro_rede' }`;
+vale um `motivo: 'timeout'` próprio para distinguir em `disparos_whatsapp`. Aplicar o
+mesmo em `agendarLembreteQStash` e `cancelarLembreteQStash`.
 
 ---
 
-### WR-08: `ResolucaoPerfil` é exportado e nunca importado
+### WR-05: A sonda `[ALVO]` descarta em silêncio a evidência mais forte de superfície aberta
 
-**Arquivo:** `src/app/actions/public-booking.ts:70`
+**Arquivo:** `scripts/verificar-superficie-anon.sh:398-430`
 
-**Issue:** é o tipo de retorno de uma função **privada** do módulo
-(`resolverPerfilPublicoPorSlug`). Nenhum arquivo do repositório o importa. Num
-arquivo `'use server'`, superfície exportada é a coisa que menos deve crescer por
-inércia — e o vizinho `MotivoLeituraPublica` (`:51`), do mesmo escopo,
-corretamente não é exportado.
+**Issue:**
+`sondar_tabela` faz `GET /rest/v1/<tabela>?select=*&limit=1` em **todas** as tabelas
+declaradas até achar uma que responda `42501`. Se alguma responder `HTTP 200` com linhas
+— o pior resultado possível, e com `select=*` — o corpo é jogado fora: o laço só testa
+`corpo_tem_codigo "$SONDA_CORPO" "$CODIGO_PERMISSAO_NEGADA"` e segue adiante.
+`SONDA_CORPO` só chega ao relatório no ramo de falha do `[ALVO]`, que nem é alcançado se
+outra tabela responder `42501`.
 
-**Fix:** remover o `export` de `ResolucaoPerfil`. `MotivoPublico`,
-`ResultadoSlots`, `ResultadoAgendamentoPublico` e `AgendamentoCriado` têm
-consumidor e ficam.
+Ou seja: o instrumento já faz uma varredura completa de leitura com `select=*` e, se ela
+encontrar dado vazado numa tabela cuja `checar_leitura` usa outra query, não diz nada.
+
+**Fix:** avaliar o resultado da sonda em vez de descartá-lo:
+
+```bash
+for tabela in "${TABELAS_DECLARADAS[@]}"; do
+    sondar_tabela "$tabela"
+    if [ "$SONDA_CODIGO" = '200' ] && tem_linhas "$SONDA_CORPO"; then
+        registrar REPROVADO "$tabela — sonda ALVO ?select=*&limit=1" \
+            "HTTP 200 COM LINHAS: $(resumir "$SONDA_CORPO")"
+    fi
+    ...
+done
+```
+
+Ganho de cobertura de graça: a varredura já acontece, hoje só não é lida.
 
 ---
 
-### WR-09: na migration de funções, o REVOKE é global e o GRANT para `service_role` é por schema
+### WR-06: O harness afirma duas coisas incompatíveis sobre como uma tabela totalmente fechada responde
 
-**Arquivo:** `supabase/migrations/20260722183153_fecha_data_api_para_funcoes_futuras.sql:93-101`
+**Arquivo:** `scripts/verificar-superficie-anon.sh:22-27, 70-78, 302-311, 413-430`
 
-**Issue:** o raciocínio da alínea (iii) está certo e é bem medido — a revogação
-precisa mesmo ser global. Mas o par ficou assimétrico:
+**Issue:**
+O cabeçalho (linhas 24-27) afirma que "perda total de privilégio tira a tabela do schema
+cache do PostgREST", e a linha 303 aceita `PGRST205`/`404` num nome declarado como
+`ESPERADO` **e** como prova positiva. Mas a sonda de referência do `[ALVO]` (linhas
+418-430) exige explicitamente `42501` de uma tabela declarada e diz, no comentário da
+linha 417, que `PGRST205`/`404` na referência "NÃO serve".
+
+As duas afirmações não podem ser o estado de repouso ao mesmo tempo. Depois de
+`revoke all on all tables in schema public from anon`, as nove tabelas estão no mesmo
+estado — ou todas devolvem `42501` (e o ramo `PGRST205` é código morto que só serve para
+aceitar tabela **inexistente** como fechada, o buraco 3 do CR-01), ou todas devolvem
+`PGRST205` (e o `[ALVO]` nunca acha referência, o harness sai 2 para sempre e o veredito
+`CONTROLE` de `verificar-controle-harness-anon.sh` reprova permanentemente).
+
+Como a rodada reporta o harness passando, o estado real é `42501` — logo, o ramo
+`PGRST205` documentado como "fechamento legítimo" é, na prática, o ramo que aceita drift
+de schema como prova.
+
+**Fix:** decidir o contrato e escrevê-lo uma vez só. Recomendado: manter `42501` como a
+**única** prova positiva de fechamento (é a resposta do sistema de privilégios do
+Postgres, que é o objeto de medição) e rebaixar `PGRST205`/`404` em nome declarado a
+`INCONCLUSIVO`, com mensagem explícita: "a tabela consta dos schemas declarativos mas não
+está no schema cache — schema drift entre `supabase/schemas/` e o banco, não fechamento".
+Isso alinha os dois vereditos e fecha o buraco 3 do CR-01 na mesma edição.
+
+---
+
+### WR-07: A porta do harness de fail-fast não é sobrescrevível, ao contrário dos dois irmãos
+
+**Arquivo:** `scripts/verificar-fail-fast-boot.sh:81`
+
+**Issue:**
+`PORTA=3991` é literal. `verificar-travessia-server-action.sh:113` usa
+`${PORTA_TRAVESSIA:-3992}` e `verificar-controle-harness-anon.sh:87` usa
+`${PORTA_CONTROLE:-3993}`. Com 3991 ocupada, este harness aborta com código 2 (linha 189)
+e não há saída documentada — o operador precisa editar o script, que é justamente o que
+os cabeçalhos dos três pedem para não acontecer ("harness afrouxado não é harness"). Numa
+máquina onde uma execução anterior deixou um `next start` órfão, o instrumento fica
+inutilizável.
+
+**Fix:**
+
+```bash
+PORTA="${PORTA_FAIL_FAST:-3991}"
+```
+
+e acrescentar a variante na seção `USO` do cabeçalho, como os dois irmãos já fazem.
+
+---
+
+### WR-08: `slug` é o único argumento das actions públicas que atravessa sem limite antes de virar consulta
+
+**Arquivo:** `src/app/actions/public-booking.ts:157-163, 528-537, 618-660`
+
+**Issue:**
+`obterSlotsPublicos` valida `dateStr` e `duracaoMinutos` antes do primeiro `await` — e o
+comentário das linhas 623-641 explica bem por quê —, mas `slug` não passa por validação
+nenhuma. Ele vai direto para `resolverPerfilPublicoPorSlug`, que dispara **duas**
+consultas `.eq()` em paralelo com `createAdminClient()`.
+
+`slug` chega de um navegador sem sessão pelo corpo de uma Server Action (teto de 6 MB) e a
+coluna é `text` sem `CHECK` de tamanho (`supabase/schemas/01_perfis_empresas.sql:3-4`).
+Não há injeção — o `.eq()` parametriza corretamente, e o comentário das linhas 197-200
+explica bem por que não se usa `.or(...)` —, mas a requisição compra duas consultas
+indexadas com uma chave arbitrariamente grande. O formato legítimo é conhecido e estreito:
+`salvarPerfilEmpresa` sanitiza para `[a-z0-9-_]` com mínimo de 3, e `gerarSlugAleatorio`
+produz 8 caracteres base36.
+
+**Fix:** guarda de fronteira nas três funções públicas, antes de `createAdminClient()`:
+
+```ts
+/** Mesmo alfabeto que `salvarPerfilEmpresa` produz, com teto folgado. */
+const FORMATO_SLUG_PUBLICO = /^[a-z0-9_-]{3,64}$/
+
+// no topo de obterSlotsPublicos, criarAgendamentoPublico e obterDadosBookingPublico
+if (!FORMATO_SLUG_PUBLICO.test(slug)) {
+    return { ok: false, motivo: 'slug_invalido' } // ou `null` em obterDadosBookingPublico
+}
+```
+
+Acrescentar uma sonda `SLUG_HOSTIL` em `verificar-travessia-server-action.sh`, no mesmo
+molde de `ENTRADA_HOSTIL` (exigindo o discriminante e a ausência de qualquer sinal de que
+o banco foi consultado).
+
+---
+
+### WR-09: Nenhuma das provas do namespace de slug, da degradação de plano e da escrita pública roda no gate de DoD
+
+**Arquivo:** `src/app/actions/__tests__/public-booking-escrita.test.ts:1-33`; `vitest.config.ts:10-30`
+
+**Issue:**
+A suíte que prova o CR-03 (namespace ambíguo entre tenants), o WR-07 (degradação por
+falha de leitura de plano), a sanitização de personalização paga e o contrato anti
+double-booking está excluída do glob padrão e só roda com `EXIGIR_INTEGRACAO=1`. O
+`CLAUDE.md` §"Definition of Done" item 1 define o gate como `pnpm lint`, `pnpm test` e
+`pnpm build` — e `pnpm test` não executa nenhuma delas.
+
+A exclusão é bem justificada (a suíte escreve no Supabase compartilhado) e a sentinela das
+linhas 302-317 é uma boa ideia, mas ela só reprova quando `EXIGIR_INTEGRACAO=1`; sob
+`pnpm test` cai no ramo de escape. O resultado prático: o invariante mais caro que a fase
+produziu — o sequestro de link entre tenants — pode ser desfeito por uma fase futura sem
+que o gate que o projeto usa diga uma palavra.
+
+**Fix:** não misturar as suítes; tornar a segunda obrigatória onde importa.
+
+```jsonc
+// package.json
+"test:tudo": "vitest run && EXIGIR_INTEGRACAO=1 vitest run src/app/actions/__tests__/public-booking-escrita.test.ts"
+```
+
+E registrar em `CLAUDE.md` §"Definition of Done" que mudança em
+`src/app/actions/public-booking.ts`, `src/lib/assinaturas.ts` ou nos schemas de
+`perfis_empresas` exige `pnpm test:integracao` além dos três — com o motivo escrito (a
+suíte é a única prova executável do invariante de namespace).
+
+---
+
+### WR-10: `menorDuracaoAtiva` não tem guarda, e serviço com duração 0 é alcançável pelo dashboard
+
+**Arquivo:** `src/lib/booking-engine.ts:148-180, 271-274`; `supabase/schemas/02_servicos.sql:7`
+
+**Issue:**
+A guarda de profundidade do 01-18 protege `duracaoMinutos`, mas `menorDuracaoAtiva` entra
+sem checagem na regra anti-buraco (`gapAntes >= menorDuracaoAtiva`, linha 177). Ela vem de
+`Math.min(...duracoesAtivas)` sobre `servicos.duracao_minutos`, coluna
+`integer NOT NULL DEFAULT 30` **sem `CHECK`**. Do lado da action, `salvarServico`
+(`src/app/actions/servicos.ts:52`) valida apenas `input.duracaoMinutos <= 0` — sem
+`Number.isInteger` —, então `0.4` passa a validação e o Postgres arredonda para `0` ao
+gravar em `integer`.
+
+Com um único serviço de duração 0 no tenant, `menorDuracaoAtiva = 0` e `gapAntes >= 0` é
+sempre verdadeiro: a regra anti-buraco é anulada para **todos** os serviços daquele
+tenant, e a grade volta a ser de 15 em 15 minutos com sobras invendáveis — exatamente o
+que `gerarSlotsAntiBuraco` existe para evitar, degradando em silêncio. Com duração `NaN`
+(join que falhe) o efeito é o inverso: só os candidatos colados nas bordas sobrevivem.
+
+**Fix:**
+
+```ts
+// booking-engine.ts, junto da guarda de contrato
+if (!Number.isInteger(duracaoMinutos) || duracaoMinutos <= 0) return []
+if (!Number.isInteger(menorDuracaoAtiva) || menorDuracaoAtiva <= 0) {
+    // Dado de origem inconsistente: cai para a própria duração pedida — mesmo
+    // fallback já usado quando o tenant não tem serviço ativo.
+    menorDuracaoAtiva = duracaoMinutos
+}
+```
 
 ```sql
-alter default privileges for role postgres
-  revoke all on functions from public;              -- GLOBAL, todos os schemas
-
-alter default privileges for role postgres in schema public
-  grant execute on functions to service_role;       -- só o schema public
+-- supabase/schemas/02_servicos.sql (migration via db diff)
+duracao_minutos integer NOT NULL DEFAULT 30 CHECK (duracao_minutos BETWEEN 5 AND 1440),
 ```
 
-A alínea "Custo aceito" nomeia a consequência global apenas para
-`anon`/`authenticated`. Ela vale igualmente para `service_role`: função criada
-pelo `postgres` em qualquer schema que não `public` nasce inexecutável também
-pelo `createAdminClient()` — e desde a D-02 é ele que atende **todo** o caminho
-público (perfil, plano, serviços, engine, cliente, escrita do agendamento). É
-precisamente a role que a alínea (iv) diz que nunca pode ficar de fora, ficando
-de fora por um caminho lateral.
+E acrescentar `Number.isInteger(input.duracaoMinutos)` mais teto em `salvarServico`, para
+o erro chegar ao profissional com mensagem em vez de virar `23514` cru.
 
-**Fix:** tornar o GRANT global (simétrico ao REVOKE), ou acrescentar
-`service_role` ao parágrafo de custo da migration **e** ao checklist de
-`docs/03-PADROES_DE_BANCO_DE_DADOS.md`, para que a próxima função fora de
-`public` não descubra isso em produção.
+## Info
 
----
+### IN-01: Ponteiro de linha desatualizado no handoff da Phase 2
 
-### WR-10: `plano_indeterminado` não entrou no vocabulário documentado de `disparos_whatsapp.motivo`
+**Arquivo:** `docs/PENDENCIAS.md:765-767`
 
-**Arquivos:** `src/app/api/webhooks/lembrete/route.ts:124`;
-`supabase/schemas/09_disparos_whatsapp.sql` (`COMMENT ON COLUMN ... motivo`)
+**Issue:** O handoff afirma que "o ponteiro correto hoje é `src/lib/booking-engine.ts:303`"
+para `const duracao = ag.servicos?.duracao_minutos || 30`. Depois da guarda do 01-18 o
+trecho está na linha **317**. O parágrafo existe justamente para corrigir um ponteiro que
+envelheceu — e envelheceu de novo na mesma rodada.
 
-**Issue:** o `COMMENT ON COLUMN` enumera o vocabulário de motivos
-(`agendamento_cancelado`, `plano_sem_whatsapp`, `whatsapp_desconectado`,
-`erro_rede`, `http_<código>`) e a rodada acrescentou um sexto sem atualizá-lo. O
-`CLAUDE.md` exige `COMMENT ON` com a intenção de negócio justamente para o banco
-ser legível sem o código ao lado — e este motivo é o único do conjunto que
-significa "a tentativa vai se repetir", o que muda como um painel de auditoria
-deve contá-lo.
-
-Correlato, e igualmente não documentado: esse ramo devolve 500 e grava uma linha
-de auditoria **por retentativa** do QStash. É append-only por design e o volume é
-irrelevante, mas quem construir o painel da Phase 11 precisa saber que essa é a
-única linha que duplica legitimamente.
-
-**Fix:** acrescentar `plano_indeterminado` ao `COMMENT ON COLUMN`, marcando que é
-transitório, e registrar a duplicação esperada em `docs/PENDENCIAS.md` junto do
-WR-06 já deferido.
+**Fix:** citar o símbolo em vez do número (o `map` de `slotsOcupados` em
+`booking-engine.ts`), ou revalidar o número no fechamento de cada plano que toque o arquivo.
 
 ---
 
-_Revisado: 2026-07-22T18:55:00Z_
+### IN-02: Referência do projeto Supabase gravada em documentação versionada
+
+**Arquivo:** `docs/03-PADROES_DE_BANCO_DE_DADOS.md` (§"Procedência da medição")
+
+**Issue:** A URL completa do projeto (`https://<ref>.supabase.co`) foi escrita na doc. Não
+é segredo — a mesma URL vai para o bundle do navegador via `NEXT_PUBLIC_SUPABASE_URL` —,
+mas pina a referência do projeto de DEV num artefato que sobrevive à troca de credenciais
+prevista antes do lançamento, e o histórico do git não esquece.
+
+**Fix:** trocar por `<ref-do-projeto-de-dev>` ou pelo nome da variável, como os três
+harnesses já fazem ("só NOMES aparecem na saída").
+
+---
+
+### IN-03: `try/catch` em torno de `capturarEventoTenant` é código morto (5 ocorrências)
+
+**Arquivo:** `src/app/actions/public-booking.ts:397-401, 489-493, 498-504`; `src/app/actions/agendamentos.ts:153-157, 381-389, 543-549`
+
+**Issue:** `capturarEventoTenant` → `hashTenantId` (`createHash().update().digest()`, não
+lança) → `capturarEventoServidor`, que já tem `try/catch` interno e é documentado como
+"Nenhum caminho lança" (`src/lib/analytics/server.ts:22`). Os blocos são inalcançáveis.
+Não é dano, mas o webhook de lembrete chama a mesma função **sem** `try/catch`
+(`route.ts:229, 242`) — o repositório documenta duas crenças opostas sobre o mesmo contrato.
+
+**Fix:** escolher uma. Se "nunca lança" vale, remover os cinco blocos e apontar o JSDoc; se
+não vale, o webhook precisa dos seus — e ali importa: uma exceção na linha 242 cairia no
+`catch` externo, viraria 500, o QStash retentaria e o lembrete **já enviado** seria
+duplicado.
+
+---
+
+### IN-04: Ramo de escape da sentinela assere a condição que acabou de testar
+
+**Arquivo:** `src/app/actions/__tests__/public-booking-escrita.test.ts:303-307`
+
+**Issue:**
+
+```ts
+if (process.env.EXIGIR_INTEGRACAO !== '1') {
+    expect(process.env.EXIGIR_INTEGRACAO).not.toBe('1')
+    return
+}
+```
+
+A asserção é a negação literal da condição do `if` — não pode falhar. Serve só para o caso
+não ficar sem `expect`.
+
+**Fix:** `it.skipIf(process.env.EXIGIR_INTEGRACAO !== '1')(...)`, que deixa o caso
+visivelmente pulado no relatório em vez de verde por tautologia.
+
+---
+
+### IN-05: Viés de módulo em `gerarSlugAleatorio`
+
+**Arquivo:** `src/app/actions/perfis-empresas.ts:363-367`
+
+**Issue:** `b % 36` sobre bytes 0–255: como `256 = 7×36 + 4`, os dígitos `0`–`3` saem com
+probabilidade 8/256 e os demais com 7/256. O slug do plano Gratuito é descrito como "link
+opaco" e funciona como capacidade — o viés reduz (pouco) a entropia efetiva dos 8
+caracteres.
+
+**Fix:** rejeição de amostra (descartar bytes ≥ 252) ou `crypto.randomInt(0, 36)` por
+caractere.
+
+---
+
+### IN-06: Nome e telefone não sanitizados vão à mensageria enquanto as versões limpas vão ao banco
+
+**Arquivo:** `src/app/actions/public-booking.ts:444-464, 510-517`
+
+**Issue:** O `INSERT` grava `clienteNome.trim()` e `telefoneLimpo`;
+`dispararNotificacoesAgendamento` recebe `clienteNome` e `clienteTelefone` crus. Não há
+dano hoje (`enviarMensagemWhatsApp` refaz `replace(/\D/g, '')` e o nome só é interpolado),
+mas duas representações do mesmo dado divergindo dentro da mesma função é o tipo de detalhe
+que fica errado quando alguém acrescentar um consumidor no meio — e é o vetor do WR-02.
+
+**Fix:** extrair `nomeLimpo`/`telefoneLimpo` uma vez (junto do fix do CR-02) e usar as
+mesmas variáveis nos dois lugares.
+
+---
+
+_Revisado: 2026-07-22T22:01:42Z_
 _Revisor: Claude (gsd-code-reviewer)_
-_Profundidade: deep_
+_Profundidade: standard_
