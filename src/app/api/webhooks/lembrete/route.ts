@@ -10,22 +10,34 @@ import { PLANOS } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 import { capturarEventoTenant } from '@/lib/analytics/server'
 import { reportarExcecaoAguardando } from '@/lib/observabilidade/reportar'
+import { verificarAssinaturaQstash } from '@/lib/qstash-assinatura'
 
 export async function POST(req: NextRequest) {
     try {
-        // 1. Validar Token/Assinatura do Webhook via Query Params
-        const { searchParams } = new URL(req.url)
-        const secret = searchParams.get('secret')
-        const qstashSecret = process.env.QSTASH_CURRENT_SIGNING_KEY || 'secret-key'
+        // 1. Autenticar pela assinatura criptográfica do QStash.
+        const assinatura = req.headers.get('upstash-signature')
+        // O corpo só pode ser lido UMA vez, e a verificação exige o texto cru:
+        // qualquer reserialização muda os bytes e invalida a assinatura.
+        const corpoCru = await req.text()
 
-        if (secret !== qstashSecret) {
+        // `url: req.url` (e não uma constante montada de APP_URL): a claim `sub`
+        // do JWT carrega a URL de publicação COM a query string, e os lembretes
+        // já em voo foram publicados com `?secret=`. URL montada de constante
+        // daria mismatch e mataria todos eles em silêncio.
+        const autenticado = await verificarAssinaturaQstash({
+            assinatura,
+            corpoCru,
+            url: req.url,
+        })
+
+        if (!autenticado) {
             console.warn('Tentativa de acesso não autorizada ao webhook de lembrete.')
             return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
         }
 
-        // 2. Extrair payload enviado pelo QStash
-        const body = await req.json()
-        const { agendamentoId, tenantId } = body
+        // 2. Extrair payload enviado pelo QStash — só DEPOIS de autenticado:
+        // corpo não verificado nunca é parseado.
+        const { agendamentoId, tenantId } = JSON.parse(corpoCru)
 
         if (!agendamentoId || !tenantId) {
             return NextResponse.json({ error: 'Payload incompleto.' }, { status: 400 })
@@ -33,7 +45,8 @@ export async function POST(req: NextRequest) {
 
         // 3. Cliente PRIVILEGIADO (secret key): este webhook é um job interno sem
         // sessão — como anon, o RLS bloquearia whatsapp_configs (instance_token)
-        // e clientes (telefone). A requisição já foi autenticada pelo secret acima.
+        // e clientes (telefone). A requisição já foi autenticada pela assinatura
+        // do QStash acima.
         const supabase = createAdminClient()
 
         // 4. Buscar informações do agendamento, do cliente e do serviço
