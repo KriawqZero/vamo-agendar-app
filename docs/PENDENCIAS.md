@@ -809,10 +809,15 @@ centralizados do P0.4.
 Preservar a Fricção Zero para o cliente final, mas impedir que um script preencha toda
 a agenda de um profissional. Ganha relevância quando o link circular publicamente.
 
-**Estado atual verificado:** nenhuma proteção existe (sem rate limit, honeypot ou
-CAPTCHA; `rg` não encontra nada). Pior: o INSERT direto pela Data API contorna
-qualquer proteção que fosse colocada na action — **este item depende do item de
-integridade acima**.
+**Estado atual verificado (atualizado no fechamento da Phase 01):** ainda não há rate
+limit, honeypot nem CAPTCHA. Mas o furo de que este item dependia **foi fechado na Phase
+01**: as migrations `20260722055941_fecha_policies_anon.sql` e
+`20260722060000_fecha_data_api_para_anon.sql` revogaram a Data API de `anon` (medido na
+4ª verificação: anon POST em `clientes`/`agendamentos` → **42501**), então o INSERT
+direto pela Data API já **não** contorna mais a action. O rate limit passa a ser
+suficiente aplicado na própria `criarAgendamentoPublico` — este item **não depende mais**
+do item de integridade. (A outra brecha de conteúdo, `clienteNome`/`clienteEmail` sem
+teto de tamanho, foi fechada à parte no CR-02 — commit `738a896`.)
 
 **Resultado esperado:**
 
@@ -820,10 +825,12 @@ integridade acima**.
   (janela curta; Upstash Ratelimit é o caminho natural — Upstash já está na stack).
 - Honeypot barato no formulário público (campo invisível).
 - Logs mínimos de rejeição (para saber se há abuso real e calibrar limites).
-- Sanitização/validação no servidor (já existe para telefone; manter e não afrouxar).
+- Sanitização/validação no servidor (telefone; e, desde o CR-02, teto de tamanho de
+  `clienteNome`/`clienteEmail` — manter e não afrouxar).
 - CAPTCHA **apenas como fallback** se abuso real aparecer — não adicionar agora.
-- Impossível contornar escrevendo direto na Data API (garantido pelo item de
-  integridade).
+- ✅ **Já garantido pela Phase 01:** escrever direto na Data API como `anon` está
+  bloqueado (`42501` em `clientes`/`agendamentos`), então o rate limit da action não é
+  contornável por esse caminho.
 
 Não transformar o booking num fluxo cheio de validações visíveis — as proteções devem
 ser invisíveis para o cliente legítimo.
