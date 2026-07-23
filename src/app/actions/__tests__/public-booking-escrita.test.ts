@@ -65,11 +65,25 @@ vi.mock('@/lib/assinaturas', async (importarOriginal) => {
     const real = await importarOriginal<typeof import('@/lib/assinaturas')>()
     return { ...real, obterPlanoVigentePublico: vi.fn(real.obterPlanoVigentePublico) }
 })
+// 4. observabilidade — mesmo motivo dos três acima: nada de teste pode emitir
+//    para o Sentry. Mas aqui o mock é também SUJEITO de asserção: SC4 exige
+//    provar que a PERDA DE CORRIDA (23P01 → slot_indisponivel) NÃO chama
+//    `reportarExcecao` — condição esperada de negócio não vai ao Sentry
+//    (CLAUDE.md §Observabilidade). Contrafactual que dá sentido à asserção: se
+//    o ramo `agError?.code === '23P01'` de public-booking.ts fosse removido, a
+//    corrida cairia no `erro_interno` genérico logo abaixo, que CHAMA
+//    reportarExcecao — e inundaria o Sentry com perda de corrida esperada.
+vi.mock('@/lib/observabilidade/reportar', () => ({
+    reportarExcecao: vi.fn(),
+    reportarExcecaoAguardando: vi.fn(async () => {}),
+    reportarFalhaSilenciosa: vi.fn(),
+}))
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { diaLocal, somarDias } from '@/lib/timezone'
 import { dispararNotificacoesAgendamento } from '@/lib/notificacoes-agendamento'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
+import { reportarExcecao, reportarFalhaSilenciosa } from '@/lib/observabilidade/reportar'
 import {
     criarAgendamentoPublico,
     obterDadosBookingPublico,
@@ -795,6 +809,13 @@ describe.skipIf(!temCredenciais)(
             expect(slots.length, `A fixture não cobriu ${dataAlvo}.`).toBeGreaterThan(0)
             const slotAlvo = slots[0].datetime
 
+            // SC4: zera os contadores IMEDIATAMENTE antes da corrida para isolar
+            // o que ela sozinha dispara ao Sentry. Casos anteriores deste
+            // describe exercitam ramos que reportam (namespace ambíguo); a
+            // asserção abaixo é só sobre esta corrida.
+            vi.mocked(reportarExcecao).mockClear()
+            vi.mocked(reportarFalhaSilenciosa).mockClear()
+
             const N = 8
             const resultados = await Promise.all(
                 Array.from({ length: N }, (_, i) =>
@@ -825,6 +846,14 @@ describe.skipIf(!temCredenciais)(
                 .eq('tenant_id', TENANT_TESTE)
                 .neq('status', 'cancelado')
             expect(count).toBe(1)
+
+            // SC4 (metade empírica): os N-1 perdedores voltaram
+            // `slot_indisponivel` SEM que a perda de corrida fosse ao Sentry.
+            // Perda de corrida é condição ESPERADA — não pode virar exceção
+            // reportada. (O contrafactual está no JSDoc do mock: sem o ramo
+            // 23P01, isto viraria `erro_interno` e reportarExcecao dispararia.)
+            expect(reportarExcecao).not.toHaveBeenCalled()
+            expect(reportarFalhaSilenciosa).not.toHaveBeenCalled()
 
             // ---------------------------------------------------------------
             // Metade WALK-IN do SC3 no NÍVEL DA CONSTRAINT (role-agnóstico).
@@ -884,6 +913,76 @@ describe.skipIf(!temCredenciais)(
 
             // Limpeza do que este caso criou. O afterAll também limpa; isto é o
             // cinto de segurança para não poluir contagens de casos futuros.
+            await admin.from('agendamentos').delete().eq('tenant_id', TENANT_TESTE)
+            await admin.from('clientes').delete().eq('tenant_id', TENANT_TESTE)
+        })
+
+        // -------------------------------------------------------------------
+        // SC5 (AGE-05) — UPSERT COALESCE ATÔMICO CONTRA O BANCO REAL
+        //
+        // O caso :395 já prova que o telefone reaproveita a linha (não
+        // duplica). O que FALTAVA é o COALESCE: a segunda reserva pública
+        // preenche só o que estava vazio (e-mail) e JAMAIS sobrescreve o nome
+        // curado que o profissional salvou no dashboard. É a semântica que o
+        // `supabase-js .upsert()` não expressa — overwrite de linha inteira —
+        // e por isso vive na RPC `reaproveitar_ou_criar_cliente`
+        // (`ON CONFLICT DO UPDATE SET nome = COALESCE(clientes.nome, EXCLUDED.nome)`).
+        // Um mock provaria só o mock; a atomicidade é propriedade do banco.
+        // -------------------------------------------------------------------
+        it('SC5: reincidente pelo telefone reaproveita o id, e-mail ausente é preenchido, nome curado NÃO é sobrescrito (COALESCE)', async () => {
+            await admin.from('agendamentos').delete().eq('tenant_id', TENANT_TESTE)
+            await admin.from('clientes').delete().eq('tenant_id', TENANT_TESTE)
+
+            const TELEFONE_COALESCE_FMT = '(11) 96666-5555'
+            const TELEFONE_COALESCE = '11966665555'
+            const NOME_CURADO = 'Nome Curado No Dashboard'
+
+            // Cliente pré-existente: nome curado (como o profissional salvaria
+            // no dashboard) e SEM e-mail. É a linha que a segunda reserva
+            // pública deve COMPLETAR, nunca reescrever.
+            const { data: clienteInicial, error: ciErr } = await admin
+                .from('clientes')
+                .insert({
+                    tenant_id: TENANT_TESTE,
+                    telefone: TELEFONE_COALESCE,
+                    nome: NOME_CURADO,
+                })
+                .select('id, email')
+                .single()
+            expect(ciErr, ciErr?.message).toBeNull()
+            expect(clienteInicial!.email).toBeNull()
+
+            // Segunda reserva pelo MESMO telefone, com nome diferente e um
+            // e-mail — a chamada pública que passa pela RPC de upsert.
+            const slots = await slotsLivresDaFixture()
+            expect(slots.length).toBeGreaterThan(0)
+            await criarComSucesso({
+                slug: SLUG_GRATUITO_TESTE,
+                servicoId: servicoIdTeste,
+                dataHora: slots[0].datetime,
+                clienteNome: 'Nome Público Diferente',
+                clienteTelefone: TELEFONE_COALESCE_FMT,
+                clienteEmail: 'reincidente@exemplo.com',
+            })
+
+            const { data: clientes } = await admin
+                .from('clientes')
+                .select('id, nome, email')
+                .eq('tenant_id', TENANT_TESTE)
+                .eq('telefone', TELEFONE_COALESCE)
+
+            // Uma linha só: reaproveitou pelo (tenant, telefone), não duplicou.
+            expect(clientes).toHaveLength(1)
+            // Mesmo id: o upsert caiu no ON CONFLICT da linha existente.
+            expect(clientes![0].id).toBe(clienteInicial!.id)
+            // E-mail antes ausente foi PREENCHIDO — COALESCE(clientes.email,
+            // EXCLUDED.email) com o lado esquerdo nulo devolve o novo.
+            expect(clientes![0].email).toBe('reincidente@exemplo.com')
+            // Nome curado PRESERVADO: COALESCE(clientes.nome, EXCLUDED.nome), e
+            // clientes.nome é NOT NULL, então o lado esquerdo sempre vence — a
+            // chamada pública não sobrescreve o que o profissional curou.
+            expect(clientes![0].nome).toBe(NOME_CURADO)
+
             await admin.from('agendamentos').delete().eq('tenant_id', TENANT_TESTE)
             await admin.from('clientes').delete().eq('tenant_id', TENANT_TESTE)
         })
