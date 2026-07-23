@@ -33,6 +33,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // analytics: `capturarEventoTenant` chama `after()` de next/server, que LANÇA
 //   fora de um contexto de request.
 // reportar: guarda defensiva — provar que o ramo 23P01 do walk-in NÃO reporta.
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+
 const { authMock } = vi.hoisted(() => ({ authMock: vi.fn() }))
 vi.mock('@clerk/nextjs/server', () => ({ auth: authMock }))
 

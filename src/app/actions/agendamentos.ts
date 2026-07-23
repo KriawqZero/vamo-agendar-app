@@ -172,6 +172,55 @@ async function timezoneDoTenant(supabase: Awaited<ReturnType<typeof createClient
     return perfil?.timezone || TIMEZONE_PADRAO
 }
 
+/** Detalhe mínimo do agendamento que ocupa um horário — só do PRÓPRIO tenant. */
+interface ConflitoWalkin {
+    cliente?: string
+    servico?: string
+    horario: string
+}
+
+/**
+ * Busca o agendamento ativo do próprio tenant que se sobrepõe ao intervalo
+ * [inicio, fim) tentado. Legítimo devolver o detalhe no walk-in: é a agenda do
+ * próprio profissional e o SELECT já é escopado ao tenant pelo RLS authenticated.
+ * NUNCA devolve a error.message crua do Postgres — só cliente/serviço/horário.
+ * `ignorarId` exclui o próprio agendamento na remarcação (o registro sendo movido
+ * ainda tem o horário antigo e não pode ser reportado como conflito de si mesmo).
+ */
+async function buscarConflitoWalkin(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    orgId: string,
+    inicioTentado: string,
+    fimTentado: string,
+    ignorarId?: string,
+): Promise<ConflitoWalkin | null> {
+    let query = supabase
+        .from('agendamentos')
+        .select('data_hora, data_hora_fim, clientes(nome), servicos(nome)')
+        .eq('tenant_id', orgId)
+        .neq('status', 'cancelado')
+        // Sobreposição de período: início do outro < fim tentado E fim do outro > início tentado.
+        .lt('data_hora', fimTentado)
+        .gt('data_hora_fim', inicioTentado)
+
+    if (ignorarId) {
+        query = query.neq('id', ignorarId)
+    }
+
+    const { data: conflito } = await query.maybeSingle()
+
+    if (!conflito) return null
+
+    const cliente = Array.isArray(conflito.clientes) ? conflito.clientes[0] : conflito.clientes
+    const servico = Array.isArray(conflito.servicos) ? conflito.servicos[0] : conflito.servicos
+
+    return {
+        cliente: cliente?.nome,
+        servico: servico?.nome,
+        horario: conflito.data_hora,
+    }
+}
+
 /**
  * Slots livres para o agendamento manual no dashboard. Mesma engine do fluxo
  * público; `ignorarAgendamentoId` permite remarcar sem colidir consigo mesmo.
@@ -302,33 +351,45 @@ export async function criarAgendamentoManual({
             throw new Error('Informe o WhatsApp do cliente com DDD (10 ou 11 dígitos).')
         }
 
-        // Mesmo telefone já cadastrado neste tenant: reaproveita o registro.
-        const { data: existente } = await supabase
+        // Reaproveitar ou criar o cliente ATOMICAMENTE (D-01, AGE-05): o antigo
+        // select-then-insert tinha uma janela de corrida (dois walk-ins
+        // simultâneos com o mesmo telefone liam "não existe" e inseriam duas
+        // linhas — e agora o unique (tenant_id, telefone) faria o segundo INSERT
+        // falhar com 23505). A RPC faz INSERT ... ON CONFLICT DO UPDATE com
+        // COALESCE (cria se não existe, senão só completa o que falta) numa única
+        // ida ao banco. Roda como SECURITY INVOKER: respeita o RLS do
+        // authenticated (o profissional só escreve no próprio tenant).
+        const { data: clienteRpcId, error: rpcError } = await supabase.rpc(
+            'reaproveitar_ou_criar_cliente',
+            {
+                p_tenant_id: orgId,
+                p_telefone: telefoneLimpo,
+                p_nome: clienteNome!.trim(),
+                p_email: null,
+            },
+        )
+
+        if (rpcError || !clienteRpcId) {
+            console.error(
+                'Erro ao reaproveitar/criar cliente no agendamento manual:',
+                rpcError?.message,
+            )
+            throw new Error('Erro ao cadastrar o cliente.')
+        }
+
+        // A RPC devolve só o id; reler nome/telefone para as notificações.
+        const { data: cliente, error: cError } = await supabase
             .from('clientes')
             .select('id, nome, telefone')
+            .eq('id', clienteRpcId)
             .eq('tenant_id', orgId)
-            .eq('telefone', telefoneLimpo)
             .maybeSingle()
 
-        if (existente) {
-            clienteFinal = existente
-        } else {
-            const { data: novo, error: nError } = await supabase
-                .from('clientes')
-                .insert({
-                    tenant_id: orgId,
-                    nome: clienteNome!.trim(),
-                    telefone: telefoneLimpo,
-                })
-                .select('id, nome, telefone')
-                .single()
-
-            if (nError || !novo) {
-                console.error('Erro ao cadastrar cliente no agendamento manual:', nError?.message)
-                throw new Error('Erro ao cadastrar o cliente.')
-            }
-            clienteFinal = novo
+        if (cError || !cliente) {
+            console.error('Erro ao reler cliente após RPC no agendamento manual:', cError?.message)
+            throw new Error('Erro ao cadastrar o cliente.')
         }
+        clienteFinal = cliente
     }
 
     // 3. Revalidar o slot contra double-booking (mesma engine do fluxo público).
@@ -341,8 +402,17 @@ export async function criarAgendamentoManual({
         timezone,
     })
 
+    // `data_hora_fim` é gravado no ato da reserva (D-02): é dele que a engine
+    // deriva a ocupação e é ele que a exclusion constraint compara. Editar a
+    // duração do serviço depois NÃO move o término já marcado.
+    const dataHoraFim = new Date(dataObj.getTime() + servico.duracao_minutos * 60_000).toISOString()
+
     if (!slotsLivres.some((sl) => sl.datetime === dataHora)) {
-        throw new Error('Este horário conflita com outro agendamento. Escolha outro horário.')
+        // TOCTOU: a engine deixou de oferecer o slot entre a leitura e agora.
+        // Unifica a UX com a perda de corrida (mesmo motivo, mesmo detalhe do
+        // próprio tenant), em vez do throw antigo — o modal já não casa string.
+        const conflito = await buscarConflitoWalkin(supabase, orgId, dataHora, dataHoraFim)
+        return { ok: false as const, motivo: 'slot_ocupado' as const, conflito }
     }
 
     // 4. Inserir o agendamento (manual nasce confirmado).
@@ -353,10 +423,22 @@ export async function criarAgendamentoManual({
             cliente_id: clienteFinal.id,
             servico_id: servicoId,
             data_hora: dataHora,
+            data_hora_fim: dataHoraFim,
             status: 'confirmado',
         })
         .select('id, data_hora, status')
         .single()
+
+    // Perda de corrida (D-04, AGE-04): a exclusion constraint `ag_sem_sobreposicao`
+    // fechou o TOCTOU que a revalidação da engine deixa aberto. `23P01` =
+    // exclusion_violation (SQLSTATE, estável; nunca comparar a .message, que embute
+    // org_id e horário). É condição ESPERADA e NUNCA vai ao Sentry — reportar perda
+    // de corrida inundaria o Sentry. Como o walk-in é authenticated (RLS por
+    // tenant_id), é legítimo devolver o detalhe do conflitante do próprio tenant.
+    if (agError?.code === '23P01') {
+        const conflito = await buscarConflitoWalkin(supabase, orgId, dataHora, dataHoraFim)
+        return { ok: false as const, motivo: 'slot_ocupado' as const, conflito }
+    }
 
     if (agError || !agendamento) {
         console.error('Erro ao criar agendamento manual:', agError?.message)
@@ -390,7 +472,7 @@ export async function criarAgendamentoManual({
 
     revalidatePath('/dashboard')
 
-    return agendamento
+    return { ok: true as const, agendamento }
 }
 
 /**
