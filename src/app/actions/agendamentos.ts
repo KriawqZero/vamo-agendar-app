@@ -500,7 +500,7 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
 
     const { data: agendamento, error: aError } = await supabase
         .from('agendamentos')
-        .select('id, status, servico_id, servicos ( duracao_minutos )')
+        .select('id, status, data_hora, data_hora_fim')
         .eq('id', id)
         .eq('tenant_id', orgId)
         .maybeSingle()
@@ -513,10 +513,15 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
         throw new Error('Este agendamento não pode mais ser remarcado.')
     }
 
-    const servicoObj = Array.isArray(agendamento.servicos)
-        ? agendamento.servicos[0]
-        : agendamento.servicos
-    const duracaoMinutos = Number(servicoObj?.duracao_minutos) || 30
+    // D-03: remarcar é o MESMO agendamento em outro horário — o tamanho reservado
+    // não muda. A duração vem do intervalo ORIGINAL (data_hora_fim − data_hora), não
+    // da duração VIGENTE do serviço (que pode ter sido editada depois, reabrindo o
+    // bug que esta fase fecha). O novo término preserva esse intervalo.
+    const inicioOriginal = new Date(agendamento.data_hora).getTime()
+    const fimOriginal = new Date(agendamento.data_hora_fim).getTime()
+    const duracaoOriginalMs = fimOriginal - inicioOriginal
+    const duracaoMinutos = Math.round(duracaoOriginalMs / 60_000)
+    const novoDataHoraFim = new Date(dataObj.getTime() + duracaoOriginalMs).toISOString()
 
     const dateStr = diaLocal(dataObj, timezone)
     const slotsLivres = await obterSlotsDisponiveis({
@@ -529,19 +534,44 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
     })
 
     if (!slotsLivres.some((sl) => sl.datetime === novaDataHora)) {
-        throw new Error('Este horário conflita com outro agendamento. Escolha outro horário.')
+        // TOCTOU: unifica a UX com a perda de corrida (mesmo motivo/detalhe do
+        // próprio tenant), consistente com criarAgendamentoManual. O modal já não
+        // casa string de erro. Exclui o próprio agendamento da busca do conflitante.
+        const conflito = await buscarConflitoWalkin(
+            supabase,
+            orgId,
+            novaDataHora,
+            novoDataHoraFim,
+            id,
+        )
+        return { ok: false as const, motivo: 'slot_ocupado' as const, conflito }
     }
 
     const { data, error } = await supabase
         .from('agendamentos')
         .update({
             data_hora: novaDataHora,
+            data_hora_fim: novoDataHoraFim,
             updated_at: new Date().toISOString(),
         })
         .eq('id', id)
         .eq('tenant_id', orgId)
         .select('id, data_hora, status')
         .single()
+
+    // Perda de corrida no UPDATE (D-03): a exclusion constraint recusou o novo
+    // período com `23P01`. Condição ESPERADA — mesmo retorno discriminado da
+    // criação, sem reportarExcecao. Exclui o próprio agendamento na busca.
+    if (error?.code === '23P01') {
+        const conflito = await buscarConflitoWalkin(
+            supabase,
+            orgId,
+            novaDataHora,
+            novoDataHoraFim,
+            id,
+        )
+        return { ok: false as const, motivo: 'slot_ocupado' as const, conflito }
+    }
 
     if (error || !data) {
         console.error('Erro ao remarcar agendamento:', error?.message)
@@ -632,5 +662,5 @@ export async function remarcarAgendamento(id: string, novaDataHora: string) {
 
     revalidatePath('/dashboard')
 
-    return data
+    return { ok: true as const, agendamento: data }
 }
