@@ -509,6 +509,26 @@ export async function criarAgendamentoPublico({
         .select('id, data_hora, status')
         .single()
 
+    // Perda de corrida (D-05, AGE-04): a exclusion constraint `ag_sem_sobreposicao`
+    // fechou o TOCTOU que a revalidação da engine (item 4) deixa aberto — outro
+    // cliente confirmou o mesmo horário no intervalo entre a validação e este
+    // INSERT. `23P01` = exclusion_violation (SQLSTATE, estável entre versões;
+    // nunca comparar a .message, que embute org_id e o horário de terceiro). É
+    // condição ESPERADA: devolve o MESMO discriminante que o BookingApp já
+    // consome (solta o slot morto, refaz a grade, mostra o aviso âmbar) e NUNCA
+    // chama reportarExcecao — reportar perda de corrida inundaria o Sentry.
+    // Este ramo vem ANTES do erro_interno genérico de propósito.
+    if (agError?.code === '23P01') {
+        // Funil: abandono por double-booking, mesmo padrão protegido de :442-446.
+        // Nunca afeta o retorno abaixo.
+        try {
+            capturarEventoTenant('booking_failed', tenantId, { motivo: 'slot_indisponivel' })
+        } catch (analyticsErr) {
+            console.error('[analytics] booking_failed não capturado (ignorado):', analyticsErr)
+        }
+        return { ok: false, motivo: 'slot_indisponivel' }
+    }
+
     if (agError || !agendamento) {
         console.error('Erro ao criar agendamento:', agError?.message)
         // É literalmente o critério de sucesso do milestone quebrando: o
