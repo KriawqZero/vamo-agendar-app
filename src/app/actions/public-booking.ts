@@ -457,60 +457,45 @@ export async function criarAgendamentoPublico({
     // (tenant resolvido do slug, serviço do mesmo tenant, slot livre) são o
     // porteiro que substitui o RLS.
 
-    // 5. Buscar cliente existente com o mesmo telefone para este tenant, ou criar novo
-    let clienteId: string
+    // 5. Reaproveitar ou criar o cliente ATOMICAMENTE (D-01, AGE-05).
+    // O antigo select-then-insert tinha uma janela de corrida: duas requisições
+    // simultâneas com o mesmo telefone liam "não existe" e inseriam duas linhas.
+    // A RPC `reaproveitar_ou_criar_cliente` faz `INSERT ... ON CONFLICT
+    // (tenant_id, telefone) DO UPDATE` com COALESCE — cria se não existe, senão
+    // só completa o que falta (nome curado nunca é sobrescrito; e-mail vazio é
+    // preenchido) e devolve o id numa única ida ao banco. Campos já saneados na
+    // seção 1 — mesma fonte para validação e escrita.
+    const { data: clienteId, error: cError } = await admin.rpc('reaproveitar_ou_criar_cliente', {
+        p_tenant_id: tenantId,
+        p_telefone: telefoneLimpo,
+        p_nome: nomeLimpo,
+        p_email: emailLimpo || null,
+    })
 
-    const { data: clienteExistente, error: cError } = await admin
-        .from('clientes')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .eq('telefone', telefoneLimpo)
-        .maybeSingle()
-
-    if (cError) {
-        console.error('Erro ao buscar cliente existente:', cError.message)
+    if (cError || !clienteId) {
+        console.error('Erro ao reaproveitar/criar cliente:', cError?.message)
         // Fluxo B2C: a mensagem amigável apaga a causa raiz e o cliente final
         // vai embora sem reclamar. Reportar ANTES de devolver, sem nenhum dado
         // do cliente — nem no contexto, nem no objeto de erro: a `.message` do
         // Postgres embute literais do input (`invalid input syntax … "…"`).
         // Virar valor de retorno não pode apagar este detector: `erro_interno`
         // é o que o visitante vê, o `etapa` é o que quem investiga vê.
-        reportarExcecao(erroSinteticoSupabase(cError), {
+        reportarExcecao(erroSinteticoSupabase(cError, 'cliente_sem_retorno'), {
             fluxo: 'booking_publico',
             etapa: 'buscar_cliente',
         })
         return { ok: false, motivo: 'erro_interno' }
     }
 
-    if (clienteExistente) {
-        clienteId = clienteExistente.id
-    } else {
-        // Cria novo registro de cliente
-        const { data: novoCliente, error: cnError } = await admin
-            .from('clientes')
-            .insert({
-                // Valores já saneados e validados na seção 1 — mesmo padrão de
-                // `telefoneLimpo`, uma fonte só para a validação e a escrita.
-                tenant_id: tenantId,
-                nome: nomeLimpo,
-                telefone: telefoneLimpo,
-                email: emailLimpo || null,
-            })
-            .select('id')
-            .single()
+    // 6. Inserir o agendamento no banco de dados (status padrão: confirmado).
+    // `data_hora_fim` é gravado no ato da reserva (D-02): é dele que a engine
+    // deriva a ocupação da agenda e é ele que a exclusion constraint compara —
+    // editar a duração do serviço depois NÃO move o término já marcado. O
+    // instante final é o início mais a duração do serviço já em escopo.
+    const dataHoraFim = new Date(
+        dataLocal.getTime() + servico.duracao_minutos * 60_000,
+    ).toISOString()
 
-        if (cnError || !novoCliente) {
-            console.error('Erro ao cadastrar novo cliente:', cnError?.message)
-            reportarExcecao(erroSinteticoSupabase(cnError, 'cadastro_cliente_sem_retorno'), {
-                fluxo: 'booking_publico',
-                etapa: 'cadastrar_cliente',
-            })
-            return { ok: false, motivo: 'erro_interno' }
-        }
-        clienteId = novoCliente.id
-    }
-
-    // 6. Inserir o agendamento no banco de dados (status padrão: confirmado)
     const { data: agendamento, error: agError } = await admin
         .from('agendamentos')
         .insert({
@@ -518,6 +503,7 @@ export async function criarAgendamentoPublico({
             cliente_id: clienteId,
             servico_id: servicoId,
             data_hora: dataHora,
+            data_hora_fim: dataHoraFim,
             status: 'confirmado',
         })
         .select('id, data_hora, status')
