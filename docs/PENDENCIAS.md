@@ -804,6 +804,53 @@ momento do INSERT (coluna `duracao_minutos` desnormalizada no agendamento ou loo
 no trigger) — decidir a forma mais simples; reaproveita os limites de dia
 centralizados do P0.4.
 
+> **Fechamento da metade EMPÍRICA pela Phase 2 (integridade da agenda, 2026-07-23).**
+> A proteção **no banco** está viva e provada: a migration `20260723162858_integridade_agenda.sql`
+> (aplicada no plano 02-05) traz `data_hora_fim NOT NULL`, a coluna `periodo` GENERATED,
+> a exclusion constraint `ag_sem_sobreposicao` (23P01 na sobreposição), o
+> `UNIQUE (tenant_id, telefone)` e a RPC atômica `reaproveitar_ou_criar_cliente`
+> (upsert COALESCE). A suíte de integração (`pnpm test:integracao`,
+> `EXIGIR_INTEGRACAO=1`) prova contra o Supabase de dev, self-cleaning por
+> `TENANT_TESTE`: **SC3** — 8 chamadas concorrentes ao mesmo slot → exatamente 1
+> ativo (COUNT no banco === 1); **SC4** — a perda de corrida devolve
+> `slot_indisponivel` sem ir ao Sentry; **SC5** — reincidente pelo telefone
+> reaproveita a linha, e-mail ausente é preenchido, nome curado não é sobrescrito.
+> O **critério de conclusão objetivo** deste item ("duas requisições concorrentes
+> nunca resultam em dois ativos sobrepostos, comprovado por teste de concorrência")
+> está satisfeito pela automação.
+>
+> **Fronteira registrada em voz alta (não é lacuna de garantia).** A metade
+> **walk-in** do SC3 é provada no **nível da constraint** (dois inserts admin
+> diretos e sobrepostos → 1 vence, 1 falha com 23P01). A exclusion constraint é
+> **role-agnóstica**: o walk-in autenticado grava na mesma tabela, sob a mesma
+> constraint, então a recusa vale para ele igualmente. A corrida walk-in
+> autenticada **em processo** (que exigiria mock de auth do Clerk) ficou
+> **best-effort** e não foi rodada — a garantia que importa é a do banco, e é
+> essa que está provada. Reabrir só se surgir requisito de exercer o discriminante
+> `slot_ocupado` do walk-in ponta a ponta em processo.
+>
+> **O que continua ABERTO desta fase é só olho humano na TELA** (ver a lista de UAT
+> da Phase 2 logo abaixo) — nenhum executor pode fechá-los.
+
+### 🧪 UAT humano pendente da Phase 2 (não executado — só o owner fecha)
+
+Mesma regra da lista de UAT da Phase 1: o **lado servidor** da integridade está
+provado por `pnpm test:integracao` (SC3/SC4/SC5 acima). O que sobra é estritamente
+**o que acontece na tela** — degrada em silêncio, não aparece em `lint`/`test`/`build`,
+e nenhum executor tem como observar um render. Nada abaixo foi aprovado; nada abaixo
+deve ser assumido como aprovado.
+
+- [ ] **Aviso âmbar de conflito na tela pública (AGE-04)** — perder uma corrida real
+      em `/book/[slug]` e ver a **caixa âmbar** com os horários **recarregados**, o
+      cliente voltando à etapa de data/hora — nunca uma caixa vermelha estática no
+      formulário de contato. Provado por automação até aqui: a action devolve
+      `{ ok: false, motivo: 'slot_indisponivel' }` na perda de corrida (SC3/SC4) e a
+      cópia pt-BR é pinada por igualdade na suíte hermética; o **render** não.
+- [ ] **Detalhe cliente/serviço no aviso de conflito do walk-in (dashboard)** —
+      tentar marcar um walk-in sobre horário ocupado e ver o **detalhe do agendamento
+      conflitante** + a agenda **recarregada**. É a metade de tela do walk-in cuja
+      metade de banco está provada pela constraint (role-agnóstica).
+
 ### Rate limiting e proteção contra agendamentos falsos/abuso
 
 Preservar a Fricção Zero para o cliente final, mas impedir que um script preencha toda
