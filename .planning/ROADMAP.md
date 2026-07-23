@@ -238,13 +238,13 @@ Plans:
   4. Quem perde a corrida vê "esse horário acabou de ser reservado, escolha outro" com os horários recarregados — nunca a mensagem do PostgreSQL, que carrega o `org_id` e o horário de terceiro
   5. Agendar duas vezes com o mesmo telefone no mesmo tenant reaproveita o cliente existente, sem criar segunda linha nem duplicar disparo
 
-**Plans**: 1/6 plans executed
+**Plans**: 2/6 plans executed
 
 Plans:
 **Wave 1**
 
 - [x] 02-01-PLAN.md — Tracer: engine lê ocupação de `data_hora_fim` (D-02, AGE-01/AGE-02) (wave 1)
-- [ ] 02-02-PLAN.md — Schema final + RPC COALESCE + migration à mão (teste empírico de `periodo`) (D-01, AGE-03/AGE-05) (wave 1)
+- [x] 02-02-PLAN.md — Schema final + RPC COALESCE + migration à mão (teste empírico de `periodo`) (D-01, AGE-03/AGE-05) (wave 1)
 
 **Wave 2** *(blocked on Wave 1)*
 
@@ -534,7 +534,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | Etapa preparatória. Fundação operacional | 0/1 | Not started | - |
 | 1. Hardening da superfície pública | 19/19 | In Progress|  |
-| 2. Integridade da agenda | 1/6 | In Progress|  |
+| 2. Integridade da agenda | 2/6 | In Progress|  |
 | 3. Anti-abuso no booking público | 0/TBD | Not started | - |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |
 | 5. Contato flexível no booking | 0/TBD | Not started | - |
