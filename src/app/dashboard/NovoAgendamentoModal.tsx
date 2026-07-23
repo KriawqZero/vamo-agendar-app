@@ -55,6 +55,29 @@ const rotuloDia = (dateStr: string) => {
     }
 }
 
+/** Detalhe do agendamento que ocupa o horário — devolvido pela action do walk-in. */
+interface ConflitoSlot {
+    cliente?: string
+    servico?: string
+    horario: string
+}
+
+/**
+ * Cópia ÂMBAR do walk-in para a perda de corrida (slot_ocupado) — fonte ÚNICA no
+ * dashboard (não em mensagens.ts, que é do booking público). Mostra o detalhe do
+ * conflitante do PRÓPRIO tenant: legítimo, é a agenda do próprio profissional (o
+ * RLS já escopou a busca). Nunca a error.message crua do Postgres.
+ */
+function mensagemSlotOcupado(conflito: ConflitoSlot | null, timezone: string) {
+    if (!conflito) {
+        return 'Esse horário acabou de ser ocupado. Escolha outro na grade atualizada.'
+    }
+    const quem = conflito.cliente ?? 'outro cliente'
+    const oque = conflito.servico ? ` (${conflito.servico})` : ''
+    const quando = formatarDataHoraLonga(conflito.horario, timezone)
+    return `Esse horário já está ocupado por ${quem}${oque} — ${quando}. Escolha outro na grade atualizada.`
+}
+
 type Passo = 'cliente' | 'servico' | 'horario' | 'resumo'
 
 export default function NovoAgendamentoModal({
@@ -70,6 +93,9 @@ export default function NovoAgendamentoModal({
     const [isPending, startTransition] = useTransition()
     const [passo, setPasso] = useState<Passo>(ehRemarcacao ? 'horario' : 'cliente')
     const [erro, setErro] = useState<string | null>(null)
+    // Aviso ÂMBAR (perda de corrida), distinto da caixa VERMELHA de erro (throw
+    // de precondição): conflito é recuperável — o profissional escolhe outro slot.
+    const [avisoConflito, setAvisoConflito] = useState<string | null>(null)
 
     // ── Passo 1: cliente ────────────────────────────────────────────
     const [busca, setBusca] = useState('')
@@ -203,6 +229,7 @@ export default function NovoAgendamentoModal({
 
     const avancarCliente = () => {
         setErro(null)
+        setAvisoConflito(null)
         if (criandoNovo) {
             if (!novoNome.trim()) {
                 setErro('Informe o nome do cliente.')
@@ -222,6 +249,7 @@ export default function NovoAgendamentoModal({
 
     const selecionarServico = (servico: ServicoOpcao) => {
         setErro(null)
+        setAvisoConflito(null)
         setServicoSelecionado(servico)
         setSlotSelecionado(null)
         setPasso('horario')
@@ -229,6 +257,7 @@ export default function NovoAgendamentoModal({
 
     const selecionarSlot = (datetime: string) => {
         setErro(null)
+        setAvisoConflito(null)
         setSlotSelecionado(datetime)
         setPasso('resumo')
     }
@@ -236,33 +265,41 @@ export default function NovoAgendamentoModal({
     const confirmar = () => {
         if (!slotSelecionado || isPending) return
         setErro(null)
+        setAvisoConflito(null)
         startTransition(async () => {
             try {
-                if (ehRemarcacao) {
-                    await remarcarAgendamento(remarcacao.agendamentoId, slotSelecionado)
-                } else {
-                    await criarAgendamentoManual({
-                        servicoId: servicoSelecionado!.id,
-                        dataHora: slotSelecionado,
-                        clienteId: clienteSelecionado?.id,
-                        clienteNome: clienteSelecionado ? undefined : novoNome.trim(),
-                        clienteTelefone: clienteSelecionado ? undefined : novoTelefone,
-                        enviarWhatsApp: podeEnviarWhatsapp && enviarWhatsApp,
-                    })
+                const res = ehRemarcacao
+                    ? await remarcarAgendamento(remarcacao.agendamentoId, slotSelecionado)
+                    : await criarAgendamentoManual({
+                          servicoId: servicoSelecionado!.id,
+                          dataHora: slotSelecionado,
+                          clienteId: clienteSelecionado?.id,
+                          clienteNome: clienteSelecionado ? undefined : novoNome.trim(),
+                          clienteTelefone: clienteSelecionado ? undefined : novoTelefone,
+                          enviarWhatsApp: podeEnviarWhatsapp && enviarWhatsApp,
+                      })
+
+                if (res.ok) {
+                    aoConcluir()
+                    return
                 }
-                aoConcluir()
+
+                // Perda de corrida (slot_ocupado): a decisão vem do DISCRIMINANTE,
+                // não de casar substring da mensagem. Mostra o detalhe do
+                // conflitante do próprio tenant e recarrega a grade — o horário
+                // morto sai e o profissional vê o que ocupou.
+                setAvisoConflito(mensagemSlotOcupado(res.conflito ?? null, timezone))
+                setSlotSelecionado(null)
+                setSlotsCarregados(null) // força o refetch da grade
+                setPasso('horario')
             } catch (err) {
+                // Restam aqui só as guard clauses de precondição que ainda lançam
+                // (auth/serviço/cliente/horário passado) → caixa VERMELHA.
                 const msg =
                     err instanceof Error && err.message
                         ? err.message
                         : 'Erro ao salvar o agendamento.'
                 setErro(msg)
-                // Conflito de horário: volta ao passo de horário com a grade atualizada.
-                if (msg.includes('conflita') || msg.includes('indisponível')) {
-                    setSlotSelecionado(null)
-                    setSlotsCarregados(null) // força o refetch da grade
-                    setPasso('horario')
-                }
             }
         })
     }
@@ -307,6 +344,7 @@ export default function NovoAgendamentoModal({
                         <button
                             onClick={() => {
                                 setErro(null)
+                                setAvisoConflito(null)
                                 setPasso(voltarDe[passo]!)
                             }}
                             aria-label="Voltar"
@@ -337,6 +375,12 @@ export default function NovoAgendamentoModal({
                     {erro && passo !== 'resumo' && (
                         <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/[0.08] p-3 text-sm text-red-700 dark:text-red-300">
                             {erro}
+                        </div>
+                    )}
+
+                    {avisoConflito && passo !== 'resumo' && (
+                        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/[0.08] p-3 text-sm text-amber-700 dark:text-amber-300">
+                            {avisoConflito}
                         </div>
                     )}
 
