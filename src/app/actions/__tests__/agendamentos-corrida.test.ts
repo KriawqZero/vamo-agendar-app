@@ -66,7 +66,7 @@ vi.mock('@/lib/observabilidade/reportar', () => ({
     reportarFalhaSilenciosa: vi.fn(),
 }))
 
-import { criarAgendamentoManual } from '@/app/actions/agendamentos'
+import { criarAgendamentoManual, remarcarAgendamento } from '@/app/actions/agendamentos'
 
 // ---------------------------------------------------------------------------
 // Fixture determinística
@@ -95,27 +95,57 @@ const PARAMS_NOVO_CLIENTE = {
     clienteTelefone: TELEFONE_FORMATADO,
 } as const
 
+// -- Remarcação (Task 2): a duração ORIGINAL reservada é de 45 min --------------
+const AGENDAMENTO_ID = 'ag-alvo'
+const ORIGINAL_DATA_HORA = '2099-01-10T09:00:00.000Z'
+const ORIGINAL_DATA_HORA_FIM = '2099-01-10T09:45:00.000Z' // 45 min
+const NOVA_DATA_HORA = '2099-01-15T13:00:00.000Z'
+const NOVO_DATA_HORA_FIM_ESPERADO = '2099-01-15T13:45:00.000Z' // 45 min preservados
+
 interface ConfigSupabase {
     /** Resposta da RPC de cliente: `{ data: id, error }`. */
     rpcResposta?: { data: unknown; error: unknown }
     /** Resposta do INSERT do agendamento: `{ data, error }`. */
     insertResposta?: { data: unknown; error: unknown }
+    /** Resposta do UPDATE do agendamento (remarcação): `{ data, error }`. */
+    updateResposta?: { data: unknown; error: unknown }
     /** Resposta da busca do conflitante (overlap): `{ data, error }`. */
     conflitoResposta?: { data: unknown; error: unknown }
+    /** Resposta do SELECT do agendamento-alvo da remarcação: `{ data, error }`. */
+    alvoResposta?: { data: unknown; error: unknown }
 }
 
 interface Capturas {
     rpc: { nome: string; args: Record<string, unknown> } | null
     insertAgendamento: Record<string, unknown> | null
+    updateAgendamento: Record<string, unknown> | null
     conflitoConsultado: boolean
 }
 
 function criarSupabaseFake(config: ConfigSupabase) {
-    const capturas: Capturas = { rpc: null, insertAgendamento: null, conflitoConsultado: false }
+    const capturas: Capturas = {
+        rpc: null,
+        insertAgendamento: null,
+        updateAgendamento: null,
+        conflitoConsultado: false,
+    }
 
     const rpcResposta = config.rpcResposta ?? { data: CLIENTE_ID, error: null }
     const insertResposta = config.insertResposta ?? {
         data: { id: 'ag-1', data_hora: DATA_HORA, status: 'confirmado' },
+        error: null,
+    }
+    const updateResposta = config.updateResposta ?? {
+        data: { id: 'ag-alvo', data_hora: NOVA_DATA_HORA, status: 'confirmado' },
+        error: null,
+    }
+    const alvoResposta = config.alvoResposta ?? {
+        data: {
+            id: 'ag-alvo',
+            status: 'confirmado',
+            data_hora: ORIGINAL_DATA_HORA,
+            data_hora_fim: ORIGINAL_DATA_HORA_FIM,
+        },
         error: null,
     }
     const conflitoResposta = config.conflitoResposta ?? {
@@ -144,12 +174,14 @@ function criarSupabaseFake(config: ConfigSupabase) {
         }
         if (table === 'agendamentos') {
             if (op === 'insert') return insertResposta
-            if (op === 'update') return insertResposta
+            if (op === 'update') return updateResposta
             // Select com join de clientes/servicos = busca do conflitante.
             if (cols.includes('clientes')) {
                 capturas.conflitoConsultado = true
                 return conflitoResposta
             }
+            // Select com status = SELECT do agendamento-alvo da remarcação.
+            if (cols.includes('status')) return alvoResposta
             return { data: null, error: null }
         }
         if (table === 'disparos_whatsapp') return { data: null, error: null }
@@ -173,6 +205,7 @@ function criarSupabaseFake(config: ConfigSupabase) {
             },
             update(p: Record<string, unknown>) {
                 op = 'update'
+                if (table === 'agendamentos') capturas.updateAgendamento = p
                 return b
             },
             eq: () => b,
@@ -298,5 +331,82 @@ describe('criarAgendamentoManual — perda de corrida no INSERT (D-04)', () => {
 
         expect(resultado.ok).toBe(false)
         expect((resultado as { motivo: string }).motivo).toBe('slot_ocupado')
+    })
+})
+
+// ---------------------------------------------------------------------------
+// Task 2 — remarcarAgendamento: congela a duração ORIGINAL + 23P01 (D-03)
+// ---------------------------------------------------------------------------
+
+describe('remarcarAgendamento — congela a duração ORIGINAL reservada (D-03)', () => {
+    it('novoDataHoraFim deriva do intervalo original (data_hora_fim − data_hora), não da duração vigente', async () => {
+        obterSlotsDisponiveisMock.mockResolvedValue([{ time: '10:00', datetime: NOVA_DATA_HORA }])
+        const capturas = montar()
+
+        const resultado = await remarcarAgendamento(AGENDAMENTO_ID, NOVA_DATA_HORA)
+
+        expect(resultado.ok).toBe(true)
+        // O UPDATE grava data_hora E data_hora_fim, com a duração ORIGINAL (45 min),
+        // NÃO os 30 min do serviço vigente no dublê (DURACAO_MINUTOS).
+        expect(capturas.updateAgendamento!.data_hora).toBe(NOVA_DATA_HORA)
+        expect(capturas.updateAgendamento!.data_hora_fim).toBe(NOVO_DATA_HORA_FIM_ESPERADO)
+    })
+
+    it('revalida a engine com a duração ORIGINAL (45 min), ignorando o próprio agendamento', async () => {
+        obterSlotsDisponiveisMock.mockResolvedValue([{ time: '10:00', datetime: NOVA_DATA_HORA }])
+        montar()
+
+        await remarcarAgendamento(AGENDAMENTO_ID, NOVA_DATA_HORA)
+
+        expect(obterSlotsDisponiveisMock).toHaveBeenCalledWith(
+            expect.objectContaining({
+                duracaoServicoMinutos: 45,
+                ignorarAgendamentoId: AGENDAMENTO_ID,
+            }),
+        )
+    })
+})
+
+describe('remarcarAgendamento — perda de corrida no UPDATE (D-03)', () => {
+    it('UPDATE com 23P01 → slot_ocupado com detalhe do próprio tenant, sem reportarExcecao', async () => {
+        obterSlotsDisponiveisMock.mockResolvedValue([{ time: '10:00', datetime: NOVA_DATA_HORA }])
+        montar({
+            updateResposta: {
+                data: null,
+                error: {
+                    code: '23P01',
+                    message:
+                        'conflicting key value violates exclusion constraint "ag_sem_sobreposicao" org_terceiro',
+                },
+            },
+        })
+
+        const resultado = await remarcarAgendamento(AGENDAMENTO_ID, NOVA_DATA_HORA)
+
+        expect(resultado).toEqual({
+            ok: false,
+            motivo: 'slot_ocupado',
+            conflito: {
+                cliente: CONFLITO_CLIENTE,
+                servico: CONFLITO_SERVICO,
+                horario: CONFLITO_HORARIO,
+            },
+        })
+        expect(reportarExcecaoMock).not.toHaveBeenCalled()
+    })
+
+    it('a .message crua do 23P01 na remarcação NUNCA atravessa para o retorno', async () => {
+        const messageComPII = 'violates exclusion constraint org_terceiro horario-de-terceiro'
+        obterSlotsDisponiveisMock.mockResolvedValue([{ time: '10:00', datetime: NOVA_DATA_HORA }])
+        montar({
+            updateResposta: { data: null, error: { code: '23P01', message: messageComPII } },
+        })
+
+        const resultado = await remarcarAgendamento(AGENDAMENTO_ID, NOVA_DATA_HORA)
+
+        const serializado = JSON.stringify(resultado)
+        expect(serializado).not.toContain('org_terceiro')
+        expect(serializado).not.toContain('exclusion')
+        expect(serializado).not.toContain(messageComPII)
     })
 })
