@@ -59,7 +59,18 @@ gaps:
           - "Quinto veredito `ALVO_PARCIAL` no controle: um stub que responde 42501 num caminho e `200 []` nos demais tem de fazer o harness REPROVAR — senão o conserto fecha um eixo e abre outro pela terceira vez"
           - "Enquanto o controle não cobrir o alvo parcial, nenhum documento pode citar o exit 0 deste script como prova de fechamento — só a leitura tabela a tabela do relatório"
     - truth: "A superfície pública de ESCRITA não persiste dado de terceiro sem teto de tamanho nem validação de formato (o caminho que a 3ª rodada endureceu na LEITURA e deixou aberto na ESCRITA)"
-      status: failed
+      status: resolved
+      resolution: >-
+          RESOLVIDO no fix 738a896: `criarAgendamentoPublico` passou a recusar, ANTES de
+          `createAdminClient()`, `clienteNome` fora de 1..120 chars (após trim) e
+          `clienteEmail` opcional que exceda 254 chars ou não case um `@` com domínio
+          (`email_invalido`, oitavo membro de `MotivoPublico`). Prova hermética em
+          `src/app/actions/__tests__/public-booking-validacao.test.ts` (commit vermelho
+          e7adc01): nome de 200.000 chars e e-mail malformado são rejeitados SEM que
+          `createAdminClient` seja chamado. Verificado: `pnpm test` 16 arq / 241 testes,
+          `pnpm lint` limpo, `pnpm build` exit 0. Pendências não fechadas por este fix
+          (fora do escopo do CR-02): o CHECK espelhado no banco (`06_clientes.sql`) e a
+          sonda em `verificar-travessia-server-action.sh` seguem em `missing` abaixo.
       reason: >-
           MEDIDO E PERSISTIDO. Chamei `criarAgendamentoPublico` por HTTP contra `next start`
           de produção, slug real `avantis`, sem sessão, com `clienteNome` de 200.000
