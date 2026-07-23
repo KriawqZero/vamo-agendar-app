@@ -18,8 +18,8 @@ requisitos que faltam para receber tráfego real com segurança.
 
 ### Correção da agenda
 
-- [ ] **AGE-01**: Um agendamento guarda o próprio horário de término, imune a edições posteriores da duração do serviço
-- [ ] **AGE-02**: Serviço desativado não faz a engine assumir duração arbitrária ao calcular ocupação
+- [x] **AGE-01**: Um agendamento guarda o próprio horário de término, imune a edições posteriores da duração do serviço
+- [x] **AGE-02**: Serviço desativado não faz a engine assumir duração arbitrária ao calcular ocupação
 - [ ] **AGE-03**: Duas requisições simultâneas para o mesmo intervalo nunca resultam em dois agendamentos ativos sobrepostos
 - [ ] **AGE-04**: Ao perder a corrida, o cliente final vê mensagem amigável — nunca erro do banco com dados de outro tenant
 - [ ] **AGE-05**: Dois clientes com o mesmo telefone no mesmo tenant nunca viram registros duplicados
@@ -149,8 +149,8 @@ um destino** de `.planning/ROADMAP.md` — uma das 12 fases ou a etapa preparat�
 | SEG-03 | Phase 1 | Gaps Found |
 | SEG-04 | Phase 1 | Gaps Found |
 | SEG-05 | Phase 1 | Gaps Found |
-| AGE-01 | Phase 2 | Pending |
-| AGE-02 | Phase 2 | Pending |
+| AGE-01 | Phase 2 | Complete |
+| AGE-02 | Phase 2 | Complete |
 | AGE-03 | Phase 2 | Pending |
 | AGE-04 | Phase 2 | Pending |
 | AGE-05 | Phase 2 | Pending |

@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lançamento público
-current_phase: 01
-current_phase_name: hardening-da-superf-cie-p-blica
+current_phase: 02
+current_phase_name: integridade-da-agenda
 status: complete
-stopped_at: Phase 2 context gathered
-last_updated: "2026-07-23T15:55:11.726Z"
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-07-23T16:24:18.757Z"
 last_activity: 2026-07-23
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 25
-  completed_plans: 19
+  completed_plans: 20
 last_activity_desc: "Phase 01 FECHADA (aceitando gaps não-bloqueantes). Os cinco Success Criteria do ROADMAP foram medidos DIRETAMENTE na 4ª verificação (acesso DDL ao banco): SC1/SC2/SC3 anônimos em 401/42501 com controle positivo, SC4 exercitado por objeto descartável criado e removido (anon f/f/f, service t/t/t), SC5 por harness de boot e webhook — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC: CR-02 (escrita pública sem teto de campo) foi CORRIGIDO nos commits e7adc01/738a896/600e429 com pnpm test 241/241, lint e build verdes; WR-03 (PENDENCIAS descrevendo o mundo pré-fase) foi CORRIGIDO; CR-01 (falso-verde do harness em alvo parcial) fica como DÍVIDA DEFERIDA — é instrumento quebrado, não vulnerabilidade, e os SC foram provados por DDL direto, não por esse script. Próximo: /gsd-discuss-phase 02"
 ---
 
@@ -23,12 +23,12 @@ last_activity_desc: "Phase 01 FECHADA (aceitando gaps não-bloqueantes). Os cinc
 See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 **Core value:** Um agendamento real, feito por um cliente final que nunca ouviu falar do VamoAgendar, cair na agenda do profissional sem que nada quebre no caminho.
-**Current focus:** Phase 01 — hardening-da-superf-cie-p-blica
+**Current focus:** Phase 02 — integridade-da-agenda
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — COMPLETE
-Plan: 19 of 19
+Phase: 02 (integridade-da-agenda) — EXECUTING
+Plan: 2 of 6
 
 ### Planejamento da 3ª rodada (2026-07-22, branch `fase-01-gaps-rodada-3`)
 
@@ -69,7 +69,7 @@ Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
 Last activity: 2026-07-23
 
-Progress: [██████████] 100% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
+Progress: [████████░░] 80% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
 
 ### Resultado da 4ª passagem de verificação (2026-07-22, HEAD `7937aed`)
 
@@ -132,6 +132,7 @@ Primeira verificação das quatro com acesso DDL ao banco de dev — os cinco Su
 | Phase 01 P17 | ~25min | 2 tasks | 2 files |
 | Phase 01 P18 | ~31min | 2 tasks | 5 files |
 | Phase 01 P19 | ~30min | 3 tasks | 2 files |
+| Phase 02 P01 | 5min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -220,6 +221,8 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase 01]: 01-19: a condição que sustenta a citação do exit 0 do harness anônimo foi escrita nos TRÊS pontos onde o PENDENCIAS o cita, não só na seção nova — quem remover scripts/verificar-controle-harness-anon.sh remove o direito de citar o exit code
 - [Phase 01]: 01-19: os dez warnings da 2ª rodada de review entraram no PENDENCIAS como ponteiros (rótulo + uma linha + seção), sem conserto proposto, e a colisão de rótulos WR-* entre a 1ª e a 2ª rodada foi resolvida por escrito com o comando que recupera o relatório antigo do git
 - [Phase 01]: 01-19: escapada de plataforma aceita com registro (T-01-19-02) — tabela criada por supabase_admin herda anon/authenticated; item aberto com dono (quem habilitar a extensão) e gatilho (próxima habilitação), sem conserto preventivo
+- [Phase ?]: 02-01: engine deriva ocupação de data_hora_fim (D-02); join servicos + fallback || 30 removidos — fecha AGE-01/AGE-02
+- [Phase ?]: 02-01: agendamento que cruza a meia-noite soma 1440*diffDias ao end (Pitfall 4), em vez de clampar
 
 ### Pending Todos
 
@@ -273,6 +276,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-23T10:14:24.086Z
-Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-integridade-da-agenda/02-CONTEXT.md
+Last session: 2026-07-23T16:24:09.523Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None
