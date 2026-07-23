@@ -762,5 +762,130 @@ describe.skipIf(!temCredenciais)(
                 await removerTenantVizinho()
             }
         })
+
+        // -------------------------------------------------------------------
+        // SC3 (AGE-03) — ATOMICIDADE DO DOUBLE-BOOKING CONTRA O BANCO REAL
+        //
+        // A atomicidade não é observável em teste hermético: um mock de
+        // Supabase provaria só o mock. O que FECHA SC3 é a exclusion
+        // constraint `ag_sem_sobreposicao` VIVA no banco (aplicada no 02-05)
+        // recusando o segundo insert sobreposto com SQLSTATE 23P01, e a action
+        // discriminando esse 23P01 para `slot_indisponivel` (02-03). Este caso
+        // prova as duas pontas de uma vez, contra o Supabase de dev.
+        //
+        // ⚠️ `Promise.all` em processo APROXIMA a corrida, não a garante: a
+        // serialização real é do banco. Por isso a asserção DEFINITIVA é o
+        // COUNT de linhas ativas === 1 — o número que só a constraint sabe
+        // segurar —, não a suposição de que os 8 flights colidiram no mesmo
+        // instante. É a diferença que manteve o gap verde na Phase 1: verde de
+        // produtor não é verde de garantia; aqui a garantia é a contagem.
+        // -------------------------------------------------------------------
+        it('SC3 público: N chamadas concorrentes ao MESMO slot → exatamente 1 ativo (constraint + 23P01)', async () => {
+            // Terreno limpo: a contagem exata no fim só é verdadeira se nada
+            // dos casos anteriores sobrar no intervalo-alvo. Ordem obrigatória
+            // (agendamentos antes de clientes) por causa do ON DELETE RESTRICT.
+            await admin.from('agendamentos').delete().eq('tenant_id', TENANT_TESTE)
+            await admin.from('clientes').delete().eq('tenant_id', TENANT_TESTE)
+
+            // Slot da PRÓPRIA engine (nunca literal cravado): é a saída que
+            // `criarAgendamentoPublico` revalida por igualdade exata, então
+            // consumi-la exercita o contrato anti double-booking em vez de
+            // contorná-lo com um horário inventado.
+            const slots = await slotsLivresDaFixture()
+            expect(slots.length, `A fixture não cobriu ${dataAlvo}.`).toBeGreaterThan(0)
+            const slotAlvo = slots[0].datetime
+
+            const N = 8
+            const resultados = await Promise.all(
+                Array.from({ length: N }, (_, i) =>
+                    criarAgendamentoPublico({
+                        slug: SLUG_GRATUITO_TESTE,
+                        servicoId: servicoIdTeste,
+                        dataHora: slotAlvo,
+                        // Mesmo telefone de propósito: força os 8 pela RPC atômica
+                        // `reaproveitar_ou_criar_cliente` também sob concorrência.
+                        clienteNome: `Concorrente ${i}`,
+                        clienteTelefone: TELEFONE_FORMATADO,
+                    }),
+                ),
+            )
+
+            const vencedores = resultados.filter((r) => r.ok)
+            const perdedores = resultados.filter((r) => !r.ok && r.motivo === 'slot_indisponivel')
+            expect(vencedores).toHaveLength(1)
+            expect(perdedores).toHaveLength(N - 1)
+            // Nenhum outro motivo: um `erro_interno` disfarçado aqui seria a
+            // corrida virando falha crua em vez de discriminante amigável.
+            expect(resultados.filter((r) => !r.ok)).toHaveLength(N - 1)
+
+            // A asserção DEFINITIVA — a que só a constraint no banco faz valer.
+            const { count } = await admin
+                .from('agendamentos')
+                .select('id', { count: 'exact', head: true })
+                .eq('tenant_id', TENANT_TESTE)
+                .neq('status', 'cancelado')
+            expect(count).toBe(1)
+
+            // ---------------------------------------------------------------
+            // Metade WALK-IN do SC3 no NÍVEL DA CONSTRAINT (role-agnóstico).
+            //
+            // A exclusion constraint não sabe quem chamou: dois inserts admin
+            // diretos e sobrepostos, mesmo tenant, status <> 'cancelado',
+            // provam a recusa INDEPENDENTE do fluxo — logo cobrem também o
+            // walk-in autenticado, que grava na mesma tabela sob a mesma
+            // constraint. A corrida walk-in autenticada EM PROCESSO (mock de
+            // auth do Clerk) fica best-effort; a garantia que importa é a do
+            // banco, e é esta. Fronteira registrada em SUMMARY/PENDENCIAS.
+            // ---------------------------------------------------------------
+            const { data: clienteWalkin, error: cwErr } = await admin
+                .from('clientes')
+                .insert({
+                    tenant_id: TENANT_TESTE,
+                    telefone: '11955554444',
+                    nome: 'Walk-in Constraint',
+                })
+                .select('id')
+                .single()
+            expect(cwErr, cwErr?.message).toBeNull()
+
+            // Par de períodos que SE SOBREPÕEM, ancorado longe do slot já
+            // ocupado acima para isolar a causa da recusa na sobreposição
+            // entre os DOIS inserts, não com o agendamento vencedor. A
+            // constraint compara período por tenant e ignora horário comercial
+            // (é overlap puro), então quaisquer instantes sobrepostos servem.
+            const base = new Date(slotAlvo)
+            base.setUTCHours(base.getUTCHours() + 3)
+            const inicioA = base.toISOString()
+            const fimA = new Date(base.getTime() + 30 * 60_000).toISOString()
+            const inicioB = new Date(base.getTime() + 15 * 60_000).toISOString()
+            const fimB = new Date(base.getTime() + 45 * 60_000).toISOString()
+
+            const insertDireto = (dataHora: string, dataHoraFim: string) =>
+                admin.from('agendamentos').insert({
+                    tenant_id: TENANT_TESTE,
+                    cliente_id: clienteWalkin!.id,
+                    servico_id: servicoIdTeste,
+                    data_hora: dataHora,
+                    data_hora_fim: dataHoraFim,
+                    status: 'confirmado',
+                })
+
+            const primeiro = await insertDireto(inicioA, fimA)
+            expect(primeiro.error, primeiro.error?.message).toBeNull()
+
+            const segundo = await insertDireto(inicioB, fimB)
+            // SQLSTATE, nunca a .message (que embute org_id e o horário de
+            // terceiro): o código é estável entre versões do Postgres.
+            expect(
+                segundo.error,
+                'O segundo insert sobreposto passou — ag_sem_sobreposicao não está barrando no banco.',
+            ).not.toBeNull()
+            expect(segundo.error?.code).toBe('23P01')
+
+            // Limpeza do que este caso criou. O afterAll também limpa; isto é o
+            // cinto de segurança para não poluir contagens de casos futuros.
+            await admin.from('agendamentos').delete().eq('tenant_id', TENANT_TESTE)
+            await admin.from('clientes').delete().eq('tenant_id', TENANT_TESTE)
+        })
     },
 )
