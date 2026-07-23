@@ -46,6 +46,14 @@
 --   a consulta (a) voltou VAZIA (0 duplicatas). A (b) não é medível antes do
 --   backfill; é o 02-05 quem a roda de forma autoritativa, após a limpeza D-06.
 --
+--   PRÉ-VOO AUTORITATIVO (02-05, 2026-07-23, alvo cimeiteyueeolwmlouxi, PÓS-D-06):
+--   D-06 apagou os 5 agendamentos de teste do tenant avantis
+--   (org_3GQ4ocNNd4Fm6cmgzoCynvxXOxQ), preservando perfil/serviços/horários/
+--   whatsapp_configs/clientes. Com terreno limpo, AS DUAS consultas voltaram ZERO:
+--     (a) duplicatas (tenant_id, telefone) em clientes ........... 0
+--     (b) sobreposições ativas (forma pós-backfill via join servicos) 0
+--   Nenhuma linha violadora — EXCLUDE e UNIQUE podem ser criadas.
+--
 -- ── 🚨 service_role NUNCA entra em linha de REVOKE ────────────────────────
 -- Todo o caminho público (perfil, plano, serviços, engine, lookup de cliente,
 -- escrita do agendamento) roda com createAdminClient() (service_role) desde a
