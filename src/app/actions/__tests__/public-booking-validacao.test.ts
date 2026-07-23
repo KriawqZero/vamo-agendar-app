@@ -126,8 +126,14 @@ describe('criarAgendamentoPublico — teto e formato dos campos de contato (CR-0
     })
 
     it('aceita e-mail ausente (campo opcional não vira email_invalido)', async () => {
-        const { clienteEmail: _omitido, ...semEmail } = PARAMS_VALIDOS
-        const resultado = await criarAgendamentoPublico(semEmail)
+        const { slug, servicoId, dataHora, clienteNome, clienteTelefone } = PARAMS_VALIDOS
+        const resultado = await criarAgendamentoPublico({
+            slug,
+            servicoId,
+            dataHora,
+            clienteNome,
+            clienteTelefone,
+        })
 
         expect(createAdminClientMock).toHaveBeenCalled()
         if (!resultado.ok) expect(resultado.motivo).not.toBe('email_invalido')

@@ -46,6 +46,25 @@ const FORMATO_DATA_ISO = /^\d{4}-\d{2}-\d{2}$/
 const DURACAO_MAXIMA_MINUTOS = 24 * 60
 
 /**
+ * Tetos e formato dos campos de contato na fronteira pública de ESCRITA.
+ *
+ * `clientes.nome`/`clientes.email` são `text` SEM limite no banco
+ * (`supabase/schemas/06_clientes.sql`), e o insert usa o cliente PRIVILEGIADO
+ * com o RLS fora do jogo — então a única defesa contra uma requisição anônima
+ * gravar um nome de 200 mil caracteres como linha real, ou empurrar um e-mail
+ * malformado para o fluxo Resend, é esta validação no app. O nome vazio já cai
+ * em `campos_obrigatorios` lá em cima; o que faltava era o TETO superior.
+ *
+ * 254 é o limite de endereço da RFC 5321. A regex é o mínimo honesto — um `@`
+ * com domínio —, não uma validação canônica de e-mail (que não existe por
+ * regex, e que a Fricção Zero não justifica): o objetivo aqui é barrar lixo
+ * óbvio e limitar tamanho, não recusar endereços exóticos porém válidos.
+ */
+const NOME_MAXIMO_CARACTERES = 120
+const EMAIL_MAXIMO_CARACTERES = 254
+const FORMATO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/**
  * A data existe mesmo no calendário?
  *
  * A regex sozinha não basta: `2027-13-45` casa com `\d{4}-\d{2}-\d{2}` e passaria
@@ -75,8 +94,12 @@ function ehDataDeCalendario(dateStr: string): boolean {
  *
  * Mesmo vocabulário de `src/lib/whatsapp-helper.ts` (`{ ok: false, motivo }`),
  * que já era o formato do projeto. Os membros que o caminho de LEITURA não
- * produz existem para o caminho de ESCRITA (plano 01-12) — declarar os sete de
- * uma vez evita duas edições do mesmo tipo.
+ * produz existem para o caminho de ESCRITA (plano 01-12) — declarar os sete
+ * originais de uma vez evita duas edições do mesmo tipo. `email_invalido` é o
+ * oitavo, acrescentado pelo CR-02: e-mail malformado é algo que um cliente REAL
+ * digita (campo opcional), então merece cópia honesta própria em vez de ser
+ * colapsado em `campos_obrigatorios` — só ele exigiu literal novo, porque o teto
+ * de nome reusa `campos_obrigatorios` (nome gigante é ataque, não UX).
  */
 export type MotivoPublico =
     | 'campos_obrigatorios'
@@ -86,6 +109,7 @@ export type MotivoPublico =
     | 'servico_invalido'
     | 'slot_indisponivel'
     | 'erro_interno'
+    | 'email_invalido'
 
 /** Falhas que a resolução de perfil sabe produzir. */
 type MotivoLeituraPublica = Extract<MotivoPublico, 'slug_invalido' | 'erro_interno'>
@@ -328,6 +352,27 @@ export async function criarAgendamentoPublico({
         return { ok: false, motivo: 'telefone_invalido' }
     }
 
+    // Teto de nome — última defesa contra linha de tamanho arbitrário gravada
+    // por requisição anônima (ver JSDoc de NOME_MAXIMO_CARACTERES). O piso `< 1`
+    // também barra nome só de espaços em branco, que passaria pelo `!clienteNome`
+    // acima (string truthy) e viraria uma linha vazia no banco. Nome longo é
+    // ataque, não UX: reusa `campos_obrigatorios`, sem cópia nova.
+    const nomeLimpo = clienteNome.trim()
+    if (nomeLimpo.length < 1 || nomeLimpo.length > NOME_MAXIMO_CARACTERES) {
+        return { ok: false, motivo: 'campos_obrigatorios' }
+    }
+
+    // E-mail é OPCIONAL: só valida se veio preenchido. Formato mínimo (um `@`
+    // com domínio) + teto RFC 5321. E-mail malformado um cliente real digita, e
+    // ele tem discriminante honesto próprio (`email_invalido`).
+    const emailLimpo = clienteEmail?.trim()
+    if (
+        emailLimpo &&
+        (emailLimpo.length > EMAIL_MAXIMO_CARACTERES || !FORMATO_EMAIL.test(emailLimpo))
+    ) {
+        return { ok: false, motivo: 'email_invalido' }
+    }
+
     const dataLocal = new Date(dataHora)
     if (isNaN(dataLocal.getTime())) {
         return { ok: false, motivo: 'data_invalida' }
@@ -444,10 +489,12 @@ export async function criarAgendamentoPublico({
         const { data: novoCliente, error: cnError } = await admin
             .from('clientes')
             .insert({
+                // Valores já saneados e validados na seção 1 — mesmo padrão de
+                // `telefoneLimpo`, uma fonte só para a validação e a escrita.
                 tenant_id: tenantId,
-                nome: clienteNome.trim(),
+                nome: nomeLimpo,
                 telefone: telefoneLimpo,
-                email: clienteEmail?.trim() || null,
+                email: emailLimpo || null,
             })
             .select('id')
             .single()
