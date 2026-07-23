@@ -174,7 +174,7 @@ reavaliação em `docs/PENDENCIAS.md`.
 
 Em `NODE_ENV=production`, variável obrigatória ausente faz o processo **encerrar**: a
 mensagem sai em `stderr` listando todos os nomes faltantes de uma vez e, logo em seguida,
-`encerrarBootPorEnvAusente()` (`src/lib/env.ts`) chama `process.exit(1)`. Não é "derruba o
+`encerrarBootPorEnvAusente()` (`src/lib/env-boot.ts`) chama `process.exit(1)`. Não é "derruba o
 boot" no sentido vago de logar e continuar de pé — a porta para de aceitar conexão, e é isso
 que permite ao orquestrador reiniciar ou fazer rollback em vez de marcar como saudável um
 deploy que responde 500 em toda rota. Em desenvolvimento e em teste, no-op.
@@ -189,10 +189,14 @@ nomeada em `stderr`, `curl` 7 = recusa de conexão).
 acontece com `NODE_ENV=production` (a validação retorna na primeira linha fora dele, então
 `pnpm dev` continua subindo com variável ausente) e só no runtime `nodejs`
 (`NEXT_RUNTIME === 'nodejs'` em `src/instrumentation.ts`) — fora dele a exceção é relançada
-como antes, porque `process.exit` não existe no Edge Runtime. Efeito colateral conhecido e
-registrado em `docs/PENDENCIAS.md`: o Turbopack emite três diagnósticos estáticos de Edge
-Runtime por build (o analisador não enxerga a guarda), o build continua saindo 0 e o código
-nunca executa no edge.
+como antes, porque `process.exit` não existe no Edge Runtime. Por isso as APIs só-Node
+(`process.exit`/`process.stderr`) vivem em `src/lib/env-boot.ts`, carregado por `import()`
+**dinâmico** só nesse branch `nodejs`: assim o módulo não entra no bundle da Edge
+Instrumentation e o Turbopack não acusa uso de API Node no edge. `src/lib/env.ts` fica só com
+a lista e `validarEnvObrigatorio` (ambos edge-safe — só leem `process.env`) e segue importado
+estaticamente. Até 2026-07-23 os dois símbolos moravam em `env.ts` e o Turbopack emitia três
+diagnósticos estáticos de Edge Runtime por build; a separação eliminou o ruído (ver a
+pendência RESOLVIDA correspondente em `docs/PENDENCIAS.md`).
 
 Disparado por `register()` em `src/instrumentation.ts`, **antes** de qualquer import de
 terceiro — invertido, um env faltando estouraria dentro do init do Sentry com a mensagem

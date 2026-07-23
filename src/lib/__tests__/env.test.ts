@@ -1,11 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 
-import {
-    validarEnvObrigatorio,
-    OBRIGATORIAS_EM_PRODUCAO,
-    encerrarBootPorEnvAusente,
-    CODIGO_SAIDA_ENV_AUSENTE,
-} from '../env'
+import { validarEnvObrigatorio, OBRIGATORIAS_EM_PRODUCAO } from '../env'
+import { encerrarBootPorEnvAusente, CODIGO_SAIDA_ENV_AUSENTE } from '../env-boot'
 
 /**
  * `vi.stubEnv` por teste (Vitest 4) — nunca constante de módulo, para que

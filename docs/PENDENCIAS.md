@@ -1344,31 +1344,18 @@ Cada um com o **gatilho** que o traz de volta — nenhum é "esquecido", todos s
   ficava vivo servindo 500; hoje ele sai com código 1. As duas saídas de inspeção
   acima continuam valendo sem mudança.
 
-- **Três diagnósticos de Edge Runtime no `pnpm build` (achado do plano 01-06, decisão
-  do owner pendente).** `src/lib/env.ts` passou a usar `process.stderr.write` (linhas
-  91 e 92) e `process.exit` (linha 96), e o arquivo é importado por
-  `src/instrumentation.ts`, que também é empacotado para o runtime **edge**. O
-  Turbopack então imprime, a cada build, três blocos do tipo:
-
-  ```
-  A Node.js API is used (process.exit at line: 96) which is not supported in the Edge Runtime.
-  Import trace:  Edge Instrumentation: ./src/lib/env.ts → ./src/instrumentation.ts
-  ```
-
-  **Não é falha:** medido num build bem-sucedido, `pnpm build` sai **0** (o resumo de
-  rotas é impresso normalmente), `pnpm dev` sobe e responde 200, e o código nunca
-  executa no edge — `encerrarBootPorEnvAusente` só é chamado atrás da guarda
-  `NEXT_RUNTIME === 'nodejs'`. O analisador é estático e não enxerga essa guarda.
-
-  **É ruído, e ruído rotulado como "error" é dívida:** três blocos por build treinam
-  quem lê a saída a ignorá-la — o mesmo padrão de janela quebrada que esta fase
-  combateu. As saídas possíveis, nenhuma delas tomada aqui porque contrariam o
-  contrato do plano 01-06 (que fixa os dois símbolos em `src/lib/env.ts` e pina
-  `process.stderr.write` em teste): (a) mover `encerrarBootPorEnvAusente` para um
-  módulo próprio que só o caminho nodejs importe; (b) aceitar o ruído e documentá-lo
-  como esperado. Aliasar `process` por `globalThis` para calar o analisador **não** é
-  uma saída: esconderia o sinal em vez de resolvê-lo. *Gatilho:* decisão do owner
-  antes do go-live, ou na primeira vez que a saída do build for usada como gate de CI.
+- ~~**Três diagnósticos de Edge Runtime no `pnpm build`** (achado do plano 01-06).~~
+  **RESOLVIDO (2026-07-23).** Implementada a saída (a) que a pendência previa: os
+  símbolos que usam APIs só-Node (`encerrarBootPorEnvAusente`, `CODIGO_SAIDA_ENV_AUSENTE`)
+  foram movidos para `src/lib/env-boot.ts`, importado por `import()` **dinâmico** apenas
+  no branch `NEXT_RUNTIME === 'nodejs'` de `src/instrumentation.ts`. Assim `env-boot.ts`
+  não entra no bundle da Edge Instrumentation e o Turbopack para de acusar uso de API
+  Node no edge (medido: `grep` por `not supported in the Edge Runtime` no build agora
+  retorna **0**). `env.ts` fica só com `OBRIGATORIAS_EM_PRODUCAO`/`validarEnvObrigatorio`
+  (edge-safe, só leem `process.env`) e segue importado estaticamente. O contrato de teste
+  do plano 01-06 (pinar `process.exit`/`process.stderr.write`) foi preservado — `env.test.ts`
+  só passou a importar os dois símbolos de `../env-boot`. `pnpm lint`, `pnpm test` (235) e
+  `pnpm build` (exit 0) passam.
 
 - **Checkout Asaas + webhooks completos de cobrança** (`/api/webhooks/asaas`) —
   necessário **se o lançamento já pretender cobrar automaticamente**: roadmap técnico

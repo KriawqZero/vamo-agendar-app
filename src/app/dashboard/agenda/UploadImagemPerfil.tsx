@@ -97,8 +97,12 @@ export default function UploadImagemPerfil({ tipo, urlAtual, liberado }: UploadI
                 )}
 
                 <div className="flex flex-wrap items-center gap-2">
-                    <form action={enviarAction}>
-                        <input type="hidden" name="tipo" value={tipo} />
+                    {/* Sem elemento <form>: este componente é renderizado dentro do
+                        <form> de perfil do AgendaClient, e <form> aninhado é HTML
+                        inválido (quebra a hidratação). O upload dispara na seleção
+                        do arquivo, então o FormData é montado à mão e a action é
+                        invocada direto via dispatch do useActionState. */}
+                    <div>
                         <input
                             id={idInput}
                             type="file"
@@ -107,11 +111,14 @@ export default function UploadImagemPerfil({ tipo, urlAtual, liberado }: UploadI
                             className="sr-only"
                             disabled={!liberado || ocupado}
                             onChange={(e) => {
-                                if (e.target.files?.length) {
-                                    // requestSubmit() captura o FormData sincronamente;
-                                    // o reset permite reenviar o MESMO arquivo depois
+                                const arquivo = e.target.files?.[0]
+                                if (arquivo) {
+                                    const dados = new FormData()
+                                    dados.append('tipo', tipo)
+                                    dados.append('arquivo', arquivo)
+                                    enviarAction(dados)
+                                    // Reset permite reenviar o MESMO arquivo depois
                                     // (remover + reenviar, ou retry após falha).
-                                    e.target.form?.requestSubmit()
                                     e.target.value = ''
                                 }
                             }}
@@ -126,7 +133,7 @@ export default function UploadImagemPerfil({ tipo, urlAtual, liberado }: UploadI
                         >
                             {enviando ? 'Enviando…' : urlAtual ? 'Trocar' : ROTULOS[tipo].enviar}
                         </label>
-                    </form>
+                    </div>
                     {urlAtual && (
                         <button
                             type="button"
