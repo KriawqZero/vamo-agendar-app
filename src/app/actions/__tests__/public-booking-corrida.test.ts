@@ -259,3 +259,75 @@ describe('criarAgendamentoPublico — dedupe atômico de cliente via RPC (D-01)'
         expect(capturas.insertAgendamento).toBeNull()
     })
 })
+
+// ---------------------------------------------------------------------------
+// Task 2 — Discriminar 23P01 (perda de corrida) → slot_indisponivel, sem Sentry
+// ---------------------------------------------------------------------------
+
+describe('criarAgendamentoPublico — perda de corrida no INSERT (D-05)', () => {
+    it('INSERT com 23P01 → slot_indisponivel e NUNCA reportarExcecao', async () => {
+        montar({
+            agendamentoResposta: {
+                data: null,
+                // A .message crua embute org_id e o horário de terceiro — nunca
+                // pode atravessar; só o error.code (SQLSTATE, estável) é lido.
+                error: {
+                    code: '23P01',
+                    message:
+                        'conflicting key value violates exclusion constraint "ag_sem_sobreposicao" org_terceiro 2099-01-15 13:00',
+                },
+            },
+        })
+
+        const resultado = await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        // O mesmo discriminante que o BookingApp já consome (aviso âmbar + grade
+        // recarregada). Perda de corrida é condição ESPERADA.
+        expect(resultado).toEqual({ ok: false, motivo: 'slot_indisponivel' })
+        // O coração do D-05: condição esperada NÃO infla o Sentry.
+        expect(reportarExcecaoMock).not.toHaveBeenCalled()
+        // Funil: booking_failed com o motivo da corrida.
+        expect(capturarEventoTenant).toHaveBeenCalledWith('booking_failed', TENANT, {
+            motivo: 'slot_indisponivel',
+        })
+    })
+
+    it('a .message crua do 23P01 NUNCA atravessa para o retorno', async () => {
+        const messageComPII = 'violates exclusion constraint org_terceiro horario-de-terceiro'
+        montar({
+            agendamentoResposta: {
+                data: null,
+                error: { code: '23P01', message: messageComPII },
+            },
+        })
+
+        const resultado = await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        const serializado = JSON.stringify(resultado)
+        expect(serializado).not.toContain('org_terceiro')
+        expect(serializado).not.toContain('exclusion')
+        expect(serializado).not.toContain(messageComPII)
+    })
+
+    it('CONTRAFACTUAL: erro genérico (não 23P01) continua caindo em erro_interno + reportarExcecao', async () => {
+        // É o error.code que discrimina: um erro de INSERT que NÃO seja perda de
+        // corrida (aqui uma violação de FK, 23503) continua sendo falha de infra
+        // — vai ao Sentry, como antes. Sem o ramo 23P01 o caso acima colapsaria
+        // exatamente neste comportamento; provar os dois lados fecha a discriminação.
+        montar({
+            agendamentoResposta: {
+                data: null,
+                error: { code: '23503', message: 'foreign key violation' },
+            },
+        })
+
+        const resultado = await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        expect(resultado).toEqual({ ok: false, motivo: 'erro_interno' })
+        expect(reportarExcecaoMock).toHaveBeenCalledTimes(1)
+        expect(reportarExcecaoMock.mock.calls[0][1]).toEqual({
+            fluxo: 'booking_publico',
+            etapa: 'criar_agendamento',
+        })
+    })
+})
