@@ -13,8 +13,8 @@ const CG = 'America/Campo_Grande' // UTC-4
 interface Agendamento {
     id: string
     data_hora: string
+    data_hora_fim: string
     status: string
-    servicos: { duracao_minutos: number } | null
 }
 
 interface DadosFake {
@@ -106,8 +106,8 @@ describe('obterSlotsDisponiveis — fuso do estabelecimento', () => {
             {
                 id: 'ag-1',
                 data_hora: '2027-07-13T12:00:00Z',
+                data_hora_fim: '2027-07-13T12:30:00Z',
                 status: 'confirmado',
-                servicos: { duracao_minutos: 30 },
             },
         ]
 
@@ -140,8 +140,8 @@ describe('obterSlotsDisponiveis — fuso do estabelecimento', () => {
             {
                 id: 'ag-1',
                 data_hora: '2027-07-13T12:00:00Z',
+                data_hora_fim: '2027-07-13T12:30:00Z',
                 status: 'confirmado',
-                servicos: { duracao_minutos: 30 },
             },
         ]
 
@@ -201,8 +201,8 @@ describe('obterSlotsDisponiveis — grade anti-buraco', () => {
             {
                 id: 'ag-1',
                 data_hora: '2027-07-13T12:00:00Z',
+                data_hora_fim: '2027-07-13T12:30:00Z',
                 status: 'confirmado',
-                servicos: { duracao_minutos: 30 },
             },
         ]
         const supabase = fakeSupabase({

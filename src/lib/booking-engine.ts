@@ -281,15 +281,7 @@ export async function obterSlotsDisponiveis({
 
     let queryAgendamentos = supabase
         .from('agendamentos')
-        .select(
-            `
-            data_hora,
-            status,
-            servicos (
-                duracao_minutos
-            )
-        `,
-        )
+        .select('data_hora, data_hora_fim, status')
         .eq('tenant_id', tenantId)
         .neq('status', 'cancelado')
         .gte('data_hora', inicio.toISOString())
@@ -307,15 +299,30 @@ export async function obterSlotsDisponiveis({
         return []
     }
 
-    // Converte os agendamentos existentes em janelas de minutos ocupados
+    // Converte os agendamentos existentes em janelas de minutos ocupados. A
+    // ocupação vem EXCLUSIVAMENTE de `data_hora_fim`, gravado no ato da reserva —
+    // nunca de um join com `servicos`. Assim editar a duração de um serviço não
+    // move o término de um agendamento já marcado (AGE-01) e um serviço
+    // desativado continua ocupando o tempo reservado, sem o antigo fallback de
+    // 30 min (AGE-02).
     const slotsOcupados: Intervalo[] = (agendamentos || []).map((ag) => {
-        // Hora do agendamento de volta para a parede local do estabelecimento
+        // Início e término de volta para a parede local do estabelecimento.
         const [h, m] = horaLocal(ag.data_hora, timezone).split(':').map(Number)
         const start = h * 60 + m
-        // Se a duração do serviço não estiver disponível, assume 30min padrão
-        // @ts-expect-error — join do Supabase tipado como array; runtime é objeto único
-        const duracao = ag.servicos?.duracao_minutos || 30
-        const end = start + duracao
+        const [hf, mf] = horaLocal(ag.data_hora_fim, timezone).split(':').map(Number)
+        let end = hf * 60 + mf
+
+        // Pitfall 4: um agendamento que cruza a meia-noite tem o término num dia
+        // local posterior, então em minutos-locais `end` viria MENOR que `start`
+        // e o intervalo ocupado ficaria invertido/vazio — deixando o slot da
+        // virada livre indevidamente. Somamos 1440 por dia de diferença para
+        // manter a janela ocupada íntegra até (e além) o fim do dia consultado.
+        const diaInicio = diaLocal(ag.data_hora, timezone)
+        const diaFim = diaLocal(ag.data_hora_fim, timezone)
+        if (diaFim !== diaInicio) {
+            const diffDias = Math.round((Date.parse(diaFim) - Date.parse(diaInicio)) / 86_400_000)
+            end += 1440 * diffDias
+        }
 
         return { start, end }
     })
