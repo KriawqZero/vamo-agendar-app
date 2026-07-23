@@ -368,6 +368,70 @@ describe('obterSlotsDisponiveis — regras de acesso', () => {
     })
 })
 
+describe('obterSlotsDisponiveis — ocupação por data_hora_fim (AGE-02 + meia-noite)', () => {
+    it('AGE-02: serviço desativado continua ocupando o tempo reservado (nunca assume 30 min)', async () => {
+        // Agendamento de 60 min (09:00→10:00 SP). O serviço original foi
+        // DESATIVADO — não há serviço ativo no tenant. A ocupação tem de vir do
+        // `data_hora_fim` reservado, não de um fallback genérico de 30 min: sob o
+        // antigo `|| 30` o slot das 09:30 reapareceria livre.
+        const agendamentos: Agendamento[] = [
+            {
+                id: 'ag-desativado',
+                data_hora: '2027-07-13T12:00:00Z', // 09:00 SP
+                data_hora_fim: '2027-07-13T13:00:00Z', // 10:00 SP (60 min reservados)
+                status: 'confirmado',
+            },
+        ]
+        const slots = await obterSlotsDisponiveis({
+            tenantId: 't',
+            dateStr: DATA,
+            duracaoServicoMinutos: 30,
+            // Sem `servicos`: nenhum serviço ativo correspondente ao agendamento.
+            supabase: fakeSupabase({ horarios: HORARIO_COMERCIAL, agendamentos }),
+            timezone: SP,
+        })
+        const horas = slots.map((s) => s.time)
+
+        // Todo o intervalo reservado [09:00, 10:00) permanece ocupado...
+        expect(horas).not.toContain('09:00')
+        expect(horas).not.toContain('09:30') // a prova do AGE-02: o antigo || 30 liberaria este
+        // ...e as bordas coladas continuam ofertadas.
+        expect(horas).toContain('08:30')
+        expect(horas).toContain('10:00')
+    })
+
+    it('Pitfall 4: agendamento que cruza a meia-noite ocupa até o fim do dia, sem liberar a virada', async () => {
+        // 23:30 SP → 00:30 SP do dia seguinte (60 min). Em minutos-locais o fim
+        // (00:30 = 30) viria MENOR que o início (23:30 = 1410); a engine soma
+        // 1440 para manter [1410, 1470) ocupado — sem isso o slot da virada
+        // reapareceria livre.
+        const agendamentos: Agendamento[] = [
+            {
+                id: 'ag-virada',
+                data_hora: '2027-07-14T02:30:00Z', // 23:30 SP de 2027-07-13
+                data_hora_fim: '2027-07-14T03:30:00Z', // 00:30 SP de 2027-07-14
+                status: 'confirmado',
+            },
+        ]
+        const slots = await obterSlotsDisponiveis({
+            tenantId: 't',
+            dateStr: DATA, // 2027-07-13
+            duracaoServicoMinutos: 30,
+            supabase: fakeSupabase({
+                horarios: [{ hora_inicio: '20:00', hora_fim: '23:59' }],
+                servicos: [{ duracao_minutos: 30 }],
+                agendamentos,
+            }),
+            timezone: SP,
+        })
+        const horas = slots.map((s) => s.time)
+
+        expect(horas).toContain('23:00') // último slot ANTES da ocupação da virada
+        expect(horas).not.toContain('23:15') // exigiria invadir a ocupação — livre só sob o bug
+        expect(horas).not.toContain('23:30') // início da ocupação
+    })
+})
+
 describe('calcularIntervalosLivres', () => {
     it('subtrai bloqueios e ocupados de uma janela única', () => {
         const resultado = calcularIntervalosLivres(
