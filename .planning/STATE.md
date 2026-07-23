@@ -5,14 +5,14 @@ milestone_name: Lançamento público
 current_phase: 02
 current_phase_name: integridade-da-agenda
 status: complete
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-07-23T16:44:46.598Z"
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-07-23T17:01:54.764Z"
 last_activity: 2026-07-23
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 25
-  completed_plans: 22
+  completed_plans: 23
 last_activity_desc: "Phase 01 FECHADA (aceitando gaps não-bloqueantes). Os cinco Success Criteria do ROADMAP foram medidos DIRETAMENTE na 4ª verificação (acesso DDL ao banco): SC1/SC2/SC3 anônimos em 401/42501 com controle positivo, SC4 exercitado por objeto descartável criado e removido (anon f/f/f, service t/t/t), SC5 por harness de boot e webhook — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC: CR-02 (escrita pública sem teto de campo) foi CORRIGIDO nos commits e7adc01/738a896/600e429 com pnpm test 241/241, lint e build verdes; WR-03 (PENDENCIAS descrevendo o mundo pré-fase) foi CORRIGIDO; CR-01 (falso-verde do harness em alvo parcial) fica como DÍVIDA DEFERIDA — é instrumento quebrado, não vulnerabilidade, e os SC foram provados por DDL direto, não por esse script. Próximo: /gsd-discuss-phase 02"
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 ## Current Position
 
 Phase: 02 (integridade-da-agenda) — EXECUTING
-Plan: 4 of 6
+Plan: 5 of 6
 
 ### Planejamento da 3ª rodada (2026-07-22, branch `fase-01-gaps-rodada-3`)
 
@@ -69,7 +69,7 @@ Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
 Last activity: 2026-07-23
 
-Progress: [█████████░] 88% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
+Progress: [█████████░] 92% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
 
 ### Resultado da 4ª passagem de verificação (2026-07-22, HEAD `7937aed`)
 
@@ -135,6 +135,7 @@ Primeira verificação das quatro com acesso DDL ao banco de dev — os cinco Su
 | Phase 02 P01 | 5min | 2 tasks | 2 files |
 | Phase 02 P02 | 20min | 3 tasks | 3 files |
 | Phase 02 P03 | ~10min | 2 tasks | 2 files |
+| Phase 02 P04 | ~25min | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -282,6 +283,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-23T16:44:38.939Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-07-23T17:01:54.752Z
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None
