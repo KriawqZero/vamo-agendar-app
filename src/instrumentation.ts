@@ -1,6 +1,6 @@
 import * as Sentry from '@sentry/nextjs'
 
-import { validarEnvObrigatorio, encerrarBootPorEnvAusente } from './lib/env'
+import { validarEnvObrigatorio } from './lib/env'
 
 /**
  * Hook de instrumentação do Next. Faz duas coisas, nesta ordem obrigatória.
@@ -27,10 +27,16 @@ export async function register() {
     //
     //    Guarda de runtime: só no `nodejs`. No runtime edge não existe
     //    `process.exit`, e lá o comportamento anterior (relançar) é preservado.
+    //
+    //    O import de `encerrarBootPorEnvAusente` é DINÂMICO e só neste branch:
+    //    aquele módulo usa `process.exit`/`process.stderr`, APIs que não existem
+    //    no runtime edge. Importado estaticamente aqui, entraria no bundle da
+    //    Edge Instrumentation e o Turbopack acusaria uso de API Node no edge.
     try {
         validarEnvObrigatorio()
     } catch (erro) {
         if (process.env.NEXT_RUNTIME === 'nodejs') {
+            const { encerrarBootPorEnvAusente } = await import('./lib/env-boot')
             encerrarBootPorEnvAusente(erro instanceof Error ? erro.message : String(erro))
         }
         throw erro

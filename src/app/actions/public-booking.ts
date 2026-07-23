@@ -24,6 +24,65 @@ const COLUNAS_PERFIL_PUBLICO =
 const COLUNAS_SERVICO_PUBLICO = 'id, nome, descricao, preco, duracao_minutos'
 
 /**
+ * Formato exigido de `dateStr` na fronteira pública: `YYYY-MM-DD`.
+ *
+ * É deliberadamente a MESMA regex que o fluxo AUTENTICADO usa em
+ * `src/app/actions/agendamentos.ts` (`obterSlotsDashboard`). A simetria é o
+ * ponto: era o fluxo anônimo que estava validando MENOS que o autenticado, e foi
+ * esse contraste dentro do próprio repositório que mostrou que a ausência de
+ * validação aqui era acidente, não decisão de produto.
+ */
+const FORMATO_DATA_ISO = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Teto de duração aceito na fronteira pública: um dia inteiro.
+ *
+ * Seguro por construção, e por isso não recusa nada que o produto saiba servir:
+ * as janelas de `horarios_funcionamento` são horas DENTRO de um dia, então o
+ * maior intervalo livre possível tem 1440 minutos e uma duração acima disso
+ * jamais produziria candidato — hoje ela devolveria uma lista vazia silenciosa.
+ * O teto troca essa lista vazia por um discriminante honesto.
+ */
+const DURACAO_MAXIMA_MINUTOS = 24 * 60
+
+/**
+ * Tetos e formato dos campos de contato na fronteira pública de ESCRITA.
+ *
+ * `clientes.nome`/`clientes.email` são `text` SEM limite no banco
+ * (`supabase/schemas/06_clientes.sql`), e o insert usa o cliente PRIVILEGIADO
+ * com o RLS fora do jogo — então a única defesa contra uma requisição anônima
+ * gravar um nome de 200 mil caracteres como linha real, ou empurrar um e-mail
+ * malformado para o fluxo Resend, é esta validação no app. O nome vazio já cai
+ * em `campos_obrigatorios` lá em cima; o que faltava era o TETO superior.
+ *
+ * 254 é o limite de endereço da RFC 5321. A regex é o mínimo honesto — um `@`
+ * com domínio —, não uma validação canônica de e-mail (que não existe por
+ * regex, e que a Fricção Zero não justifica): o objetivo aqui é barrar lixo
+ * óbvio e limitar tamanho, não recusar endereços exóticos porém válidos.
+ */
+const NOME_MAXIMO_CARACTERES = 120
+const EMAIL_MAXIMO_CARACTERES = 254
+const FORMATO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/**
+ * A data existe mesmo no calendário?
+ *
+ * A regex sozinha não basta: `2027-13-45` casa com `\d{4}-\d{2}-\d{2}` e passaria
+ * direto. Sem esta segunda checagem, mês 13 e dia 45 voltam a produzir grade
+ * calculada errada SEM SINTOMA — que é exatamente o defeito, e não um detalhe.
+ * O teste é o de sempre: reserializar o instante e exigir a mesma string de volta
+ * (o `Date` normaliza `2027-13-45` para outro dia, então a igualdade quebra).
+ *
+ * Ancorado em UTC de propósito: aqui só se decide se a string É uma data, nunca
+ * qual instante ela representa — a interpretação no fuso do tenant continua sendo
+ * assunto exclusivo de `src/lib/timezone.ts`.
+ */
+function ehDataDeCalendario(dateStr: string): boolean {
+    const instante = new Date(`${dateStr}T00:00:00Z`)
+    return !isNaN(instante.getTime()) && instante.toISOString().slice(0, 10) === dateStr
+}
+
+/**
  * Discriminante FECHADO das falhas esperadas do fluxo público.
  *
  * Por que é um enum de literais e não texto livre: o valor atravessa a fronteira
@@ -35,8 +94,12 @@ const COLUNAS_SERVICO_PUBLICO = 'id, nome, descricao, preco, duracao_minutos'
  *
  * Mesmo vocabulário de `src/lib/whatsapp-helper.ts` (`{ ok: false, motivo }`),
  * que já era o formato do projeto. Os membros que o caminho de LEITURA não
- * produz existem para o caminho de ESCRITA (plano 01-12) — declarar os sete de
- * uma vez evita duas edições do mesmo tipo.
+ * produz existem para o caminho de ESCRITA (plano 01-12) — declarar os sete
+ * originais de uma vez evita duas edições do mesmo tipo. `email_invalido` é o
+ * oitavo, acrescentado pelo CR-02: e-mail malformado é algo que um cliente REAL
+ * digita (campo opcional), então merece cópia honesta própria em vez de ser
+ * colapsado em `campos_obrigatorios` — só ele exigiu literal novo, porque o teto
+ * de nome reusa `campos_obrigatorios` (nome gigante é ataque, não UX).
  */
 export type MotivoPublico =
     | 'campos_obrigatorios'
@@ -46,9 +109,28 @@ export type MotivoPublico =
     | 'servico_invalido'
     | 'slot_indisponivel'
     | 'erro_interno'
+    | 'email_invalido'
 
-/** Falhas que a resolução de perfil e a busca de slots sabem produzir. */
+/** Falhas que a resolução de perfil sabe produzir. */
 type MotivoLeituraPublica = Extract<MotivoPublico, 'slug_invalido' | 'erro_interno'>
+
+/**
+ * Falhas que a busca de SLOTS sabe produzir — vista mais larga que
+ * `MotivoLeituraPublica`, e de propósito.
+ *
+ * Por que não alargar `MotivoLeituraPublica` em vez de criar este alias: aquele
+ * tipo descreve o que a RESOLUÇÃO DE PERFIL produz, e a resolução não sabe
+ * produzir `data_invalida` nem `servico_invalido`. Cada alias diz exatamente o
+ * que o seu produtor produz; alargar o do vizinho para caber a validação de
+ * entrada desta função tornaria os dois tipos menos verdadeiros.
+ *
+ * Todos os membros continuam pertencendo a `MotivoPublico`, então
+ * `mensagemDeMotivo` os aceita sem edição e os dois `Record` exaustivos de
+ * `src/app/book/[slug]/mensagens.ts` seguem compilando intactos — nenhuma cópia
+ * nova precisa ser escrita, porque as duas já estavam contratadas lá.
+ */
+type MotivoSlotsPublicos =
+    MotivoLeituraPublica | Extract<MotivoPublico, 'data_invalida' | 'servico_invalido'>
 
 /**
  * Linha de `perfis_empresas` projetada por `COLUNAS_PERFIL_PUBLICO`. O tipo é
@@ -72,7 +154,7 @@ export type ResolucaoPerfil =
     | { ok: false; motivo: MotivoLeituraPublica }
 
 export type ResultadoSlots =
-    { ok: true; slots: SlotPublico[] } | { ok: false; motivo: MotivoLeituraPublica }
+    { ok: true; slots: SlotPublico[] } | { ok: false; motivo: MotivoSlotsPublicos }
 
 /** Linha devolvida pelo `RETURNING` do INSERT de agendamento — forma inalterada. */
 export interface AgendamentoCriado {
@@ -270,6 +352,27 @@ export async function criarAgendamentoPublico({
         return { ok: false, motivo: 'telefone_invalido' }
     }
 
+    // Teto de nome — última defesa contra linha de tamanho arbitrário gravada
+    // por requisição anônima (ver JSDoc de NOME_MAXIMO_CARACTERES). O piso `< 1`
+    // também barra nome só de espaços em branco, que passaria pelo `!clienteNome`
+    // acima (string truthy) e viraria uma linha vazia no banco. Nome longo é
+    // ataque, não UX: reusa `campos_obrigatorios`, sem cópia nova.
+    const nomeLimpo = clienteNome.trim()
+    if (nomeLimpo.length < 1 || nomeLimpo.length > NOME_MAXIMO_CARACTERES) {
+        return { ok: false, motivo: 'campos_obrigatorios' }
+    }
+
+    // E-mail é OPCIONAL: só valida se veio preenchido. Formato mínimo (um `@`
+    // com domínio) + teto RFC 5321. E-mail malformado um cliente real digita, e
+    // ele tem discriminante honesto próprio (`email_invalido`).
+    const emailLimpo = clienteEmail?.trim()
+    if (
+        emailLimpo &&
+        (emailLimpo.length > EMAIL_MAXIMO_CARACTERES || !FORMATO_EMAIL.test(emailLimpo))
+    ) {
+        return { ok: false, motivo: 'email_invalido' }
+    }
+
     const dataLocal = new Date(dataHora)
     if (isNaN(dataLocal.getTime())) {
         return { ok: false, motivo: 'data_invalida' }
@@ -386,10 +489,12 @@ export async function criarAgendamentoPublico({
         const { data: novoCliente, error: cnError } = await admin
             .from('clientes')
             .insert({
+                // Valores já saneados e validados na seção 1 — mesmo padrão de
+                // `telefoneLimpo`, uma fonte só para a validação e a escrita.
                 tenant_id: tenantId,
-                nome: clienteNome.trim(),
+                nome: nomeLimpo,
                 telefone: telefoneLimpo,
-                email: clienteEmail?.trim() || null,
+                email: emailLimpo || null,
             })
             .select('id')
             .single()
@@ -562,6 +667,41 @@ export async function obterSlotsPublicos(
     dateStr: string,
     duracaoMinutos: number,
 ): Promise<ResultadoSlots> {
+    // ⚠️ VALIDAÇÃO NA FRONTEIRA — e ela vem ANTES de tudo de propósito: antes de
+    // `createAdminClient()`, antes de resolver o slug, antes do primeiro `await`.
+    // A ordem não é estética, é a diferença entre recusar de graça e recusar
+    // depois de já ter pago duas consultas ao banco.
+    //
+    // Os três argumentos desta função vêm de um navegador SEM SESSÃO: qualquer
+    // um lê o id da Server Action no bundle de /book/<slug> e chama com o payload
+    // que quiser. São entrada hostil por definição.
+    //
+    // `duracaoMinutos` em particular alimenta a condição de parada de um laço
+    // SÍNCRONO na engine (`candidato + duracaoMinutos <= b`, em
+    // `src/lib/booking-engine.ts`). Negativo, o valor deixa de limitar a grade ao
+    // intervalo livre e passa a limitá-la à própria magnitude, linearmente.
+    // Medido por HTTP contra build de produção, slug real, sem sessão:
+    // `-5000000` custou 26.751 ms e 19,29 MB numa ÚNICA requisição — e não é
+    // espera de I/O, é o event loop parado para TODAS as requisições em voo.
+    // A Fricção Zero proíbe CAPTCHA, então validar a entrada é a única defesa
+    // disponível. `scripts/verificar-travessia-server-action.sh` (vereditos
+    // ENTRADA_HOSTIL e DATA_HOSTIL) é a trava que impede a regressão voltar.
+    //
+    // Nada do que chega aqui é logado nem reportado: é dado de visitante, e
+    // entrada malformada é condição esperada — logar cada uma seria transformar
+    // o mesmo endpoint num vetor de inundação de log.
+    if (!FORMATO_DATA_ISO.test(dateStr) || !ehDataDeCalendario(dateStr)) {
+        return { ok: false, motivo: 'data_invalida' }
+    }
+
+    if (
+        !Number.isInteger(duracaoMinutos) ||
+        duracaoMinutos <= 0 ||
+        duracaoMinutos > DURACAO_MAXIMA_MINUTOS
+    ) {
+        return { ok: false, motivo: 'servico_invalido' }
+    }
+
     const admin = createAdminClient()
 
     const resolvido = await resolverPerfilPublicoPorSlug(admin, slug)

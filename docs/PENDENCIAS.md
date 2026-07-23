@@ -570,6 +570,14 @@ do booking anônimo foi destacado para o P0.2 — o restante do redesenho fica a
 > duas `409/23503` porque a FK barrou a escrita antes do portão). Nenhuma delas provava
 > nada. **Afirmação de fechamento sem `curl` rodado não conta.**
 >
+> ⚠️ **O que sustenta a citação daquele exit 0** (acrescentado em 2026-07-22, plano 01-19):
+> entre 2026-07-22 e o plano 01-17 o harness saía 0 sem ter medido nada, e a verificação da
+> fase proibiu citá-lo como prova enquanto assim fosse. O direito voltou junto com o
+> controle `bash scripts/verificar-controle-harness-anon.sh`, que reprova o harness de
+> propósito em três estados de falha e o aprova contra o alvo real — e vale **enquanto esse
+> controle existir e passar**. Detalhes na seção "O harness de superfície anônima afirmava
+> fechamento sem ter medido nada", mais abaixo.
+>
 > A leitura pública migrou para `createAdminClient()` com lista de colunas explícita e
 > `tenant_id` resolvido **no servidor a partir do slug** — o `org_id` do Clerk saiu do
 > payload do browser. Detalhes em
@@ -700,7 +708,7 @@ mexer nesses schemas: não recrie a policy removida.
 | `pg_policies` depois | 8 linhas nas duas tabelas, **todas** com roles `{authenticated}`; nenhuma com o nome da policy removida, nenhuma com a role `anon` |
 | Dano encerrado | sob `set local role authenticated` + claim `org_id` de tenant real, com um tenant vizinho descartável criado na mesma transação: `tenants_distintos_visiveis` **2 → 1** em `servicos`; **1** em `horarios_funcionamento` |
 | Não-regressão do dashboard | a linha **inativa** do próprio tenant continua visível (1 em `servicos`, 2 em `horarios_funcionamento`) — é o caso que a `1b` cobre a mais e o que sustenta reativar um serviço |
-| Superfície `anon` | `bash scripts/verificar-superficie-anon.sh` → exit 0, 11 checagens, 0 reprovadas, 0 inconclusivas, depois do DROP |
+| Superfície `anon` | `bash scripts/verificar-superficie-anon.sh` → exit 0, 11 checagens, 0 reprovadas, 0 inconclusivas, depois do DROP. ⚠️ Este exit 0 é citável porque o instrumento tem controle desde o plano 01-17 (`bash scripts/verificar-controle-harness-anon.sh`) — se o controle sair, a citação sai junto |
 
 A migration foi **escrita à mão**, não gerada por `supabase db diff`. O procedimento
 anteriormente escrito nesta seção mandava gerar pelo diff; para um delta de duas instruções
@@ -709,6 +717,32 @@ porque forçar o diff sobe shadow database em Docker e, quando há privilégio n
 o inverso do desejado (precedente do plano 01-04). Aplicada por `execute_sql` com o `INSERT`
 no ledger **na mesma chamada**, portanto na mesma transação: não houve janela entre o DDL e o
 registro da version. `apply_migration` continua proibido — não preserva a version do arquivo.
+
+### 🚪 Objeto criado pelo caminho da plataforma escapa da default privilege — ABERTO
+
+**O que é.** As duas migrations que fecham a Data API para objetos futuros
+(`20260722060000` e `20260722183153`) são `for role postgres`, e default privilege no
+Postgres vale **por role criadora**. Elas garantem que o que o `postgres` cria nasce sem
+`anon` e sem `authenticated` — o que cobre a rotina inteira do projeto, porque é como as
+migrations rodam. **Não cobrem** o caminho da plataforma: extensão habilitada pelo painel
+ou recurso gerenciado da Supabase cria como `supabase_admin`, e nesse escopo a ACL padrão
+do schema `public` continua concedendo `anon` e `authenticated` — é o default de
+plataforma, que a migration não tocou nem poderia.
+
+**Por que nasce aberto e não bloqueante.** Hoje não há buraco: nenhuma extensão deste
+projeto cria tabela em `public`. O risco é de descoberta por acidente numa fase futura,
+depois que alguém habilitar algo pelo painel e assumir que "objeto novo nasce fechado"
+vale sem qualificação.
+
+- **Dono:** quem habilitar a extensão ou o recurso gerenciado — a conferência é parte do
+  ato de habilitar, não uma tarefa separada.
+- **Gatilho:** a próxima habilitação de extensão ou de recurso gerenciado da Supabase.
+- **Como conferir:** reexecutar a consulta de `pg_default_acl` registrada em
+  `docs/03-PADROES_DE_BANCO_DE_DADOS.md` §"🚪 Privilégios da Data API", alínea (a) — ela é
+  não-mutante e está lá com a tabela das quatro linhas medidas e a procedência. O SQL não é
+  duplicado aqui de propósito: uma cópia só, no documento que ensina a regra.
+- **Conserto, se a tabela nascer aberta:** migration manual de `revoke`, escrita à mão como
+  as demais de privilégio (`supabase db diff` não emite privilégio).
 
 ### Prevenção atômica de double-booking
 
@@ -775,10 +809,15 @@ centralizados do P0.4.
 Preservar a Fricção Zero para o cliente final, mas impedir que um script preencha toda
 a agenda de um profissional. Ganha relevância quando o link circular publicamente.
 
-**Estado atual verificado:** nenhuma proteção existe (sem rate limit, honeypot ou
-CAPTCHA; `rg` não encontra nada). Pior: o INSERT direto pela Data API contorna
-qualquer proteção que fosse colocada na action — **este item depende do item de
-integridade acima**.
+**Estado atual verificado (atualizado no fechamento da Phase 01):** ainda não há rate
+limit, honeypot nem CAPTCHA. Mas o furo de que este item dependia **foi fechado na Phase
+01**: as migrations `20260722055941_fecha_policies_anon.sql` e
+`20260722060000_fecha_data_api_para_anon.sql` revogaram a Data API de `anon` (medido na
+4ª verificação: anon POST em `clientes`/`agendamentos` → **42501**), então o INSERT
+direto pela Data API já **não** contorna mais a action. O rate limit passa a ser
+suficiente aplicado na própria `criarAgendamentoPublico` — este item **não depende mais**
+do item de integridade. (A outra brecha de conteúdo, `clienteNome`/`clienteEmail` sem
+teto de tamanho, foi fechada à parte no CR-02 — commit `738a896`.)
 
 **Resultado esperado:**
 
@@ -786,10 +825,12 @@ integridade acima**.
   (janela curta; Upstash Ratelimit é o caminho natural — Upstash já está na stack).
 - Honeypot barato no formulário público (campo invisível).
 - Logs mínimos de rejeição (para saber se há abuso real e calibrar limites).
-- Sanitização/validação no servidor (já existe para telefone; manter e não afrouxar).
+- Sanitização/validação no servidor (telefone; e, desde o CR-02, teto de tamanho de
+  `clienteNome`/`clienteEmail` — manter e não afrouxar).
 - CAPTCHA **apenas como fallback** se abuso real aparecer — não adicionar agora.
-- Impossível contornar escrevendo direto na Data API (garantido pelo item de
-  integridade).
+- ✅ **Já garantido pela Phase 01:** escrever direto na Data API como `anon` está
+  bloqueado (`42501` em `clientes`/`agendamentos`), então o rate limit da action não é
+  contornável por esse caminho.
 
 Não transformar o booking num fluxo cheio de validações visíveis — as proteções devem
 ser invisíveis para o cliente legítimo.
@@ -928,7 +969,110 @@ que a automação **não** cobre; é essa frase que define o que falta fazer.
       cliente, `nome_estabelecimento`, descrição e endereço longos no resumo, na tela de
       sucesso e no painel de marca.
 
+### ~~O harness de superfície anônima afirmava fechamento sem ter medido nada~~ — ✅ Fechado (plano 01-17, 2026-07-22)
+
+**O que valia até 2026-07-22.** `scripts/verificar-superficie-anon.sh` decidia o exit code
+só por `REPROVADAS -eq 0`. Com o alvo inalcançável, as 11 checagens registravam `HTTP 000`,
+o veredito COBERTURA passava, e a última linha era `11 checagem(ns), 0 reprovada(s) — a role
+anon não devolveu linha nenhuma` com **exit 0**: afirmação positiva de segurança a partir de
+zero medição. A 3ª verificação da fase reproduziu isso num diretório isolado, com o
+`.env.local` apontando para um host inexistente. Era o instrumento que o `ROADMAP.md` e o
+`01-04-PLAN.md` nomeiam como prova de SEG-01, SEG-02 e SEG-03.
+
+**O que passou a valer.** Duas coisas, e as duas decidem exit code:
+
+1. **Contador de prova positiva.** Sem nenhuma checagem ESPERADA, o script sai **2**
+   nomeando a causa em vez de sair 0 afirmando fechamento.
+2. **Veredito `[ALVO]` de identidade.** Antes de qualquer medição, o harness exige uma
+   tabela **declarada** respondendo `42501` e um **canário inexistente** respondendo
+   `PGRST205`. Sem esse par, "tabela fechada", "este não é o banco deste projeto" e
+   "gateway que nega tudo" ficam indistinguíveis — e o script sai 2.
+
+**O comando que prova:** `bash scripts/verificar-controle-harness-anon.sh` — controle
+re-executável que reprova o harness de propósito em três estados de falha
+(`ALVO_MORTO`, `PROJETO_ERRADO`, `TUDO_NEGADO`) e o aprova contra o alvo real
+(`CONTROLE`). Na primeira execução, antes do conserto, ele saiu 1 com os quatro vereditos
+reprovados; depois, 4 vereditos e 0 reprovados.
+
+⚠️ **A condição que acompanha o direito de citar o exit code, e ela não é decorativa.** A
+verificação da fase impôs, literalmente, que enquanto o controle não existisse **nenhum
+documento do projeto poderia citar o exit 0 deste script como prova de fechamento**. O
+plano 01-17 fez o controle existir, então a citação voltou a ser legítima — **enquanto o
+controle existir e passar**. Quem remover, desativar ou afrouxar
+`verificar-controle-harness-anon.sh` remove junto o direito de citar o exit code do harness
+como evidência, aqui e em qualquer outro documento. Nesse caso resta a leitura linha a linha
+do relatório.
+
+### ⚠️ Novo eixo de falso-verde do harness de superfície (CR-01) — DÍVIDA DEFERIDA no fechamento da Phase 01
+
+**O que é.** A 4ª verificação (2026-07-22, primeira com acesso DDL ao banco) reproduziu um
+falso-verde **novo** em `scripts/verificar-superficie-anon.sh`, distinto do de alvo morto
+que o plano 01-17 fechou: num alvo **parcialmente aberto** — `perfis_empresas` respondendo
+`42501` e as outras 7 tabelas reabertas a `anon` mas vazias (`200 []`) — o script sai **0**
+com `4 com prova positiva, 0 reprovada(s)` e a frase de fechamento, com **7 de 9 tabelas
+ABERTAS**. Causa: `ESPERADAS` é contador GLOBAL e `marcar_checada` roda antes do curl, então
+COBERTURA mede TENTATIVA, não PROVA por tabela; `200 []` vira `INCONCLUSIVO`, que não entra
+em gate de exit code nenhum. O controle `verificar-controle-harness-anon.sh` cobre três
+estados **globais** (morto, projeto errado, nega-tudo), não o alvo parcial — uma
+granularidade abaixo. É o mesmo padrão de falso-verde que a fase combateu, migrado de eixo.
+
+**Por que é dívida e não bloqueio.** É o **instrumento** que está quebrado, não a postura.
+Os 5 Success Criteria da Phase 01 foram provados por **medição DDL direta** no banco
+(`01-VERIFICATION.md`, 4ª passagem: anon → `401/42501` nas 9 tabelas, com controle positivo
+sob `service_role`), **não** pelo exit code deste script. Nenhuma vulnerabilidade real — as
+9 tabelas devolvem `42501` a `anon` agora, medido.
+
+**Gatilho / regra (decisão do owner no fechamento da Phase 01):** *não usar
+`verificar-superficie-anon.sh` como prova de fechamento até o falso-verde de alvo
+inalcançável ser corrigido; os SC da Phase 01 foram provados por medição DDL direta, não por
+este script.* Enquanto isso, o direito de citar o exit 0 (concedido pelo plano 01-17 e
+descrito no bloco acima) fica **suspenso** para o eixo de alvo parcial.
+
+**O conserto pendente** (quando o item voltar): prova positiva e cobertura **POR TABELA**
+(`declare -A VEREDITO_POR_TABELA`; reprovar toda tabela declarada cujo veredito não seja
+ESPERADO — `INCONCLUSIVO`/`AUSENTE` não é prova) e um quinto veredito `ALVO_PARCIAL` no
+controle, que exija reprovação num alvo que responde `42501` num caminho e `200 []` nos
+demais. Detalhe completo em `01-VERIFICATION.md` (gap CR-01, seção `missing`).
+
+### ~~Uma requisição anônima parava o event loop por 26 segundos~~ — ✅ Fechado (plano 01-18, 2026-07-22)
+
+**O que foi medido antes.** Contra build de produção, com o slug público real e sem sessão,
+`obterSlotsPublicos` invocada com `duracaoMinutos = -5000000` devolveu **26.751 ms e
+19.291.480 bytes** numa **única** requisição — a mesma chamada com `30` custa 525 ms e 2.179
+bytes. O laço de `gerarSlotsAntiBuraco` é síncrono: aqueles 26 segundos são o event loop
+parado para **todas** as requisições em voo. E `dateStr = "nao-e-uma-data"` devolvia
+`{ ok: true, slots: [] }` — grade errada, sem sintoma. O fluxo autenticado validava a data
+por regex; o anônimo não validava nada.
+
+**O que passou a valer.** Validação na **fronteira** da Server Action pública, antes de
+`createAdminClient()` e antes de o slug ser resolvido: `dateStr` contra a mesma regex do
+fluxo autenticado, mais reserialização (sem ela, mês 13 e dia 45 passam na regex);
+`duracaoMinutos` inteiro, positivo e limitado a 24×60. Mais guarda de profundidade na
+primeira linha da função pura — fronteira é porteiro, função pura é contrato. A mesma
+requisição hostil passou a custar 6 ms e 109 bytes. Nenhuma fricção nova para o cliente
+final: a Fricção Zero proíbe CAPTCHA, e validação de entrada é a defesa que sobra.
+
+**Os comandos que provam:** `bash scripts/verificar-travessia-server-action.sh` — os
+vereditos `ENTRADA_HOSTIL` e `DATA_HOSTIL`, que além do discriminante exigem a **ausência**
+de `slug_invalido` no corpo (é isso que prova a ordem, e não só a recusa) — e `pnpm test`,
+que cobre a guarda da função pura com controle positivo.
+
+⚠️ **A fronteira exata, porque o vizinho aqui embaixo confunde.** Isto fechou o caminho
+público de **LEITURA**. O caminho de **ESCRITA** — `clienteNome` sem limite de comprimento e
+`clienteEmail` sem validação de formato — é o **WR-03 da 1ª rodada**, registrado logo abaixo
+e **ainda diferido**, com o gatilho que já tem (Phase 3 ou Phase 5). Um não fecha o outro.
+
 ### Achados do code review da Phase 1 diferidos (2026-07-22)
+
+⚠️ **Duas rodadas de review, o mesmo prefixo `WR-`, significados diferentes — leia isto
+antes dos rótulos.** Os quatro achados listados abaixo (`WR-01`, `WR-03`, `WR-04`, `WR-06`)
+usam a numeração da **1ª rodada**, cujo relatório foi substituído no arquivo e vive hoje só
+no histórico do git: `git show 4596463:.planning/phases/01-hardening-da-superf-cie-p-blica/01-REVIEW.md`.
+O `01-REVIEW.md` que está no repositório é o da **2ª rodada** (planos 01-10 a 01-16) e traz
+outros dez avisos com os mesmos rótulos. A colisão é real e não é hipotética: `WR-03` é
+"escrita pública sem limite de tamanho" na 1ª rodada e "nenhum harness tem porta de entrada"
+na 2ª. **Regra para este documento:** os quatro logo abaixo são da 1ª rodada; os dez da
+lista seguinte são da 2ª e trazem a marca `(2ª rodada)`.
 
 Quatro achados do `01-REVIEW.md` da Phase 1 **não** foram aprovados para a rodada de
 fechamento de gaps. Nenhum é esquecimento: cada um está aqui com a consequência concreta
@@ -981,6 +1125,51 @@ CR-04) estão registrados nos itens acima e nos SUMMARYs dos planos 01-11 e 01-1
   reputação do profissional. O comentário no código antecipa a duplicidade apenas no log
   ("linhas duplicadas de log entre tentativas são aceitáveis"), não na mensagem.
   *Gatilho:* primeiro piloto com volume real, ou a Phase 11 (observabilidade).
+
+#### Achados da 2ª rodada de review (planos 01-10 a 01-16) — estado em 2026-07-22
+
+Ponteiros, não análise: cada linha tem o rótulo, o que é em uma frase, e a seção do
+`01-REVIEW.md` (o do repositório, 2ª rodada) onde está o raciocínio completo com arquivo e
+linha. Nenhum conserto é proposto aqui — **este registro existe para que achado não vire
+esquecimento**, e resolver qualquer um deles é decisão de outra rodada.
+
+Os **dois blockers** da rodada foram fechados e estão registrados acima:
+
+- ✅ **CR-01 (2ª rodada)** — entrada anônima sem validação alimentando a condição de parada
+  de um laço síncrono. **Fechado pelo plano 01-18** (seção "Uma requisição anônima parava o
+  event loop por 26 segundos"). Análise: `01-REVIEW.md` §CR-01.
+- ✅ **CR-02 (2ª rodada)** — o harness de superfície saindo 0 com afirmação de fechamento
+  sem ter medido nada. **Fechado pelo plano 01-17** (seção "O harness de superfície anônima
+  afirmava fechamento sem ter medido nada"). Análise: `01-REVIEW.md` §CR-02.
+
+Os **dez warnings continuam abertos**:
+
+- **WR-01 (2ª rodada)** — a condicional que sustenta a "janela de plano indeterminado" em
+  `public-booking.ts` é tautologicamente falsa: o comportamento é o pretendido, mas o
+  próximo leitor vai acreditar numa restrição que não existe. §WR-01.
+- **WR-02 (2ª rodada)** — `.message` crua do Postgres ainda vai ao `console.error` no
+  caminho público (`public-booking.ts`, `assinaturas.ts`), com PII de terceiro em duas das
+  linhas; o helper `erroSinteticoSupabase()` já existe e é usado três linhas abaixo. §WR-02.
+- **WR-03 (2ª rodada)** — nenhum dos harnesses tem porta de entrada: sem script em
+  `package.json`, sem `.husky/`, sem CI. Trava que ninguém roda não trava nada. §WR-03.
+- **WR-04 (2ª rodada)** — a "trava anti-afrouxamento" do harness anônimo compara a
+  constante com a literal escrita duas linhas acima: custo zero, benefício zero, e dá
+  impressão falsa de auto-proteção. §WR-04.
+- **WR-05 (2ª rodada)** — `TODOS_OS_MOTIVOS` não é exaustivo por construção e o JSDoc do
+  teste promete que é: membro novo passaria com sete de oito, em silêncio. §WR-05.
+- **WR-06 (2ª rodada)** — a guarda cruzada de namespace em `salvarPerfilEmpresa` é
+  unidirecional: o `slug_gratuito` recém-sorteado nunca é comparado com o `slug` alheio.
+  §WR-06.
+- **WR-07 (2ª rodada)** — três cópias visíveis ao cliente final continuam inline em
+  `BookingApp.tsx`, contra a promessa de fonte única de `mensagens.ts`. §WR-07.
+- **WR-08 (2ª rodada)** — `ResolucaoPerfil` é exportado e nunca importado, num arquivo
+  `'use server'`: superfície exportada crescendo por inércia. §WR-08.
+- **WR-09 (2ª rodada)** — na migration de funções o `REVOKE` é global e o `GRANT` para
+  `service_role` é por schema; função criada fora de `public` nasce inexecutável também
+  pelo `createAdminClient()`. §WR-09.
+- **WR-10 (2ª rodada)** — `plano_indeterminado` não entrou no `COMMENT ON COLUMN` de
+  `disparos_whatsapp.motivo`, e é o único motivo que significa "a tentativa vai se repetir".
+  §WR-10.
 
 #### Duas afirmações desatualizadas, fora do escopo desta rodada
 
@@ -1155,31 +1344,18 @@ Cada um com o **gatilho** que o traz de volta — nenhum é "esquecido", todos s
   ficava vivo servindo 500; hoje ele sai com código 1. As duas saídas de inspeção
   acima continuam valendo sem mudança.
 
-- **Três diagnósticos de Edge Runtime no `pnpm build` (achado do plano 01-06, decisão
-  do owner pendente).** `src/lib/env.ts` passou a usar `process.stderr.write` (linhas
-  91 e 92) e `process.exit` (linha 96), e o arquivo é importado por
-  `src/instrumentation.ts`, que também é empacotado para o runtime **edge**. O
-  Turbopack então imprime, a cada build, três blocos do tipo:
-
-  ```
-  A Node.js API is used (process.exit at line: 96) which is not supported in the Edge Runtime.
-  Import trace:  Edge Instrumentation: ./src/lib/env.ts → ./src/instrumentation.ts
-  ```
-
-  **Não é falha:** medido num build bem-sucedido, `pnpm build` sai **0** (o resumo de
-  rotas é impresso normalmente), `pnpm dev` sobe e responde 200, e o código nunca
-  executa no edge — `encerrarBootPorEnvAusente` só é chamado atrás da guarda
-  `NEXT_RUNTIME === 'nodejs'`. O analisador é estático e não enxerga essa guarda.
-
-  **É ruído, e ruído rotulado como "error" é dívida:** três blocos por build treinam
-  quem lê a saída a ignorá-la — o mesmo padrão de janela quebrada que esta fase
-  combateu. As saídas possíveis, nenhuma delas tomada aqui porque contrariam o
-  contrato do plano 01-06 (que fixa os dois símbolos em `src/lib/env.ts` e pina
-  `process.stderr.write` em teste): (a) mover `encerrarBootPorEnvAusente` para um
-  módulo próprio que só o caminho nodejs importe; (b) aceitar o ruído e documentá-lo
-  como esperado. Aliasar `process` por `globalThis` para calar o analisador **não** é
-  uma saída: esconderia o sinal em vez de resolvê-lo. *Gatilho:* decisão do owner
-  antes do go-live, ou na primeira vez que a saída do build for usada como gate de CI.
+- ~~**Três diagnósticos de Edge Runtime no `pnpm build`** (achado do plano 01-06).~~
+  **RESOLVIDO (2026-07-23).** Implementada a saída (a) que a pendência previa: os
+  símbolos que usam APIs só-Node (`encerrarBootPorEnvAusente`, `CODIGO_SAIDA_ENV_AUSENTE`)
+  foram movidos para `src/lib/env-boot.ts`, importado por `import()` **dinâmico** apenas
+  no branch `NEXT_RUNTIME === 'nodejs'` de `src/instrumentation.ts`. Assim `env-boot.ts`
+  não entra no bundle da Edge Instrumentation e o Turbopack para de acusar uso de API
+  Node no edge (medido: `grep` por `not supported in the Edge Runtime` no build agora
+  retorna **0**). `env.ts` fica só com `OBRIGATORIAS_EM_PRODUCAO`/`validarEnvObrigatorio`
+  (edge-safe, só leem `process.env`) e segue importado estaticamente. O contrato de teste
+  do plano 01-06 (pinar `process.exit`/`process.stderr.write`) foi preservado — `env.test.ts`
+  só passou a importar os dois símbolos de `../env-boot`. `pnpm lint`, `pnpm test` (235) e
+  `pnpm build` (exit 0) passam.
 
 - **Checkout Asaas + webhooks completos de cobrança** (`/api/webhooks/asaas`) —
   necessário **se o lançamento já pretender cobrar automaticamente**: roadmap técnico

@@ -50,6 +50,7 @@ const TODOS_OS_MOTIVOS = [
     'servico_invalido',
     'slot_indisponivel',
     'erro_interno',
+    'email_invalido',
 ] as const satisfies readonly MotivoPublico[]
 
 /**

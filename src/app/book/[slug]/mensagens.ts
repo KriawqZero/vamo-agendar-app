@@ -73,6 +73,14 @@ export const COPY_ESTABELECIMENTO_INVALIDO = 'Estabelecimento inválido ou indis
 export const COPY_SERVICO_INVALIDO = 'Serviço inválido ou indisponível.'
 
 /**
+ * E-mail (campo OPCIONAL) preenchido em formato inválido ou longo demais,
+ * revalidado no servidor (CR-02). Único discriminante novo do caminho de
+ * escrita cuja causa um cliente REAL produz digitando — por isso tem cópia
+ * própria e honesta, em vez de reusar "campos obrigatórios".
+ */
+export const COPY_EMAIL_INVALIDO = 'E-mail inválido. Confira o endereço ou deixe o campo em branco.'
+
+/**
  * Falha de infraestrutura na etapa de contato (leitura ou escrita em `clientes`).
  *
  * ⚠️ Constante PINADA, hoje sem mapeamento próprio: o discriminante colapsa as
@@ -107,6 +115,9 @@ const COPIA_DA_CAIXA_DE_HORARIOS: Record<MotivoPublico, string> = {
     servico_invalido: COPY_ERRO_SLOTS,
     slot_indisponivel: COPY_ERRO_SLOTS,
     erro_interno: COPY_ERRO_SLOTS,
+    // `email_invalido` só existe no caminho de ESCRITA; nunca chega à caixa de
+    // horários. O membro existe aqui apenas para manter o Record exaustivo.
+    email_invalido: COPY_ERRO_SLOTS,
 }
 
 /**
@@ -131,6 +142,7 @@ const COPIA_DO_ENVIO: Record<MotivoPublico, string> = {
     servico_invalido: COPY_SERVICO_INVALIDO,
     slot_indisponivel: COPY_SLOT_INDISPONIVEL,
     erro_interno: COPY_ERRO_CONFIRMACAO,
+    email_invalido: COPY_EMAIL_INVALIDO,
 }
 
 /**

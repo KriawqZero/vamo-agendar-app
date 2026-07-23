@@ -59,7 +59,8 @@
 #   PULAR_BUILD=1 bash scripts/verificar-travessia-server-action.sh   # reusa .next/
 #   PORTA_TRAVESSIA=4002 bash scripts/verificar-travessia-server-action.sh
 #
-# Cinco vereditos — os dois caminhos públicos, LEITURA e ESCRITA:
+# Sete vereditos — os dois caminhos públicos (LEITURA e ESCRITA) e a recusa de
+# entrada hostil na fronteira da action de LEITURA:
 #   PREPARO           os ids das Server Actions `obterSlotsPublicos` e
 #                     `criarAgendamentoPublico` foram derivados do manifesto do
 #                     build (nunca de literal colada à mão)
@@ -71,7 +72,11 @@
 #   ESCRITA_VALIDACAO o corpo da resposta da action de ESCRITA com campos
 #                     obrigatórios vazios CONTÉM `campos_obrigatorios` e NÃO
 #                     contém `digest`
-#   SEM_VAZAMENTO     nenhum dos dois corpos contém o slug enviado, nem `org_`,
+#   ENTRADA_HOSTIL    a action de LEITURA com `duracaoMinutos = -5000000` devolve
+#                     `servico_invalido`, sem `digest` E SEM `slug_invalido`
+#   DATA_HOSTIL       a action de LEITURA com `dateStr` que não é data devolve
+#                     `data_invalida`, sem `digest` E SEM `slug_invalido`
+#   SEM_VAZAMENTO     nenhum dos QUATRO corpos contém o slug enviado, nem `org_`,
 #                     nem `PGRST`, nem `tenant_id`
 #
 # 6) POR QUE A SONDA DE ESCRITA USA UMA VALIDAÇÃO PURA. `campos_obrigatorios` é
@@ -82,7 +87,25 @@
 #    horário realmente ocupado, fica onde já há infraestrutura para isso — na
 #    suíte `pnpm test:integracao`.
 #
-# Sai 0 só com os cinco aprovados; 1 com qualquer reprovação; 2 para erro de
+# 7) POR QUE ENTRADA_HOSTIL E DATA_HOSTIL EXIGEM A **AUSÊNCIA** DE `slug_invalido`.
+#    Esta é a diferença entre os dois vereditos novos e os dois antigos, e é o
+#    ponto inteiro deles. `duracaoMinutos` alimenta a condição de parada de um
+#    laço SÍNCRONO em `booking-engine.ts` (`candidato + duracaoMinutos <= b`):
+#    negativo, o valor deixa de limitar a grade ao intervalo livre e passa a
+#    limitá-la à própria magnitude. Medido por HTTP contra este mesmo `next
+#    start`, com slug real e sem sessão: `-5000000` custou 26.751 ms e 19,29 MB
+#    numa ÚNICA requisição anônima — e não é espera de I/O, é o event loop parado
+#    para todas as requisições em voo. O produto proíbe CAPTCHA por invariante de
+#    Fricção Zero, então validar a entrada é a única defesa disponível.
+#
+#    Um veredito escrito só como "o corpo contém o discriminante esperado" ficaria
+#    VERDE com a guarda rodando DEPOIS da resolução do slug — e nesse mundo a
+#    requisição anônima malformada continua comprando duas consultas ao banco
+#    antes de ser recusada. Exigir a ausência de `slug_invalido` no corpo é o que
+#    prova a ORDEM: com a guarda no topo, o slug inexistente da sonda nem chega a
+#    ser procurado.
+#
+# Sai 0 só com os sete aprovados; 1 com qualquer reprovação; 2 para erro de
 # preparação (porta ocupada, build ausente, id não derivável, pnpm indisponível).
 
 set -uo pipefail
@@ -101,6 +124,13 @@ CORPO_SONDA="[\"$SLUG_INEXISTENTE\",\"2030-01-01\",30]"
 # concreta para procurar na resposta, e os demais campos vazios já disparam a
 # guarda `campos_obrigatorios` antes de qualquer acesso ao banco.
 CORPO_SONDA_ESCRITA="[{\"slug\":\"$SLUG_INEXISTENTE\",\"servicoId\":\"\",\"dataHora\":\"\",\"clienteNome\":\"\",\"clienteTelefone\":\"\"}]"
+# Sondas de entrada hostil (ver nota 7). As duas usam o MESMO slug inexistente
+# das outras de propósito: é o que torna a ausência de `slug_invalido` no corpo
+# uma asserção de ORDEM, e não de sorte. Se a guarda estivesse depois da
+# resolução do slug, este slug responderia `slug_invalido` e o veredito reprova.
+DURACAO_HOSTIL=-5000000
+CORPO_SONDA_ENTRADA_HOSTIL="[\"$SLUG_INEXISTENTE\",\"2030-01-01\",$DURACAO_HOSTIL]"
+CORPO_SONDA_DATA_HOSTIL="[\"$SLUG_INEXISTENTE\",\"nao-e-uma-data\",30]"
 
 # Valores obviamente falsos para as obrigatórias ausentes em dev (ver nota 4).
 COMPLEMENTO_DEV=(
@@ -260,7 +290,7 @@ else
     SERVIDOR_SAUDAVEL=0
 fi
 
-# --- Vereditos 3, 4 e 5: SLOTS_ERRO, ESCRITA_VALIDACAO e SEM_VAZAMENTO -------
+# --- Vereditos 3 a 7 ---------------------------------------------------------
 sondar_action() {
     curl -s --max-time 15 -X POST \
         -H "Next-Action: $1" \
@@ -292,18 +322,44 @@ avaliar_travessia() {
     fi
 }
 
+# Veredito de RECUSA NA FRONTEIRA: tudo o que `avaliar_travessia` exige, MAIS a
+# ausência de `slug_invalido` no corpo. A asserção negativa é o que prova que a
+# validação roda ANTES da resolução do slug — ver nota 7. O alvo é sempre o corpo
+# HTTP capturado agora, nunca um arquivo do repositório.
+avaliar_recusa_na_fronteira() {
+    local nome="$1" discriminante="$2" corpo="$3"
+    local tem_discriminante=0 tem_digest=0 tem_slug_invalido=0
+    case "$corpo" in *"$discriminante"*) tem_discriminante=1 ;; esac
+    case "$corpo" in *digest*) tem_digest=1 ;; esac
+    case "$corpo" in *slug_invalido*) tem_slug_invalido=1 ;; esac
+
+    if [ "$tem_discriminante" -eq 1 ] && [ "$tem_digest" -eq 0 ] &&
+        [ "$tem_slug_invalido" -eq 0 ]; then
+        registrar APROVADO "$nome" \
+            "recusado na fronteira com \`$discriminante\`, sem \`digest\` e sem \`slug_invalido\` (o slug nem chegou a ser resolvido)"
+    else
+        registrar REPROVADO "$nome" \
+            "contém $discriminante=$tem_discriminante (exigido 1), contém digest=$tem_digest (exigido 0), contém slug_invalido=$tem_slug_invalido (exigido 0) — corpo observado: $(recorte "$corpo")"
+    fi
+}
+
 if [ "$SERVIDOR_SAUDAVEL" -eq 1 ]; then
     CORPO_LEITURA=$(sondar_action "$ID_ACTION" "$CORPO_SONDA")
     CORPO_ESCRITA=$(sondar_action "$ID_ACTION_ESCRITA" "$CORPO_SONDA_ESCRITA")
+    CORPO_ENTRADA_HOSTIL=$(sondar_action "$ID_ACTION" "$CORPO_SONDA_ENTRADA_HOSTIL")
+    CORPO_DATA_HOSTIL=$(sondar_action "$ID_ACTION" "$CORPO_SONDA_DATA_HOSTIL")
 
     avaliar_travessia SLOTS_ERRO slug_invalido "$CORPO_LEITURA"
     avaliar_travessia ESCRITA_VALIDACAO campos_obrigatorios "$CORPO_ESCRITA"
+    avaliar_recusa_na_fronteira ENTRADA_HOSTIL servico_invalido "$CORPO_ENTRADA_HOSTIL"
+    avaliar_recusa_na_fronteira DATA_HOSTIL data_invalida "$CORPO_DATA_HOSTIL"
 
-    # As mesmas quatro asserções negativas sobre os DOIS corpos: o caminho de
-    # escrita recebe dado do visitante e escreve com cliente privilegiado, então
-    # é o que tem mais a vazar, não menos.
+    # As mesmas quatro asserções negativas sobre os QUATRO corpos: resposta nova
+    # é superfície nova, e o caminho de escrita ainda por cima recebe dado do
+    # visitante e escreve com cliente privilegiado — é o que tem mais a vazar.
     VAZAMENTOS=()
-    for par in "leitura:$CORPO_LEITURA" "escrita:$CORPO_ESCRITA"; do
+    for par in "leitura:$CORPO_LEITURA" "escrita:$CORPO_ESCRITA" \
+        "entrada_hostil:$CORPO_ENTRADA_HOSTIL" "data_hostil:$CORPO_DATA_HOSTIL"; do
         rotulo="${par%%:*}"
         corpo="${par#*:}"
         case "$corpo" in *"$SLUG_INEXISTENTE"*) VAZAMENTOS+=("$rotulo/slug enviado") ;; esac
@@ -314,22 +370,22 @@ if [ "$SERVIDOR_SAUDAVEL" -eq 1 ]; then
 
     if [ "${#VAZAMENTOS[@]}" -eq 0 ]; then
         registrar APROVADO SEM_VAZAMENTO \
-            'nenhum dos dois corpos carrega o slug do visitante, org_, PGRST ou tenant_id'
+            'nenhum dos quatro corpos carrega o slug do visitante, org_, PGRST ou tenant_id'
     else
         registrar REPROVADO SEM_VAZAMENTO \
-            "identificador interno na resposta: ${VAZAMENTOS[*]} — leitura: $(recorte "$CORPO_LEITURA") — escrita: $(recorte "$CORPO_ESCRITA")"
+            "identificador interno na resposta: ${VAZAMENTOS[*]} — leitura: $(recorte "$CORPO_LEITURA") — escrita: $(recorte "$CORPO_ESCRITA") — entrada_hostil: $(recorte "$CORPO_ENTRADA_HOSTIL") — data_hostil: $(recorte "$CORPO_DATA_HOSTIL")"
     fi
 else
-    registrar REPROVADO SLOTS_ERRO 'não medido: o CONTROLE não deixou servidor saudável de pé'
-    registrar REPROVADO ESCRITA_VALIDACAO 'não medido: o CONTROLE não deixou servidor saudável de pé'
-    registrar REPROVADO SEM_VAZAMENTO 'não medido: o CONTROLE não deixou servidor saudável de pé'
+    for nao_medido in SLOTS_ERRO ESCRITA_VALIDACAO ENTRADA_HOSTIL DATA_HOSTIL SEM_VAZAMENTO; do
+        registrar REPROVADO "$nao_medido" 'não medido: o CONTROLE não deixou servidor saudável de pé'
+    done
 fi
 
 encerrar_servidor
 
 echo
 if [ "$REPROVADOS" -eq 0 ]; then
-    echo "Resumo: $TOTAL vereditos, 0 reprovados — os erros esperados dos DOIS caminhos públicos atravessam a fronteira com identidade preservada."
+    echo "Resumo: $TOTAL vereditos, 0 reprovados — os erros esperados dos DOIS caminhos públicos atravessam a fronteira com identidade preservada, e a entrada hostil é recusada antes de qualquer I/O."
     exit 0
 fi
 

@@ -190,6 +190,22 @@ export async function obterSlotsDashboard(
         throw new Error('Data inválida.')
     }
 
+    // A simetria com o fluxo PÚBLICO é o ponto desta validação, não um detalhe:
+    // `duracaoMinutos` alimenta a mesma condição de parada do mesmo laço síncrono
+    // (`gerarSlotsAntiBuraco`, em `src/lib/booking-engine.ts`), e foi o contraste
+    // entre os dois fluxos — este aqui validava `dateStr`, o anônimo não validava
+    // nada — que mostrou que a ausência lá era acidente, não decisão. Aqui a
+    // severidade é menor porque exige sessão de profissional, mas a assimetria
+    // ao contrário (o autenticado validando MENOS que o público) seria a mesma
+    // inversão do modelo de confiança, só que espelhada.
+    //
+    // Recusa no estilo que esta função já pratica (`throw`), de propósito: o
+    // dashboard tem sessão, tela e error boundary próprio, e introduzir aqui um
+    // segundo formato de retorno é outro assunto.
+    if (!Number.isInteger(duracaoMinutos) || duracaoMinutos <= 0 || duracaoMinutos > 24 * 60) {
+        throw new Error('Duração de serviço inválida.')
+    }
+
     const supabase = await createClient()
     const timezone = await timezoneDoTenant(supabase, orgId)
 

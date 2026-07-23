@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
-status: needs_gap_closure
-stopped_at: "2ª rodada EXECUTADA por inteiro (01-10 a 01-16) e VERIFICADA: os 3 gaps anteriores fecharam, mas a verificação reprova de novo com 2 gaps bloqueantes NOVOS, vindos do code review e reproduzidos empiricamente. Próximo: /gsd-plan-phase 01 --gaps"
-last_updated: "2026-07-22T20:30:00.000Z"
-last_activity: 2026-07-22
-last_activity_desc: "2ª rodada de fechamento de gaps executada (7 planos), revisada em profundidade (2 blockers) e verificada (gaps_found, 11/13) — a fase segue reprovada"
+status: complete
+stopped_at: Phase 01 FECHADA — 5/5 SC medidos verdes por DDL direto; CR-02 e WR-03 corrigidos; CR-01 deferido como dívida (instrumento, não vulnerabilidade)
+last_updated: "2026-07-23T00:00:00.000Z"
+last_activity: 2026-07-23
 progress:
   total_phases: 1
-  completed_phases: 0
-  total_plans: 16
-  completed_plans: 16
+  completed_phases: 1
+  total_plans: 19
+  completed_plans: 19
+last_activity_desc: "Phase 01 FECHADA (aceitando gaps não-bloqueantes). Os cinco Success Criteria do ROADMAP foram medidos DIRETAMENTE na 4ª verificação (acesso DDL ao banco): SC1/SC2/SC3 anônimos em 401/42501 com controle positivo, SC4 exercitado por objeto descartável criado e removido (anon f/f/f, service t/t/t), SC5 por harness de boot e webhook — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC: CR-02 (escrita pública sem teto de campo) foi CORRIGIDO nos commits e7adc01/738a896/600e429 com pnpm test 241/241, lint e build verdes; WR-03 (PENDENCIAS descrevendo o mundo pré-fase) foi CORRIGIDO; CR-01 (falso-verde do harness em alvo parcial) fica como DÍVIDA DEFERIDA — é instrumento quebrado, não vulnerabilidade, e os SC foram provados por DDL direto, não por esse script. Próximo: /gsd-discuss-phase 02"
 ---
 
 # Project State
@@ -27,8 +27,20 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — 2ª rodada EXECUTADA, REVISADA e VERIFICADA
-Plan: 16 de 16 concluídos (01-01 a 01-16). A verificação **rodou** sobre o HEAD `8edb32d` e **reprovou**: 11/13 must-haves, `status: gaps_found` em `01-VERIFICATION.md`
+Phase: 01 (hardening-da-superf-cie-p-blica) — COMPLETE
+Plan: 19 of 19
+
+### Planejamento da 3ª rodada (2026-07-22, branch `fase-01-gaps-rodada-3`)
+
+Três planos, serialização estrita (um por wave), commits `951cd98` (criação) e `ba46c4b` (correções do plan-checker):
+
+- **01-17 (wave 1, tracer)** — GAP A: `scripts/verificar-superficie-anon.sh` ganha contador `ESPERADAS` (exit 2 quando nenhuma checagem produziu prova positiva) e veredito de identidade do alvo. O controle re-executável `scripts/verificar-controle-harness-anon.sh` **nasce vermelho** — é critério de aceite, não observação: 4 vereditos, 4 reprovados antes do conserto, provado por `test $? -eq 1`. Cobre três eixos de falso verde, incluindo um que o code review não tinha (alvo que nega tudo uniformemente). O stub é `node:http` efêmero em `mktemp -d`, sem Docker e sem tocar o `.env.local` real
+- **01-18 (wave 2, depende de 01-17)** — GAP B: validação na fronteira de `obterSlotsPublicos` **antes** de `createAdminClient()`, guarda de profundidade no topo de `gerarSlotsAntiBuraco`, e replicação da validação de `duracaoMinutos` em `obterSlotsDashboard`. Fecha por **teto medido**, não por mudança de forma: a mesma sonda com `-5000000` contra `next start` tem de devolver `servico_invalido` em < 1.000 ms e < 10.000 bytes (linha de base legítima: 525 ms / 2.179 bytes; o gap abriu em 26.751 ms / 19.291.480 bytes). Os vereditos `ENTRADA_HOSTIL`/`DATA_HOSTIL` exigem o discriminante esperado **e a ausência de `slug_invalido`** no corpo — é o que prova que a guarda roda antes da resolução do slug
+- **01-19 (wave 3, depende de 01-18)** — ITEM C: o alcance real da D-03 escrito em `docs/03-PADROES_DE_BANCO_DE_DADOS.md` (a garantia vale para objetos criados por `postgres`; tabela criada por `supabase_admin` ainda herda `anon`/`authenticated` — default de plataforma que a migration não tocou), registro coerente em `PENDENCIAS.md` incluindo os dez avisos da 2ª rodada de review como **ponteiros** com a colisão de numeração resolvida, e gate que reexecuta as 8 provas encadeadas sobre o HEAD final
+
+**Fronteira medida antes de escrever:** `criarAgendamentoPublico` lê `duracao_minutos` do banco e deriva `dateStr` de um `Date` já validado por `isNaN` — nenhum valor do navegador alcança o laço da engine pelo caminho de ESCRITA. Por isso o GAP B é estritamente o caminho de LEITURA, e o WR-03 diferido (escrita pública sem limite de tamanho) continua diferido, com a fronteira escrita em voz alta nos dois planos.
+
+**Achado de tipagem que o relatório de verificação não tinha:** `ResultadoSlots` declara a falha como `MotivoLeituraPublica = Extract<MotivoPublico, 'slug_invalido' | 'erro_interno'>`, então `data_invalida` e `servico_invalido` **não** compilam contra ele apesar de serem membros de `MotivoPublico`. O 01-18 manda criar alias próprio em vez de alargar `MotivoLeituraPublica` — sem isso o executor bateria em erro de compilação no meio do plano.
 
 ### Resultado da 3ª passagem de verificação (2026-07-22)
 
@@ -55,9 +67,27 @@ Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code rev
 Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
 
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
-Last activity: 2026-07-22 — plano 01-16 executado (ÚLTIMO da fase): a degradação por falha de leitura de `assinaturas` virou distinguível e reportada, e o link público de tenant pagante deixou de cair
+Last activity: 2026-07-22
 
-Progress: [██████████] 100% (16/16 planos executados; **a verificação da fase ainda NÃO rodou sobre este HEAD** — a fase permanece não marcada como completa)
+Progress: [██████████] 100% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
+
+### Resultado da 4ª passagem de verificação (2026-07-22, HEAD `7937aed`)
+
+Primeira verificação das quatro com acesso DDL ao banco de dev — os cinco Success Criteria foram medidos por HTTP/psql, não herdados de SUMMARY nem de exit code de harness:
+
+- **SC1** (`perfis_empresas` não enumerável): anon `select=*`/`tenant_id`/`telefone_contato` → **401/42501**, controle positivo sob `service_role` devolve a linha
+- **SC2** (POST anônimo rejeitado + booking intacto): `agendamentos`/`clientes` → 401/42501; travessia 7/7, grade legítima `dur=30` completa em 890 ms, `pnpm test` 235/235
+- **SC3** (colunas mínimas): `cliente_id`/`motivo`/`data_hora`/`servico_id` → 401/42501 (anon não lê coluna nenhuma das duas tabelas)
+- **SC4** (objeto novo nasce fechado): **exercitado** — `sonda_sc4_*` tabela+função criadas como `postgres`, `anon`/`authenticated` f/f/f, `service_role` t/t/t, por `has_*_privilege` e por HTTP; objetos removidos
+- **SC5** (webhook assinado + boot fail-fast): veredito `WEBHOOK` 401×3 + 200 controle, veredito `MORTE` (código 1 + porta recusando), `QSTASH_NEXT_SIGNING_KEY` na lista de obrigatórias
+
+**Os 2 gaps da 3ª rodada fecharam e foram re-medidos** (harness de alvo-morto sai 2; DoS `-5000000` → 9-10 ms / 109 bytes). No fechamento da Phase 01 os 3 gaps que a 4ª verificação reproduziu foram todos dispositados — **CR-02 e WR-03 corrigidos, CR-01 deferido como dívida**. Nenhum falsificava um SC:
+
+1. **CR-01 — DÍVIDA DEFERIDA:** `verificar-superficie-anon.sh` dá falso-verde em alvo parcialmente aberto: stub com `perfis_empresas` fechada e as outras 7 tabelas reabertas a `anon` mas vazias (`200 []`) → exit **0** com `4 com prova positiva, 0 reprovada(s)` e a frase de fechamento. É o instrumento quebrado, não vulnerabilidade — os SC foram provados por medição DDL direta, não por esse exit code. Regra registrada em `PENDENCIAS.md`: não citar o script como prova de fechamento até o conserto (cobertura por tabela + veredito `ALVO_PARCIAL` no controle). **Não é gap aberto — é dívida com gatilho.**
+2. ~~**CR-02** — escrita pública sem teto de campo~~ **RESOLVIDO no fix 738a896**: `criarAgendamentoPublico` passou a recusar, antes de `createAdminClient()`, nome fora de 1..120 chars e e-mail (opcional) sem formato válido ou acima de 254 chars (`email_invalido`). Prova hermética em `public-booking-validacao.test.ts` (createAdminClient não é chamado na recusa). Resta espelhar o CHECK no banco (`06_clientes.sql`) — fora do escopo deste fix, anotado no `missing` do `01-VERIFICATION.md`
+3. ~~**WR-03** — PENDENCIAS descrevia o mundo pré-fase~~ **RESOLVIDO** (commit `8605962`): a frase em `docs/PENDENCIAS.md` que afirmava que o INSERT direto pela Data API contorna a action foi corrigida — as migrations `20260722060000`+`20260722055941` revogaram a Data API de `anon` (anon POST → 42501), o que a torna falsa. Definition of Done §6 satisfeita.
+
+8 itens de verificação humana (7 UAT de tela + rotação de chave do owner) seguem ABERTOS, não marcados
 
 ## Performance Metrics
 
@@ -99,6 +129,9 @@ Progress: [██████████] 100% (16/16 planos executados; **a ve
 | Phase 01 P15 | ~50min | 2 tasks | 3 files |
 | Phase 01 P14 | ~35min | 3 tasks | 5 files |
 | Phase 01 P16 | ~65min | 2 tasks | 7 files |
+| Phase 01 P17 | ~25min | 2 tasks | 2 files |
+| Phase 01 P18 | ~31min | 2 tasks | 5 files |
+| Phase 01 P19 | ~30min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -173,6 +206,20 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: [Phase 01]: 01-16: sanitizacao forcada e escrita EXPLICITAMENTE mesmo quando o valor corrente ja a implica — depender de o padrao conservador ser 'gratuito' faria de qualquer mudanca futura desse padrao um vazamento de recurso pago
 - [Phase ?]: [Phase 01]: 01-16: comentario nao repete o token que um grep-guard da fase vigia — prosa citando tenantId cega a guarda que deveria pegar o vazamento; duas contagens derivaram por isso e os comentarios foram reescritos
 - [Phase ?]: [Phase 01]: 01-16: falha que o banco nao sabe produzir sob demanda e injetada na FRONTEIRA da funcao (mock parcial de assinaturas), preservando linhas reais no resto da suite — a alternativa era revogar privilegio no banco compartilhado no meio da suite
+- [Phase 01]: 01-17: exit 0 de harness de seguranca exige PROVA POSITIVA, nunca ausencia de reprovacao — contra alvo mudo, 'nenhuma reprovacao' e 'nenhuma medicao' produzem o mesmo relatorio; o contador ESPERADAS decide o exit code, senao seria mais um numero impresso e descartado como INCONCLUSIVAS era
+- [Phase 01]: 01-17: fechamento se prova por PAR, nunca por sonda unica — referencia declarada respondendo 42501 (host respondeu, e PostgREST, o portao do Postgres se pronunciou) + canario inexistente respondendo PGRST205; indistinguiveis, sai 2, porque 'fechado' e 'nao e este banco' sao a mesma resposta para quem so olha tabelas que existem
+- [Phase 01]: 01-17: identidade do alvo e veredito de BATERIA (add-alongside, ao lado de COBERTURA) — nao conta como checagem, nao alimenta o contador de prova positiva, e roda SEMPRE inclusive com filtro: escopo reduzido dispensa cobertura, nunca identidade
+- [Phase 01]: 01-17: o canario tem guarda propria que aborta com 2 se o nome passar a constar dos schemas declarativos — canario que existe nao distingue nada, e a guarda foi vista FALHANDO (canario=assinaturas) antes de a constante ser revertida
+- [Phase 01]: 01-17: o terceiro eixo de falso verde (alvo que nega TUDO uniformemente — gateway hostil, proxy autenticando na frente, rate limit em 401) nao estava no code review nem no relatorio de verificacao; sem o veredito TUDO_NEGADO o conserto fecharia um eixo e abriria outro pela terceira vez
+- [Phase ?]: [Phase 01]: 01-18: validacao de entrada na fronteira da Server Action publica vem ANTES de createAdminClient() e da resolucao do slug — a ordem e a diferenca entre recusar de graca e recusar depois de pagar duas consultas, e e provada por asserção NEGATIVA (ausencia de slug_invalido no corpo), nunca so pelo discriminante esperado
+- [Phase ?]: [Phase 01]: 01-18: o invariante mora em DOIS lugares — fronteira da action (porteiro, recusa antes de I/O) e funcao pura exportada (contrato que um terceiro chamador futuro herda); guarda so na action deixaria gerarSlotsAntiBuraco desprotegida
+- [Phase ?]: [Phase 01]: 01-18: vista estreita de uniao fechada e alias PROPRIO (MotivoSlotsPublicos), nunca alargamento do alias do vizinho — MotivoLeituraPublica descreve o que a resolucao de perfil produz, e ela nao sabe produzir data_invalida nem servico_invalido
+- [Phase ?]: [Phase 01]: 01-18: teto de duracao (1440 min) e seguro por construcao, nao restricao de produto — janelas de funcionamento sao horas dentro de um dia, entao duracao acima disso ja devolvia lista vazia silenciosa; o teto troca a lista vazia por discriminante honesto, com CONTROLE POSITIVO provando que a grade legitima nao mudou
+- [Phase ?]: [Phase 01]: 01-18: entrada hostil de visitante nao e logada nem reportada ao Sentry — e condicao esperada, e logar cada uma transformaria o mesmo endpoint anonimo num vetor de inundacao de log
+- [Phase 01]: 01-19: a medição de pg_default_acl foi reexecutada nesta sessão pelo MCP da Supabase, com identidade do alvo conferida antes — o docs/03 registra medição própria (HEAD f473437) concordante com a do adendo (HEAD 8edb32d), em vez de citar medição de terceiro
+- [Phase 01]: 01-19: a condição que sustenta a citação do exit 0 do harness anônimo foi escrita nos TRÊS pontos onde o PENDENCIAS o cita, não só na seção nova — quem remover scripts/verificar-controle-harness-anon.sh remove o direito de citar o exit code
+- [Phase 01]: 01-19: os dez warnings da 2ª rodada de review entraram no PENDENCIAS como ponteiros (rótulo + uma linha + seção), sem conserto proposto, e a colisão de rótulos WR-* entre a 1ª e a 2ª rodada foi resolvida por escrito com o comando que recupera o relatório antigo do git
+- [Phase 01]: 01-19: escapada de plataforma aceita com registro (T-01-19-02) — tabela criada por supabase_admin herda anon/authenticated; item aberto com dono (quem habilitar a extensão) e gatilho (próxima habilitação), sem conserto preventivo
 
 ### Pending Todos
 
@@ -226,6 +273,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T19:32:16.468Z
-Stopped at: Completed 01-16-PLAN.md
+Last session: 2026-07-23T00:00:00.000Z
+Stopped at: Phase 01 marcada COMPLETA (CR-02 e WR-03 corrigidos; CR-01 deferido como dívida). Próximo: /gsd-discuss-phase 02
 Resume file: None

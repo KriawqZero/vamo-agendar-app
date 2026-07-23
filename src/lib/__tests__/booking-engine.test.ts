@@ -439,4 +439,69 @@ describe('gerarSlotsAntiBuraco', () => {
     it('intervalo sem espaço para a duração não gera candidatos', () => {
         expect(gerarSlotsAntiBuraco([{ start: 0, end: 20 }], 30, 30)).toEqual([])
     })
+
+    // -----------------------------------------------------------------------
+    // Guarda de profundidade — o invariante que impede uma duração hostil de
+    // virar a condição de parada do laço. A fronteira da Server Action pública
+    // (`obterSlotsPublicos`) valida antes de chegar aqui; estes casos travam o
+    // contrato na função PURA, que é exportada e sobrevive a um chamador futuro
+    // que ninguém se lembre de proteger.
+    // -----------------------------------------------------------------------
+
+    it('duração negativa de grande magnitude não gera candidato nenhum', () => {
+        const resultado = gerarSlotsAntiBuraco([{ start: 480, end: 1080 }], -5_000_000, 30)
+        // Asserção sobre o TAMANHO de propósito: sem a guarda, a mensagem de
+        // falha do vitest imprime a MEDIDA do defeito ("expected 333374 to be
+        // 0") em vez de despejar centenas de milhares de números no terminal.
+        // É a magnitude que o verificador mediu por HTTP: 26.751 ms e 19,29 MB
+        // numa única requisição anônima.
+        expect(resultado.length).toBe(0)
+    })
+
+    it('duração zero não gera candidato nenhum', () => {
+        expect(gerarSlotsAntiBuraco([{ start: 0, end: 60 }], 0, 30)).toEqual([])
+    })
+
+    it('duração fracionária não gera candidato nenhum', () => {
+        expect(gerarSlotsAntiBuraco([{ start: 0, end: 60 }], 30.5, 30)).toEqual([])
+    })
+
+    it('duração NaN não gera candidato nenhum', () => {
+        expect(gerarSlotsAntiBuraco([{ start: 0, end: 60 }], NaN, 30)).toEqual([])
+    })
+
+    it('duração infinita não gera candidato nenhum', () => {
+        expect(gerarSlotsAntiBuraco([{ start: 0, end: 60 }], Infinity, 30)).toEqual([])
+        // `-Infinity` só é seguro de assertar DEPOIS da guarda: sem ela, a
+        // condição de parada nunca fecha e o laço não termina.
+        expect(gerarSlotsAntiBuraco([{ start: 0, end: 60 }], -Infinity, 30)).toEqual([])
+    })
+
+    it('CONTROLE POSITIVO: duração legítima devolve a MESMA grade de antes da guarda', () => {
+        // Sem este caso, uma guarda que recusasse TUDO passaria em todos os
+        // outros. As três entradas abaixo são, byte a byte, as dos casos que já
+        // existiam neste bloco antes da guarda — e as saídas esperadas também.
+        expect(gerarSlotsAntiBuraco([{ start: 0, end: 60 }], 30, 30)).toEqual([0, 30])
+        expect(gerarSlotsAntiBuraco([{ start: 0, end: 105 }], 30, 30)).toEqual([0, 30, 45, 60, 75])
+        expect(gerarSlotsAntiBuraco([{ start: 0, end: 60 }], 15, 15)).toEqual([0, 15, 30, 45])
+    })
+})
+
+describe('obterSlotsDisponiveis — duração inválida pela API pública da engine', () => {
+    it('duração inválida devolve lista vazia sem estourar', async () => {
+        const supabase = fakeSupabase({ horarios: HORARIO_COMERCIAL })
+
+        // Pela porta pública da engine, não só pela função interna: é por aqui
+        // que `obterSlotsPublicos` e `obterSlotsDashboard` entram, e é aqui que
+        // um chamador futuro herda a proteção.
+        const slots = await obterSlotsDisponiveis({
+            tenantId: 't',
+            dateStr: DATA,
+            duracaoServicoMinutos: 0,
+            supabase,
+            timezone: SP,
+        })
+
+        expect(slots).toEqual([])
+    })
 })
