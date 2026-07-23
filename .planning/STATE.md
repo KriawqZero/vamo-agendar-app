@@ -5,11 +5,11 @@ milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
 status: complete
-stopped_at: Phase 01 FECHADA — 5/5 SC medidos verdes por DDL direto; CR-02 e WR-03 corrigidos; CR-01 deferido como dívida (instrumento, não vulnerabilidade)
-last_updated: "2026-07-23T00:00:00.000Z"
-last_activity: 2026-07-23
+stopped_at: Phase 2 context gathered
+last_updated: "2026-07-23T10:14:24.098Z"
+last_activity: 2026-07-22
 progress:
-  total_phases: 1
+  total_phases: 2
   completed_phases: 1
   total_plans: 19
   completed_plans: 19
@@ -273,6 +273,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-23T00:00:00.000Z
-Stopped at: Phase 01 marcada COMPLETA (CR-02 e WR-03 corrigidos; CR-01 deferido como dívida). Próximo: /gsd-discuss-phase 02
-Resume file: None
+Last session: 2026-07-23T10:14:24.086Z
+Stopped at: Phase 2 context gathered
+Resume file: .planning/phases/02-integridade-da-agenda/02-CONTEXT.md
