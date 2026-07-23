@@ -44,7 +44,7 @@ Todas as decisões abaixo são de **comportamento/produto** — a mecânica de b
 
 ### Dedupe de cliente reincidente (AGE-05)
 
-- **D-01: upsert atômico com COALESCE — preenche só o que falta, nunca sobrescreve.** O
+- **D-01:** upsert atômico com COALESCE — preenche só o que falta, nunca sobrescreve. O
   `ON CONFLICT (tenant_id, telefone) DO UPDATE` grava `nome = COALESCE(clientes.nome,
   EXCLUDED.nome)` e `email = COALESCE(clientes.email, EXCLUDED.email)`, retornando o `id`.
   Um cliente reincidente que informou um e-mail que antes faltava passa a tê-lo gravado
@@ -56,14 +56,14 @@ Todas as decisões abaixo são de **comportamento/produto** — a mecânica de b
 
 ### Congelamento e remarcação da duração (AGE-01/AGE-02)
 
-- **D-02: a duração congela no ato da reserva e é lida de `data_hora_fim`, não do serviço.**
+- **D-02:** a duração congela no ato da reserva e é lida de `data_hora_fim`, não do serviço.
   A engine (`booking-engine.ts:311-321`) deixa de calcular `end` a partir de
   `ag.servicos?.duracao_minutos || 30` e passa a usar `data_hora_fim`. Isso fecha AGE-01
   (editar a duração do serviço não move o término de agendamentos já marcados) e AGE-02
   (serviço desativado continua ocupando o tempo reservado — nunca mais o `|| 30`) de uma
   vez. — **Reversibility:** one-way — `data_hora_fim NOT NULL` é migration imutável após a
   Phase 11.
-- **D-03: remarcar mantém a duração ORIGINAL reservada.** `remarcarAgendamento`
+- **D-03:** remarcar mantém a duração ORIGINAL reservada. `remarcarAgendamento`
   (`agendamentos.ts:437`, hoje `Number(servicoObj?.duracao_minutos) || 30`) passa a
   calcular `novo data_hora_fim = nova data_hora + (data_hora_fim − data_hora) original`.
   Remarcar é o mesmo agendamento em outro horário — o tamanho reservado não muda, coerente
@@ -72,15 +72,15 @@ Todas as decisões abaixo são de **comportamento/produto** — a mecânica de b
 
 ### Colisão no walk-in do dashboard (AGE-03/AGE-04, SC3/SC4)
 
-- **D-04: no walk-in, aviso amigável COM o detalhe do agendamento que ocupa o horário.**
+- **D-04:** no walk-in, aviso amigável COM o detalhe do agendamento que ocupa o horário.
   Quando o INSERT do walk-in (`criarAgendamentoManual`, `agendamentos.ts:350`) falha com
   `23P01` (exclusion_violation), a action busca o agendamento conflitante do próprio tenant
   (período sobreposto, `status <> 'cancelado'`) e devolve cliente + serviço para a UI, que
   exibe o aviso e **recarrega a agenda**. É legítimo mostrar o detalhe porque é a agenda do
   próprio profissional — não há dado de terceiro em jogo (diferente do fluxo público). O
   que **nunca** aparece é a mensagem crua do PostgreSQL. — **Reversibility:** reversible.
-- **D-05: no fluxo público, o erro `23P01` mapeia para o discriminante `slot_indisponivel`
-  já existente — não para `erro_interno`.** O caminho da mensagem amigável (SC4) já foi
+- **D-05:** no fluxo público, o erro `23P01` mapeia para o discriminante `slot_indisponivel`
+  já existente — não para `erro_interno`. O caminho da mensagem amigável (SC4) já foi
   construído na Phase 01 (plano 01-12): `criarAgendamentoPublico` devolve `{ ok: false,
   motivo: 'slot_indisponivel' }` e o `BookingApp` já consome esse discriminante (solta o
   slot morto, refaz a grade, mostra o aviso âmbar). A Phase 2 só precisa **discriminar** o
@@ -91,7 +91,7 @@ Todas as decisões abaixo são de **comportamento/produto** — a mecânica de b
 
 ### Backfill dos dados existentes (AGE-01/AGE-03)
 
-- **D-06: limpar os agendamentos de teste antes de aplicar a constraint.** O banco dev é
+- **D-06:** limpar os agendamentos de teste antes de aplicar a constraint. O banco dev é
   descartável e migration destrutiva está autorizada (ROADMAP.md §"Rede de proteção do
   banco"). Em vez de backfillar `data_hora_fim` de agendamentos de teste e resolver
   eventuais sobreposições/duplicatas de telefone à mão, apagar os agendamentos de teste

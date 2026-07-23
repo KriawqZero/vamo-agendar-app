@@ -622,7 +622,7 @@ GRANT EXECUTE ON FUNCTION public.reaproveitar_ou_criar_cliente(text,text,text,te
 **Confirmar antes de travar como decisão:** A1 e A3 são empíricos e o plano os resolve na
 primeira tarefa da wave 3 (teste DDL descartável + aplicação observada). A2/A4 são de design.
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Coluna gerada vs trigger para `periodo`**
    - What we know: análise diz imutável; padrão Supabase usa coluna app-escrita; thread da lista
@@ -631,6 +631,10 @@ primeira tarefa da wave 3 (teste DDL descartável + aplicação observada). A2/A
      (tstzrange(...))`.
    - Recommendation: primeira tarefa da wave 3 roda o `CREATE TEMP TABLE` de teste; passou →
      gerada; falhou → trigger. Decisão determinística, não gamble.
+   - **RESOLVED:** a sonda empírica (`CREATE TEMP TABLE` descartável do `GENERATED ALWAYS AS
+     (tstzrange(...))`) vive no plano **02-02**; a escolha coluna-gerada vs trigger é feita a
+     partir do resultado observado, não assumida. Fallback trigger permanece pronto se a sonda
+     falhar.
 
 2. **Contrato de retorno de `criarAgendamentoManual` (D-04)**
    - What we know: hoje devolve o agendamento cru ou `throw`; o consumidor é `NovoAgendamentoModal`.
@@ -638,12 +642,17 @@ primeira tarefa da wave 3 (teste DDL descartável + aplicação observada). A2/A
      recarregar a agenda.
    - Recommendation: planner lê `NovoAgendamentoModal.tsx` (e o container da agenda) e desenha o
      retorno discriminado espelhando o padrão do público.
+   - **RESOLVED:** o contrato de retorno discriminado do walk-in (motivo + detalhe do agendamento
+     conflitante) e o ajuste do `NovoAgendamentoModal` estão no plano **02-04**, espelhando o
+     padrão de retorno discriminado do fluxo público.
 
 3. **Tratamento de meia-noite na engine (Pitfall 4)**
    - What we know: o modelo minutos-locais pressupõe um dia.
    - What's unclear: clampar ao fim do dia vs somar 1440.
    - Recommendation: somar 1440 quando o dia local de `data_hora_fim` > dia de `data_hora`;
      cobrir com teste unitário. Decisão de baixo custo, mas explícita.
+   - **RESOLVED:** somar 1440 quando o dia local de `data_hora_fim` ultrapassa o de `data_hora`;
+     coberto por teste unitário da engine no plano **02-01 (Task 2)**.
 
 ## Environment Availability
 
