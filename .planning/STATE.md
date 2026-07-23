@@ -5,14 +5,14 @@ milestone_name: Lançamento público
 current_phase: 02
 current_phase_name: integridade-da-agenda
 status: complete
-stopped_at: Completed 02-05-PLAN.md
-last_updated: "2026-07-23T17:17:45.769Z"
+stopped_at: Completed 02-06-PLAN.md
+last_updated: "2026-07-23T17:33:32.972Z"
 last_activity: 2026-07-23
 progress:
   total_phases: 2
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 25
-  completed_plans: 24
+  completed_plans: 25
 last_activity_desc: "Phase 01 FECHADA (aceitando gaps não-bloqueantes). Os cinco Success Criteria do ROADMAP foram medidos DIRETAMENTE na 4ª verificação (acesso DDL ao banco): SC1/SC2/SC3 anônimos em 401/42501 com controle positivo, SC4 exercitado por objeto descartável criado e removido (anon f/f/f, service t/t/t), SC5 por harness de boot e webhook — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC: CR-02 (escrita pública sem teto de campo) foi CORRIGIDO nos commits e7adc01/738a896/600e429 com pnpm test 241/241, lint e build verdes; WR-03 (PENDENCIAS descrevendo o mundo pré-fase) foi CORRIGIDO; CR-01 (falso-verde do harness em alvo parcial) fica como DÍVIDA DEFERIDA — é instrumento quebrado, não vulnerabilidade, e os SC foram provados por DDL direto, não por esse script. Próximo: /gsd-discuss-phase 02"
 ---
 
@@ -69,7 +69,7 @@ Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
 Last activity: 2026-07-23
 
-Progress: [██████████] 96% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
+Progress: [██████████] 100% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
 
 ### Resultado da 4ª passagem de verificação (2026-07-22, HEAD `7937aed`)
 
@@ -137,6 +137,7 @@ Primeira verificação das quatro com acesso DDL ao banco de dev — os cinco Su
 | Phase 02 P03 | ~10min | 2 tasks | 2 files |
 | Phase 02 P04 | ~25min | 3 tasks | 3 files |
 | Phase 02 P05 | ~18min | 3 tasks | 1 files |
+| Phase 02 P06 | ~10min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -233,6 +234,7 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: 02-03: fluxo público usa RPC atômica de cliente (dedupe COALESCE) e discrimina 23P01 → slot_indisponivel sem Sentry
 - [Phase ?]: 02-05: migration de integridade APLICADA ao dev via execute_sql (D-06 limpo, pré-voo 0/0); ledger 21 versions=21 arquivos (20260723162858 alinhada sem realinhamento DML — execute_sql preserva a version); anon sem EXECUTE na RPC, authenticated/service_role com
 - [Phase ?]: 02-05: apply via execute_sql preservou a version inserida — realinhamento por DML só é necessário com apply_migration, não com o INSERT manual no ledger
+- [Phase ?]: 02-06: SC3/SC4/SC5 provados empiricamente contra o Supabase de dev; walk-in do SC3 no nível da constraint (role-agnóstica), corrida walk-in autenticada em processo ficou best-effort
 
 ### Pending Todos
 
@@ -286,6 +288,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-23T17:17:45.540Z
-Stopped at: Completed 02-05-PLAN.md
+Last session: 2026-07-23T17:33:06.850Z
+Stopped at: Completed 02-06-PLAN.md
 Resume file: None
