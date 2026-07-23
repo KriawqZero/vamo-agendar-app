@@ -1003,6 +1003,37 @@ controle existir e passar**. Quem remover, desativar ou afrouxar
 como evidência, aqui e em qualquer outro documento. Nesse caso resta a leitura linha a linha
 do relatório.
 
+### ⚠️ Novo eixo de falso-verde do harness de superfície (CR-01) — DÍVIDA DEFERIDA no fechamento da Phase 01
+
+**O que é.** A 4ª verificação (2026-07-22, primeira com acesso DDL ao banco) reproduziu um
+falso-verde **novo** em `scripts/verificar-superficie-anon.sh`, distinto do de alvo morto
+que o plano 01-17 fechou: num alvo **parcialmente aberto** — `perfis_empresas` respondendo
+`42501` e as outras 7 tabelas reabertas a `anon` mas vazias (`200 []`) — o script sai **0**
+com `4 com prova positiva, 0 reprovada(s)` e a frase de fechamento, com **7 de 9 tabelas
+ABERTAS**. Causa: `ESPERADAS` é contador GLOBAL e `marcar_checada` roda antes do curl, então
+COBERTURA mede TENTATIVA, não PROVA por tabela; `200 []` vira `INCONCLUSIVO`, que não entra
+em gate de exit code nenhum. O controle `verificar-controle-harness-anon.sh` cobre três
+estados **globais** (morto, projeto errado, nega-tudo), não o alvo parcial — uma
+granularidade abaixo. É o mesmo padrão de falso-verde que a fase combateu, migrado de eixo.
+
+**Por que é dívida e não bloqueio.** É o **instrumento** que está quebrado, não a postura.
+Os 5 Success Criteria da Phase 01 foram provados por **medição DDL direta** no banco
+(`01-VERIFICATION.md`, 4ª passagem: anon → `401/42501` nas 9 tabelas, com controle positivo
+sob `service_role`), **não** pelo exit code deste script. Nenhuma vulnerabilidade real — as
+9 tabelas devolvem `42501` a `anon` agora, medido.
+
+**Gatilho / regra (decisão do owner no fechamento da Phase 01):** *não usar
+`verificar-superficie-anon.sh` como prova de fechamento até o falso-verde de alvo
+inalcançável ser corrigido; os SC da Phase 01 foram provados por medição DDL direta, não por
+este script.* Enquanto isso, o direito de citar o exit 0 (concedido pelo plano 01-17 e
+descrito no bloco acima) fica **suspenso** para o eixo de alvo parcial.
+
+**O conserto pendente** (quando o item voltar): prova positiva e cobertura **POR TABELA**
+(`declare -A VEREDITO_POR_TABELA`; reprovar toda tabela declarada cujo veredito não seja
+ESPERADO — `INCONCLUSIVO`/`AUSENTE` não é prova) e um quinto veredito `ALVO_PARCIAL` no
+controle, que exija reprovação num alvo que responde `42501` num caminho e `200 []` nos
+demais. Detalhe completo em `01-VERIFICATION.md` (gap CR-01, seção `missing`).
+
 ### ~~Uma requisição anônima parava o event loop por 26 segundos~~ — ✅ Fechado (plano 01-18, 2026-07-22)
 
 **O que foi medido antes.** Contra build de produção, com o slug público real e sem sessão,
