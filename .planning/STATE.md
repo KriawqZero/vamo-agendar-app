@@ -4,16 +4,16 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 01
 current_phase_name: hardening-da-superf-cie-p-blica
-status: gaps_found
-stopped_at: 4ª verificação reprovou com 3 gaps (SC 5/5 medidos verdes)
-last_updated: "2026-07-22T22:25:00.000Z"
-last_activity: 2026-07-22
+status: complete
+stopped_at: Phase 01 FECHADA — 5/5 SC medidos verdes por DDL direto; CR-02 e WR-03 corrigidos; CR-01 deferido como dívida (instrumento, não vulnerabilidade)
+last_updated: "2026-07-23T00:00:00.000Z"
+last_activity: 2026-07-23
 progress:
   total_phases: 1
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 19
   completed_plans: 19
-last_activity_desc: "4ª verificação REPROVOU (gaps_found) — mas pela primeira vez os cinco Success Criteria do ROADMAP foram medidos DIRETAMENTE (verificador teve acesso DDL ao banco de dev): SC1/SC2/SC3 anônimos em 401/42501 com controle positivo, SC4 exercitado por objeto descartável criado e removido (anon f/f/f, service t/t/t), SC5 por harness de boot e webhook. O GOAL está alcançado. Os 3 gaps que restam NÃO falsificam nenhum SC: (1) o harness ainda dá falso-verde em alvo parcialmente aberto — CR-01; (2) escrita pública sem teto de campo — clienteNome de 200k chars persistiu em clientes via createAdminClient, CR-02; (3) PENDENCIAS descreve o mundo pré-fase — WR-03. Próximo: /gsd-plan-phase 01 --gaps"
+last_activity_desc: "Phase 01 FECHADA (aceitando gaps não-bloqueantes). Os cinco Success Criteria do ROADMAP foram medidos DIRETAMENTE na 4ª verificação (acesso DDL ao banco): SC1/SC2/SC3 anônimos em 401/42501 com controle positivo, SC4 exercitado por objeto descartável criado e removido (anon f/f/f, service t/t/t), SC5 por harness de boot e webhook — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC: CR-02 (escrita pública sem teto de campo) foi CORRIGIDO nos commits e7adc01/738a896/600e429 com pnpm test 241/241, lint e build verdes; WR-03 (PENDENCIAS descrevendo o mundo pré-fase) foi CORRIGIDO; CR-01 (falso-verde do harness em alvo parcial) fica como DÍVIDA DEFERIDA — é instrumento quebrado, não vulnerabilidade, e os SC foram provados por DDL direto, não por esse script. Próximo: /gsd-discuss-phase 02"
 ---
 
 # Project State
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — EXECUTING
+Phase: 01 (hardening-da-superf-cie-p-blica) — COMPLETE
 Plan: 19 of 19
 
 ### Planejamento da 3ª rodada (2026-07-22, branch `fase-01-gaps-rodada-3`)
@@ -69,7 +69,7 @@ Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
 Last activity: 2026-07-22
 
-Progress: [██████████] 100% (19/19 planos executados; a 3ª rodada — 01-17, 01-18 e 01-19 — rodou em 2026-07-22. A **4ª verificação** (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado —, mas **reprovou a fase** com 3 gaps que não falsificam nenhum SC: harness com falso-verde em alvo parcial (CR-01), escrita pública sem teto de campo (CR-02), e PENDENCIAS descrevendo o mundo pré-fase (WR-03). A fase **não** foi marcada como completa)
+Progress: [██████████] 100% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
 
 ### Resultado da 4ª passagem de verificação (2026-07-22, HEAD `7937aed`)
 
@@ -81,11 +81,11 @@ Primeira verificação das quatro com acesso DDL ao banco de dev — os cinco Su
 - **SC4** (objeto novo nasce fechado): **exercitado** — `sonda_sc4_*` tabela+função criadas como `postgres`, `anon`/`authenticated` f/f/f, `service_role` t/t/t, por `has_*_privilege` e por HTTP; objetos removidos
 - **SC5** (webhook assinado + boot fail-fast): veredito `WEBHOOK` 401×3 + 200 controle, veredito `MORTE` (código 1 + porta recusando), `QSTASH_NEXT_SIGNING_KEY` na lista de obrigatórias
 
-**Os 2 gaps da 3ª rodada fecharam e foram re-medidos** (harness de alvo-morto sai 2; DoS `-5000000` → 9-10 ms / 109 bytes). Dos 3 gaps que a 4ª verificação reproduziu, **CR-02 foi resolvido no fix 738a896** (teto de nome + validação de e-mail na escrita pública anônima, provado por `public-booking-validacao.test.ts`). **2 gaps de fase restam** — CR-01 e WR-03 —, ambos reproduzidos por medição própria, nenhum falsifica um SC:
+**Os 2 gaps da 3ª rodada fecharam e foram re-medidos** (harness de alvo-morto sai 2; DoS `-5000000` → 9-10 ms / 109 bytes). No fechamento da Phase 01 os 3 gaps que a 4ª verificação reproduziu foram todos dispositados — **CR-02 e WR-03 corrigidos, CR-01 deferido como dívida**. Nenhum falsificava um SC:
 
-1. **CR-01** — `verificar-superficie-anon.sh` ainda dá falso-verde em alvo parcialmente aberto: stub com `perfis_empresas` fechada e as outras 7 tabelas reabertas a `anon` mas vazias (`200 []`) → exit **0** com `4 com prova positiva, 0 reprovada(s)` e a frase de fechamento. `ESPERADAS` é contador GLOBAL e `marcar_checada` roda antes do curl, então COBERTURA mede tentativa, não prova. O `ROADMAP.md:195` cita esse exit 0 como prova de SEG-01/02/03
+1. **CR-01 — DÍVIDA DEFERIDA:** `verificar-superficie-anon.sh` dá falso-verde em alvo parcialmente aberto: stub com `perfis_empresas` fechada e as outras 7 tabelas reabertas a `anon` mas vazias (`200 []`) → exit **0** com `4 com prova positiva, 0 reprovada(s)` e a frase de fechamento. É o instrumento quebrado, não vulnerabilidade — os SC foram provados por medição DDL direta, não por esse exit code. Regra registrada em `PENDENCIAS.md`: não citar o script como prova de fechamento até o conserto (cobertura por tabela + veredito `ALVO_PARCIAL` no controle). **Não é gap aberto — é dívida com gatilho.**
 2. ~~**CR-02** — escrita pública sem teto de campo~~ **RESOLVIDO no fix 738a896**: `criarAgendamentoPublico` passou a recusar, antes de `createAdminClient()`, nome fora de 1..120 chars e e-mail (opcional) sem formato válido ou acima de 254 chars (`email_invalido`). Prova hermética em `public-booking-validacao.test.ts` (createAdminClient não é chamado na recusa). Resta espelhar o CHECK no banco (`06_clientes.sql`) — fora do escopo deste fix, anotado no `missing` do `01-VERIFICATION.md`
-3. **WR-03** — `docs/PENDENCIAS.md:812-814,830` ainda afirma que o INSERT direto pela Data API contorna a action, o que as migrations `20260722060000`+`20260722055941` desta fase tornaram falso (anon POST → 42501). Definition of Done §6 exige atualizar
+3. ~~**WR-03** — PENDENCIAS descrevia o mundo pré-fase~~ **RESOLVIDO** (commit `8605962`): a frase em `docs/PENDENCIAS.md` que afirmava que o INSERT direto pela Data API contorna a action foi corrigida — as migrations `20260722060000`+`20260722055941` revogaram a Data API de `anon` (anon POST → 42501), o que a torna falsa. Definition of Done §6 satisfeita.
 
 8 itens de verificação humana (7 UAT de tela + rotação de chave do owner) seguem ABERTOS, não marcados
 
@@ -273,6 +273,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-22T22:25:00.000Z
-Stopped at: 4ª verificação reprovou (gaps_found); fase não marcada completa. Próximo: /gsd-plan-phase 01 --gaps
+Last session: 2026-07-23T00:00:00.000Z
+Stopped at: Phase 01 marcada COMPLETA (CR-02 e WR-03 corrigidos; CR-01 deferido como dívida). Próximo: /gsd-discuss-phase 02
 Resume file: None

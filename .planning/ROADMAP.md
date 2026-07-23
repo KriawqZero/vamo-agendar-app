@@ -98,7 +98,7 @@ precisa ser sabido antes.
 - Fases decimais (2.1, 2.2): inserções urgentes depois do planejamento
 
 - [ ] **Etapa preparatória: Fundação operacional** - Sentry, PostHog e Resend de pé antes da Phase 1 começar
-- [ ] **Phase 1: Hardening da superfície pública** - A chave publicável deixa de servir a base de profissionais e a agenda de todos os tenants
+- [x] **Phase 1: Hardening da superfície pública** - A chave publicável deixa de servir a base de profissionais e a agenda de todos os tenants
 - [ ] **Phase 2: Integridade da agenda** - Duração gravada no agendamento e proteção atômica contra double-booking
 - [ ] **Phase 3: Anti-abuso no booking público** - Rate limit e honeypot sem nenhuma fricção visível ao cliente
 - [ ] **Phase 4: Canal de e-mail transacional** - Resend em domínio próprio, com remetente reconhecível e supressão de bounce
