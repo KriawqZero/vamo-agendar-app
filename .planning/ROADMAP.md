@@ -238,7 +238,7 @@ Plans:
   4. Quem perde a corrida vê "esse horário acabou de ser reservado, escolha outro" com os horários recarregados — nunca a mensagem do PostgreSQL, que carrega o `org_id` e o horário de terceiro
   5. Agendar duas vezes com o mesmo telefone no mesmo tenant reaproveita o cliente existente, sem criar segunda linha nem duplicar disparo
 
-**Plans**: 4/6 plans executed
+**Plans**: 5/6 plans executed
 
 Plans:
 **Wave 1**
@@ -253,7 +253,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 
-- [ ] 02-05-PLAN.md — **[BLOCKING]** Apply da migration ao Supabase Cloud: pré-voo, limpeza D-06, execute_sql + realinhamento do ledger (autonomous:false) (wave 3)
+- [x] 02-05-PLAN.md — **[BLOCKING]** Apply da migration ao Supabase Cloud: pré-voo, limpeza D-06, execute_sql + realinhamento do ledger (autonomous:false) (wave 3)
 
 **Wave 4** *(blocked on Wave 3)*
 
@@ -534,7 +534,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | Etapa preparatória. Fundação operacional | 0/1 | Not started | - |
 | 1. Hardening da superfície pública | 19/19 | In Progress|  |
-| 2. Integridade da agenda | 4/6 | In Progress|  |
+| 2. Integridade da agenda | 5/6 | In Progress|  |
 | 3. Anti-abuso no booking público | 0/TBD | Not started | - |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |
 | 5. Contato flexível no booking | 0/TBD | Not started | - |
