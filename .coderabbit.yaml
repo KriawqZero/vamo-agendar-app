@@ -1,0 +1,180 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+# Configuração de code review do CodeRabbit para o VamoAgendar.
+# Idioma pt-BR (projeto todo em português), perfil assertivo (o revisor humano é
+# solo e o milestone é abrir ao público com barra de segurança alta).
+language: pt-BR
+
+early_access: false
+
+chat:
+  # Responde automaticamente a menções @coderabbitai nos comentários do PR.
+  auto_reply: true
+
+reviews:
+  # Assertive = feedback abrangente (bugs, edge cases, estilo, nitpicks).
+  profile: assertive
+
+  # Só comenta; não deixa o PR em "changes requested". Quem mergeia é o dono do repo.
+  request_changes_workflow: false
+
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: false
+  changed_files_summary: true
+  sequence_diagrams: true
+  # Sem poeminha no fim do review — mantém o report enxuto.
+  poem: false
+
+  auto_review:
+    enabled: true
+    # Reavalia só o incremento a cada push, em vez de reprocessar o PR inteiro.
+    auto_incremental_review: true
+    # Não revisa PRs em rascunho (draft).
+    drafts: false
+    # Pula auto-review quando o título sinaliza trabalho em andamento.
+    ignore_title_keywords:
+      - WIP
+      - wip
+      - '[skip-review]'
+
+  pre_merge_checks:
+    # Avisa (não bloqueia) se o PR não tiver descrição/título decentes.
+    description:
+      mode: warning
+    title:
+      mode: warning
+    # Não exigimos docstrings formais (padrão do projeto é JSDoc curto, não obrigatório).
+    docstrings:
+      mode: off
+
+  # Fora do escopo do review de código: planejamento GSD, vault do Obsidian,
+  # branding, skills de terceiros, tooling e artefatos de build.
+  path_filters:
+    - '!.planning/**'
+    - '!.obsidian/**'
+    - '!artes-aprovadas-design/**'
+    - '!.agents/**'
+    - '!.superpowers/**'
+    - '!.claude/**'
+    - '!node_modules/**'
+    - '!.next/**'
+    - '!public/**'
+    - '!pnpm-lock.yaml'
+    - '!skills-lock.json'
+    - '!tsconfig.tsbuildinfo'
+    - '!next-env.d.ts'
+    - '!**/*.snap'
+
+  path_instructions:
+    # -------------------------------------------------------------------------
+    # Server Actions — todas as mutações passam por aqui (rotas REST são proibidas).
+    # -------------------------------------------------------------------------
+    - path: 'src/app/actions/**/*.ts'
+      instructions: |
+        Server Actions são o ÚNICO ponto de mutação (rotas REST proibidas, exceto webhooks).
+        Verifique rigorosamente:
+        - Multi-tenancy B2B: toda action autenticada valida `const { orgId } = await auth()`
+          como guard clause no início e passa `tenant_id: orgId` nas escritas. Sem isso,
+          é vazamento de tenant — trate como bug de segurança, não estilo.
+        - Fluxo B2C (público, role anon, sem login): revalidação rigorosa na própria action —
+          re-executar a engine de disponibilidade antes do INSERT (anti double-booking por
+          igualdade exata de datetime), sanitizar telefone com `replace(/\D/g, '')`,
+          reaproveitar cliente existente por telefone.
+        - Gating de plano é feito na ACTION, nunca só na UI: WhatsApp e personalização visual
+          (cor_marca/logo_url/capa_url) são exclusivos do plano Pro.
+        - Erros: logar contexto em pt-BR (`console.error('Erro ao X:', error.message)`) e
+          lançar `new Error('<mensagem amigável pt-BR>')`. Nunca vazar erro cru do Supabase
+          para a UI.
+        - Nunca usar o fluxo depreciado `getToken({ template: 'supabase' })` — a integração
+          Clerk↔Supabase é nativa (third-party auth).
+        - Nomes de domínio em português (ex.: criarAgendamentoPublico, salvarServico).
+
+    # -------------------------------------------------------------------------
+    # Webhooks — única exceção legítima a "sem rotas REST".
+    # -------------------------------------------------------------------------
+    - path: 'src/app/api/webhooks/**/*.ts'
+      instructions: |
+        Única exceção permitida a "mutações só via Server Actions".
+        Verifique: validação do secret/assinatura antes de qualquer efeito colateral;
+        idempotência e checagens de estado (ex.: não disparar lembrete de agendamento já
+        cancelado). Mensageria WhatsApp falha SILENCIOSAMENTE para o cliente final
+        (Fricção Zero) — erro é logado, o fluxo não é interrompido.
+
+    # -------------------------------------------------------------------------
+    # UI — Server Components por padrão; ilhas client mínimas.
+    # -------------------------------------------------------------------------
+    - path: 'src/app/**/*.tsx'
+      instructions: |
+        Padrões de frontend:
+        - Server Components por padrão; `'use client'` só em ilhas de interatividade,
+          o mais baixo possível na árvore. Padrão: page.tsx (Server, busca dados) +
+          <Nome>Client.tsx (Client, interage).
+        - Mobile-first sempre (Tailwind v4, paleta zinc; emerald = concluído, red = cancelado).
+        - Estados de pending via useActionState/useFormStatus.
+        - Página pública (/book/[slug]): NUNCA ler personalização crua
+          (cor_marca/logo_url/capa_url) — consumir a chave `personalizacao` já sanitizada
+          pelo plano vigente via obterDadosBookingPublico. Ler cru fura o gating do Pro.
+        - Fricção Zero é inegociável: o cliente final não faz login, cadastro, OTP nem CAPTCHA.
+
+    # -------------------------------------------------------------------------
+    # Regras gerais de TS/TSX em src/.
+    # -------------------------------------------------------------------------
+    - path: 'src/**/*.{ts,tsx}'
+      instructions: |
+        Invariantes do projeto:
+        - Stack banida (descartada no pivô) — sinalize QUALQUER uso: Prisma, Drizzle,
+          better-auth, Mercado Pago.
+        - E-mail: nunca instanciar `new Resend()` direto (o construtor lança sem chave) —
+          todo envio passa por `enviarEmail` (src/lib/email/enviar.ts).
+        - PII: o cliente final digita nome e telefone em página pública. Nunca enviar PII
+          (nome, telefone, e-mail) para Sentry ou PostHog. Falha inesperada vai ao Sentry via
+          reportarExcecao/reportarFalhaSilenciosa; condição esperada de negócio NÃO vai.
+        - Next.js 16 tem breaking changes: `src/proxy.ts` substitui `middleware.ts`.
+        - TypeScript strict: evite `any`; prefira `import type` para imports de tipo.
+        - Domínio de negócio nomeado em português.
+
+    # -------------------------------------------------------------------------
+    # Engine de disponibilidade — contrato crítico anti double-booking.
+    # -------------------------------------------------------------------------
+    - path: 'src/lib/booking-engine.ts'
+      instructions: |
+        Núcleo de cálculo de slots (funções puras testáveis). O FORMATO da saída de
+        obterSlotsDisponiveis é contrato do anti double-booking: a action pública
+        re-executa a engine e valida o horário por igualdade exata de datetime antes do
+        INSERT. Mudança no formato de saída quebra esse contrato — só aprove com os testes
+        correspondentes ajustados. Timezone: banco em UTC, interpretação no fuso do tenant
+        (perfis_empresas.timezone).
+
+    # -------------------------------------------------------------------------
+    # Schema declarativo e migrations SQL.
+    # -------------------------------------------------------------------------
+    - path: 'supabase/schemas/**/*.sql'
+      instructions: |
+        Schema declarativo (fonte da verdade). Exija:
+        - RLS habilitado em TODA tabela, com políticas GRANULARES por ação
+          (SELECT/INSERT/UPDATE/DELETE — nunca FOR ALL) e role explícita
+          (TO authenticated / TO anon).
+        - Performance: `auth.jwt()` SEMPRE dentro de subquery —
+          `(SELECT auth.jwt() ->> 'org_id')` — para virar initPlan e não avaliar por linha.
+        - tenant_id é `text NOT NULL` com o org_... do Clerk (não é uuid).
+        - Nomenclatura pt-BR: tabelas no plural, colunas no singular, snake_case;
+          FKs como `<tabela_singular>_id`.
+        - COMMENT ON TABLE/POLICY descrevendo a intenção de negócio.
+
+    - path: 'supabase/migrations/**/*.sql'
+      instructions: |
+        Migrations geradas por `supabase db diff` a partir dos schemas declarativos.
+        Confira coerência com o schema de origem, RLS granular por ação e privilégios
+        (REVOKE/GRANT) quando aplicável. Sinalize alterações destrutivas não intencionais.
+
+    # -------------------------------------------------------------------------
+    # Testes (vitest).
+    # -------------------------------------------------------------------------
+    - path: 'src/**/__tests__/**/*.test.ts'
+      instructions: |
+        Testes unitários com vitest. Não há PII real — dados são procedurais/genéricos.
+        As travas anti-PII do Sentry são asserção de teste sobre opcoesBaseSentry (não
+        configuração de painel); mudanças ali devem preservar essas asserções. Verifique
+        cobertura das regras de negócio críticas (grade anti-buraco, antecedência/horizonte,
+        sobreposição de horários, anti double-booking).
