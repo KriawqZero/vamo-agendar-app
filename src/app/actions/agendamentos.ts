@@ -207,7 +207,10 @@ async function buscarConflitoWalkin(
         query = query.neq('id', ignorarId)
     }
 
-    const { data: conflito } = await query.maybeSingle()
+    const { data: conflito } = await query
+        .order('data_hora', { ascending: true })
+        .limit(1)
+        .maybeSingle()
 
     if (!conflito) return null
 

@@ -563,8 +563,8 @@ export async function criarAgendamentoPublico({
     await dispararNotificacoesAgendamento(admin, {
         agendamentoId: agendamento.id,
         tenantId,
-        clienteNome,
-        clienteTelefone,
+        clienteNome: nomeLimpo,
+        clienteTelefone: telefoneLimpo,
         dataHora,
         timezone,
     })

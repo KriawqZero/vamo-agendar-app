@@ -273,10 +273,10 @@ export async function obterSlotsDisponiveis({
     const menorDuracaoAtiva =
         duracoesAtivas.length > 0 ? Math.min(...duracoesAtivas) : duracaoServicoMinutos
 
-    // 5. Buscar Agendamentos existentes não cancelados para esta data
-    // Os agendamentos são gravados como timestamp UTC; buscamos tudo que cai no
-    // dia local `dateStr` no fuso do estabelecimento. `fim` é EXCLUSIVO (00:00 do
-    // dia seguinte), evitando o buraco/overlap do antigo 23:59:59.
+    // 5. Buscar agendamentos não cancelados cujo PERÍODO intersecta esta data.
+    // Filtrar só pelo início perderia uma reserva que começou na noite anterior
+    // e termina na madrugada consultada. `fim` é EXCLUSIVO (00:00 do dia
+    // seguinte), evitando o buraco/overlap do antigo 23:59:59.
     const { inicio, fim } = limitesDoDia(dateStr, timezone)
 
     let queryAgendamentos = supabase
@@ -284,8 +284,8 @@ export async function obterSlotsDisponiveis({
         .select('data_hora, data_hora_fim, status')
         .eq('tenant_id', tenantId)
         .neq('status', 'cancelado')
-        .gte('data_hora', inicio.toISOString())
         .lt('data_hora', fim.toISOString())
+        .gt('data_hora_fim', inicio.toISOString())
 
     // Remarcação: o próprio agendamento não deve colidir consigo mesmo.
     if (ignorarAgendamentoId) {
@@ -308,23 +308,22 @@ export async function obterSlotsDisponiveis({
     const slotsOcupados: Intervalo[] = (agendamentos || []).map((ag) => {
         // Início e término de volta para a parede local do estabelecimento.
         const [h, m] = horaLocal(ag.data_hora, timezone).split(':').map(Number)
-        const start = h * 60 + m
         const [hf, mf] = horaLocal(ag.data_hora_fim, timezone).split(':').map(Number)
-        let end = hf * 60 + mf
-
-        // Pitfall 4: um agendamento que cruza a meia-noite tem o término num dia
-        // local posterior, então em minutos-locais `end` viria MENOR que `start`
-        // e o intervalo ocupado ficaria invertido/vazio — deixando o slot da
-        // virada livre indevidamente. Somamos 1440 por dia de diferença para
-        // manter a janela ocupada íntegra até (e além) o fim do dia consultado.
         const diaInicio = diaLocal(ag.data_hora, timezone)
         const diaFim = diaLocal(ag.data_hora_fim, timezone)
-        if (diaFim !== diaInicio) {
-            const diffDias = Math.round((Date.parse(diaFim) - Date.parse(diaInicio)) / 86_400_000)
-            end += 1440 * diffDias
-        }
 
-        return { start, end }
+        // Pitfall 4 nos DOIS sentidos: normalizamos início e fim contra o dia
+        // CONSULTADO, não um contra o outro. Assim [ontem 23:30, hoje 00:30)
+        // vira [0, 30), e [hoje 23:30, amanhã 00:30) vira [1410, 1440).
+        const offsetInicio =
+            Math.round((Date.parse(diaInicio) - Date.parse(dateStr)) / 86_400_000) * 1440
+        const offsetFim =
+            Math.round((Date.parse(diaFim) - Date.parse(dateStr)) / 86_400_000) * 1440
+
+        return {
+            start: Math.max(0, h * 60 + m + offsetInicio),
+            end: Math.min(1440, hf * 60 + mf + offsetFim),
+        }
     })
 
     // 6. Intervalos livres do dia: janelas de funcionamento − bloqueios − ocupados

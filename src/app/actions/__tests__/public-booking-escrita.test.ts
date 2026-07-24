@@ -368,7 +368,7 @@ describe.skipIf(!temCredenciais)(
                 slug: SLUG_GRATUITO_TESTE,
                 servicoId: servicoIdTeste,
                 dataHora: slots[0].datetime,
-                clienteNome: 'Cliente de Integração',
+                clienteNome: '  Cliente de Integração  ',
                 // Formatado de propósito: a sanitização é por remoção de não-dígitos.
                 clienteTelefone: TELEFONE_FORMATADO,
             })
@@ -402,6 +402,8 @@ describe.skipIf(!temCredenciais)(
                 expect.objectContaining({
                     agendamentoId: agendamento.id,
                     tenantId: TENANT_TESTE,
+                    clienteNome: 'Cliente de Integração',
+                    clienteTelefone: TELEFONE_SANITIZADO,
                 }),
             )
         })

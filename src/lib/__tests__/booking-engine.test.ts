@@ -26,8 +26,8 @@ interface DadosFake {
 
 /**
  * SupabaseClient falso encadeável cobrindo apenas o que a engine usa
- * (from/select/eq/neq/gte/lt/order + await do builder). O builder de
- * `agendamentos` honra `neq('id', ...)` para exercitar `ignorarAgendamentoId`.
+ * (from/select/eq/neq/gte/gt/lt/order + await do builder). O builder de
+ * `agendamentos` honra os filtros de status e id usados pela engine.
  */
 function fakeSupabase(dados: DadosFake): SupabaseClient {
     return {
@@ -38,9 +38,13 @@ function fakeSupabase(dados: DadosFake): SupabaseClient {
                     select: () => builder,
                     eq: () => builder,
                     gte: () => builder,
+                    gt: () => builder,
                     lt: () => builder,
                     neq: (coluna: string, valor: string) => {
                         if (coluna === 'id') lista = lista.filter((a) => a.id !== valor)
+                        if (coluna === 'status') {
+                            lista = lista.filter((a) => a.status !== valor)
+                        }
                         return builder
                     },
                     then: (resolve: (r: unknown) => void) => resolve({ data: lista, error: null }),
@@ -429,6 +433,55 @@ describe('obterSlotsDisponiveis — ocupação por data_hora_fim (AGE-02 + meia-
         expect(horas).toContain('23:00') // último slot ANTES da ocupação da virada
         expect(horas).not.toContain('23:15') // exigiria invadir a ocupação — livre só sob o bug
         expect(horas).not.toContain('23:30') // início da ocupação
+    })
+
+    it('WR-01: agendamento iniciado ontem ocupa a madrugada do dia consultado', async () => {
+        const agendamentos: Agendamento[] = [
+            {
+                id: 'ag-virada-reversa',
+                data_hora: '2027-07-13T02:30:00Z', // 23:30 SP de 2027-07-12
+                data_hora_fim: '2027-07-13T03:30:00Z', // 00:30 SP de 2027-07-13
+                status: 'confirmado',
+            },
+        ]
+        const slots = await obterSlotsDisponiveis({
+            tenantId: 't',
+            dateStr: DATA,
+            duracaoServicoMinutos: 30,
+            supabase: fakeSupabase({
+                horarios: [{ hora_inicio: '00:00', hora_fim: '02:00' }],
+                servicos: [{ duracao_minutos: 30 }],
+                agendamentos,
+            }),
+            timezone: SP,
+        })
+        const horas = slots.map((s) => s.time)
+
+        expect(horas).not.toContain('00:00')
+        expect(horas).toContain('00:30')
+    })
+
+    it('IN-01: agendamento cancelado não ocupa horário na engine', async () => {
+        const slots = await obterSlotsDisponiveis({
+            tenantId: 't',
+            dateStr: DATA,
+            duracaoServicoMinutos: 30,
+            supabase: fakeSupabase({
+                horarios: HORARIO_COMERCIAL,
+                servicos: [{ duracao_minutos: 30 }],
+                agendamentos: [
+                    {
+                        id: 'ag-cancelado',
+                        data_hora: '2027-07-13T12:00:00Z', // 09:00 SP
+                        data_hora_fim: '2027-07-13T12:30:00Z',
+                        status: 'cancelado',
+                    },
+                ],
+            }),
+            timezone: SP,
+        })
+
+        expect(slots.map((s) => s.time)).toContain('09:00')
     })
 })
 
