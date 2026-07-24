@@ -1,0 +1,38 @@
+# .dockerignore — exclui arquivos do CONTEXTO DE BUILD do Railway (Railpack).
+#
+# Por que existe: desde que as skills de IA (.claude/skills, .agents/skills)
+# entraram no repo (commit 5df0671, 21/07), todo deploy no Railway falha no build
+# com "cannot replace to directory .../app/.claude/skills/clerk-astro-patterns
+# with file". O Railpack varre TODO package.json do repo (inclusive os templates
+# aninhados das skills do Clerk) e o BuildKit colide nos caminhos duplicados entre
+# .claude/skills e .agents/skills. Nada disso é necessário para buildar ou rodar
+# o app Next.js — então tiramos do contexto. Não remove do git; só não vai ao builder.
+# Railpack respeita .dockerignore padrão (https://railpack.com/config/excluding-files).
+
+# --- Causa direta do build quebrado: skills de IA e tooling de agente ---
+.claude/
+.agents/
+.superpowers/
+skills-lock.json
+
+# --- Notas, planejamento e assets que não são código do app ---
+.obsidian/
+.planning/
+docs/
+artes-aprovadas-design/
+
+# --- Tooling e metadados de dev (não afetam build/runtime do app) ---
+.mcp.json
+.ignore
+.github/
+.vscode/
+
+# --- Artefatos e dependências (o builder reinstala/reconstrói) ---
+node_modules/
+.next/
+tsconfig.tsbuildinfo
+
+# --- Segredos locais: jamais no contexto de build (o Railway injeta via env do serviço) ---
+.env
+.env.*
+!.env.example
