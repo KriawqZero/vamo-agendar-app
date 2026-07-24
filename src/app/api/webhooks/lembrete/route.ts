@@ -9,21 +9,19 @@ import { formatarDataHora, TIMEZONE_PADRAO } from '@/lib/timezone'
 import { PLANOS } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 import { capturarEventoTenant } from '@/lib/analytics/server'
-import { reportarExcecaoAguardando } from '@/lib/observabilidade/reportar'
+import { reportarExcecaoAguardando, reportarFalhaSilenciosaAguardando } from '@/lib/observabilidade/reportar'
 import { verificarAssinaturaQstash } from '@/lib/qstash-assinatura'
+import { logOperacional } from '@/lib/observabilidade/log'
+import { hashTenantId, hashAgendamentoId } from '@/lib/observabilidade/hash'
 
 export async function POST(req: NextRequest) {
     try {
+        logOperacional.info('qstash.webhook.recebido', { fluxo: 'webhook_lembrete' })
+
         // 1. Autenticar pela assinatura criptográfica do QStash.
         const assinatura = req.headers.get('upstash-signature')
-        // O corpo só pode ser lido UMA vez, e a verificação exige o texto cru:
-        // qualquer reserialização muda os bytes e invalida a assinatura.
         const corpoCru = await req.text()
 
-        // `url: req.url` (e não uma constante montada de APP_URL): a claim `sub`
-        // do JWT carrega a URL de publicação COM a query string, e os lembretes
-        // já em voo foram publicados com `?secret=`. URL montada de constante
-        // daria mismatch e mataria todos eles em silêncio.
         const autenticado = await verificarAssinaturaQstash({
             assinatura,
             corpoCru,
@@ -32,21 +30,29 @@ export async function POST(req: NextRequest) {
 
         if (!autenticado) {
             console.warn('Tentativa de acesso não autorizada ao webhook de lembrete.')
+            logOperacional.warn('qstash.webhook.assinatura_invalida', { fluxo: 'webhook_lembrete' })
             return NextResponse.json({ error: 'Não autorizado.' }, { status: 401 })
         }
 
-        // 2. Extrair payload enviado pelo QStash — só DEPOIS de autenticado:
-        // corpo não verificado nunca é parseado.
+        // 2. Extrair payload enviado pelo QStash — só DEPOIS de autenticado.
         const { agendamentoId, tenantId } = JSON.parse(corpoCru)
 
         if (!agendamentoId || !tenantId) {
+            logOperacional.warn('qstash.webhook.payload_incompleto', { fluxo: 'webhook_lembrete' })
             return NextResponse.json({ error: 'Payload incompleto.' }, { status: 400 })
         }
 
-        // 3. Cliente PRIVILEGIADO (secret key): este webhook é um job interno sem
-        // sessão — como anon, o RLS bloquearia whatsapp_configs (instance_token)
-        // e clientes (telefone). A requisição já foi autenticada pela assinatura
-        // do QStash acima.
+        const tenantHash = hashTenantId(tenantId)
+        const agendamentoHash = hashAgendamentoId(agendamentoId)
+        const contextoMeta = {
+            fluxo: 'webhook_lembrete',
+            tenantHash,
+            agendamentoHash,
+        }
+
+        logOperacional.info('qstash.webhook.payload_validado', contextoMeta)
+
+        // 3. Cliente PRIVILEGIADO (secret key)
         const supabase = createAdminClient()
 
         // 4. Buscar informações do agendamento, do cliente e do serviço
@@ -72,6 +78,7 @@ export async function POST(req: NextRequest) {
 
         if (agError || !agendamento) {
             console.warn(`Agendamento ${agendamentoId} não encontrado para envio de lembrete.`)
+            logOperacional.warn('qstash.webhook.agendamento_nao_encontrado', contextoMeta)
             return NextResponse.json({ error: 'Agendamento não encontrado.' }, { status: 404 })
         }
 
@@ -80,6 +87,7 @@ export async function POST(req: NextRequest) {
             console.log(
                 `Lembrete ignorado. Agendamento ${agendamentoId} está com status cancelado.`,
             )
+            logOperacional.info('qstash.webhook.agendamento_cancelado', contextoMeta)
             await registrarDisparo(supabase, {
                 tenantId,
                 agendamentoId,
@@ -93,44 +101,23 @@ export async function POST(req: NextRequest) {
             })
         }
 
-        // Tenant rebaixado após agendar: lembrete não é mais um recurso do plano dele
+        // Checagem de plano
         const { plano, degradadoPorErro } = await obterPlanoVigentePublico(supabase, tenantId)
 
-        // ⚠️ Os dois casos abaixo pedem tratamentos OPOSTOS, e confundi-los era o
-        // defeito: "o plano não inclui WhatsApp" é resposta DEFINITIVA — insistir
-        // é desperdício, e o 200 encerra a entrega corretamente. "Não consegui
-        // LER o plano" é TRANSITÓRIO — desistir com 200 apaga para sempre o
-        // lembrete de um cliente pagante, por causa de um soluço de trinta
-        // segundos. Até esta rodada os dois caíam no MESMO ramo (o de baixo) e
-        // eram registrados com o motivo do caso definitivo, com 200.
-        //
-        // O 500 é seguro exatamente aqui, e por uma razão específica: NENHUMA
-        // mensagem foi enviada ainda neste ponto do fluxo, então o retry do
-        // QStash não pode duplicar lembrete. O risco de duplicidade só existe
-        // depois de uma tentativa de envio (é o WR-06, deferido).
         if (degradadoPorErro) {
             console.error(
                 `Plano indeterminado para o tenant ${tenantId}: leitura de assinaturas falhou. Devolvendo 500 para retry do QStash.`,
             )
+            logOperacional.error('qstash.webhook.plano_indeterminado', contextoMeta)
             await registrarDisparo(supabase, {
                 tenantId,
                 agendamentoId,
                 tipo: 'lembrete',
-                // `falha`, não `ignorado`: `ignorado` é o vocabulário do caso
-                // DEFINITIVO (cancelado, plano sem recurso, WhatsApp
-                // desconectado). Aqui nada foi decidido — só não foi possível
-                // decidir, e a tentativa vai se repetir.
                 status: 'falha',
                 motivo: 'plano_indeterminado',
             })
-            // AGUARDADO: a resposta vai embora na linha seguinte. O flush drena
-            // a fila inteira, então este `await` também garante a saída do
-            // evento fire-and-forget que `obterPlanoVigentePublico` já enfileirou
-            // (`assinaturas:leitura_publica_falhou`) — os dois contam histórias
-            // diferentes: um diz que a leitura falhou, o outro diz que um
-            // lembrete foi adiado por causa disso.
             await reportarExcecaoAguardando(new Error('lembrete:plano_indeterminado'), {
-                fluxo: 'webhook_lembrete',
+                ...contextoMeta,
                 etapa: 'gating_plano',
             })
             return NextResponse.json({ error: 'Plano indeterminado.' }, { status: 500 })
@@ -140,6 +127,7 @@ export async function POST(req: NextRequest) {
             console.log(
                 `Lembrete ignorado. Tenant ${tenantId} não possui WhatsApp no plano vigente.`,
             )
+            logOperacional.info('qstash.webhook.plano_sem_whatsapp', contextoMeta)
             await registrarDisparo(supabase, {
                 tenantId,
                 agendamentoId,
@@ -153,13 +141,13 @@ export async function POST(req: NextRequest) {
             })
         }
 
-        // Coagir relações retornadas como possivelmente arrays pelo Supabase Client
         const clienteObj = Array.isArray(agendamento.clientes)
             ? agendamento.clientes[0]
             : agendamento.clientes
 
         if (!clienteObj || !clienteObj.telefone) {
             console.warn(`Lembrete ignorado. Cliente associado sem dados de contato.`)
+            logOperacional.warn('qstash.webhook.cliente_sem_contato', contextoMeta)
             return NextResponse.json(
                 { error: 'Telefone do cliente não encontrado.' },
                 { status: 400 },
@@ -181,6 +169,8 @@ export async function POST(req: NextRequest) {
 
         if (!config || config.status !== 'conectado' || !config.instance_token) {
             console.log(`WhatsApp desconectado ou não configurado para o tenant ${tenantId}.`)
+            logOperacional.warn('whatsapp.lembrete.desconectado', contextoMeta)
+            await reportarFalhaSilenciosaAguardando('whatsapp:desconectado_ao_lembrar', contextoMeta)
             await registrarDisparo(supabase, {
                 tenantId,
                 agendamentoId,
@@ -213,11 +203,14 @@ export async function POST(req: NextRequest) {
             config.instance_token,
             clienteObj.telefone,
             textoLembrete,
+            contextoMeta,
         )
 
         if (!enviado.ok) {
-            // Mantém o HTTP 500 para que o QStash re-tente. Linhas duplicadas de
-            // log entre tentativas são aceitáveis (log append-only de auditoria).
+            logOperacional.error('whatsapp.lembrete.falha', {
+                ...contextoMeta,
+                motivo: enviado.motivo,
+            })
             await registrarDisparo(supabase, {
                 tenantId,
                 agendamentoId,
@@ -225,36 +218,30 @@ export async function POST(req: NextRequest) {
                 status: 'falha',
                 motivo: enviado.motivo,
             })
-            // Analytics: espelho agregado do disparo (fonte da verdade é o Postgres).
             capturarEventoTenant('whatsapp_reminder_failed', tenantId, {
                 motivo: enviado.motivo ?? null,
+            })
+            await reportarFalhaSilenciosaAguardando('whatsapp:evolution_http_error', {
+                ...contextoMeta,
+                motivo: enviado.motivo,
             })
             return NextResponse.json({ error: 'Falha no disparo do WhatsApp.' }, { status: 500 })
         }
 
+        logOperacional.info('whatsapp.lembrete.enviado', contextoMeta)
         await registrarDisparo(supabase, {
             tenantId,
             agendamentoId,
             tipo: 'lembrete',
             status: 'executado',
         })
-        // Analytics: espelho agregado do disparo (fonte da verdade é o Postgres).
         capturarEventoTenant('whatsapp_reminder_sent', tenantId)
 
         return NextResponse.json({ success: true, message: 'Lembrete enviado com sucesso.' })
     } catch (err) {
         console.error('Erro ao processar webhook de lembrete:', err)
-        // Devolve 500 ao QStash e o erro morre no console do Railway. Sem este
-        // reporte, um lembrete que para de sair não tem detector — o cliente
-        // final não reclama de mensagem que não chegou.
-        //
-        // AGUARDADO de propósito: a resposta vai embora na linha seguinte, e
-        // reporte fire-and-forget se perde em runtime que congela após a
-        // resposta. `flush` tem teto de 2s.
+        logOperacional.error('qstash.webhook.excecao', { fluxo: 'webhook_lembrete' })
         await reportarExcecaoAguardando(err, { fluxo: 'webhook_lembrete' })
-        // A mensagem interna (inclusive de erro do Supabase) NÃO volta ao
-        // chamador: é a regra do projeto, e agora que o Sentry recebe o erro
-        // não há mais nada que ela resolva aqui.
         return NextResponse.json({ error: 'Erro interno.' }, { status: 500 })
     }
 }

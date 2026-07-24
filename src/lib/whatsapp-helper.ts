@@ -1,6 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-import { reportarFalhaSilenciosa } from './observabilidade/reportar'
+import { reportarFalhaSilenciosaAguardando, reportarExcecaoAguardando } from './observabilidade/reportar'
+import { erroSinteticoSupabase } from './observabilidade/erro-supabase'
+import { logOperacional } from './observabilidade/log'
+import { hashTenantId, hashAgendamentoId } from './observabilidade/hash'
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080'
 const QSTASH_TOKEN = process.env.QSTASH_TOKEN
@@ -66,10 +69,17 @@ export async function enviarMensagemWhatsApp(
     instanceToken: string,
     telefone: string,
     texto: string,
+    meta?: { tenantHash?: string; agendamentoHash?: string; fluxo?: string },
 ): Promise<ResultadoEnvio> {
     const telefoneLimpo = telefone.replace(/\D/g, '')
     // Garante que o telefone tenha o código do país (55 para Brasil)
     const destinatario = telefoneLimpo.startsWith('55') ? telefoneLimpo : `55${telefoneLimpo}`
+    const contextoMeta = {
+        fluxo: meta?.fluxo || 'whatsapp_helper',
+        provider: 'evolution',
+        tenantHash: meta?.tenantHash,
+        agendamentoHash: meta?.agendamentoHash,
+    }
 
     try {
         const response = await fetch(`${EVOLUTION_API_URL}/message/sendText/${instanceName}`, {
@@ -85,27 +95,42 @@ export async function enviarMensagemWhatsApp(
         })
 
         if (!response.ok) {
-            // O corpo da resposta NÃO é lido para log: `docs/09` registra, como fato
-            // observado, que o payload de erro da Evolution ecoa o telefone e o texto
-            // já com `{{cliente}}` substituído — PII do cliente final, que o
-            // invariante do projeto proíbe em log. O `reportarFalhaSilenciosa` logo
-            // abaixo já mandava só `statusCode`: o `console.error` contradizia o
-            // próprio vizinho, e a trava anti-PII do Sentry não alcança o log do
-            // Railway.
-            console.error(`Erro ao disparar WhatsApp via Evolution: http_${response.status}`)
-            // Falha de transporte vira linha de log e some — só `disparos_whatsapp`
-            // guarda, e ninguém consulta antes do painel da Phase 11. Contexto
-            // carrega SÓ o código HTTP: nunca telefone, nome ou texto da mensagem.
-            reportarFalhaSilenciosa('whatsapp:falha_transporte', {
-                statusCode: response.status,
+            const statusCode = response.status
+            const motivo = `http_${statusCode}`
+            console.error(`Erro ao disparar WhatsApp via Evolution: http_${statusCode}`)
+            
+            logOperacional.error('whatsapp.confirmacao.falha_http', {
+                ...contextoMeta,
+                statusCode,
+                motivo,
             })
-            return { ok: false, motivo: `http_${response.status}` }
+
+            await reportarFalhaSilenciosaAguardando('whatsapp:evolution_http_error', {
+                ...contextoMeta,
+                statusCode,
+                motivo,
+            })
+            return { ok: false, motivo }
         }
+
+        logOperacional.info('whatsapp.confirmacao.enviada', {
+            ...contextoMeta,
+            resultado: 'sucesso',
+        })
 
         return { ok: true }
     } catch (err) {
         console.error('Falha de rede ao chamar Evolution API:', err)
-        reportarFalhaSilenciosa('whatsapp:erro_rede')
+        
+        logOperacional.error('whatsapp.confirmacao.falha_rede', {
+            ...contextoMeta,
+            motivo: 'erro_rede',
+        })
+
+        await reportarFalhaSilenciosaAguardando('whatsapp:evolution_network_error', {
+            ...contextoMeta,
+            motivo: 'erro_rede',
+        })
         return { ok: false, motivo: 'erro_rede' }
     }
 }
@@ -119,42 +144,49 @@ export async function agendarLembreteQStash(
     tenantId: string,
     targetTimestampMs: number,
 ): Promise<ResultadoAgendamento> {
+    const tenantHash = hashTenantId(tenantId)
+    const agendamentoHash = hashAgendamentoId(agendamentoId)
+    const contextoMeta = {
+        fluxo: 'qstash_helper',
+        provider: 'qstash',
+        tenantHash,
+        agendamentoHash,
+    }
+
+    logOperacional.info('qstash.lembrete.tentativa', contextoMeta)
+
     if (!QSTASH_TOKEN) {
         console.warn('QSTASH_TOKEN não configurado. Lembrete em background não será agendado.')
-        // "Lembrete com env faltando" é um dos modos de falha silenciosos
-        // nomeados no ROADMAP: devolve `motivo` e ninguém olha. Em produção o
-        // fail-fast de `src/lib/env.ts` impede chegar aqui — este reporte cobre
-        // o caso de a variável existir vazia ou de o guard ser afrouxado.
-        reportarFalhaSilenciosa('qstash:sem_token')
+        logOperacional.error('qstash.lembrete.sem_token', {
+            ...contextoMeta,
+            motivo: 'qstash_sem_token',
+        })
+        await reportarFalhaSilenciosaAguardando('qstash:sem_token', {
+            ...contextoMeta,
+            motivo: 'qstash_sem_token',
+        })
         return { ok: false, motivo: 'qstash_sem_token' }
     }
 
-    // Sem chave de assinatura não se publica. A chave NÃO entra mais na URL (ver
-    // comentário da publicação abaixo): esta guarda existe só para recusar
-    // publicar um lembrete que o webhook depois não conseguiria autenticar —
-    // publicação assim é falha silenciosa garantida, descoberta só pelo cliente
-    // final que não recebeu a mensagem.
     const chaveAssinatura = process.env.QSTASH_CURRENT_SIGNING_KEY
     if (!chaveAssinatura?.trim()) {
         console.warn(
             'QSTASH_CURRENT_SIGNING_KEY não configurada. Lembrete em background não será agendado.',
         )
-        reportarFalhaSilenciosa('qstash:sem_chave_assinatura')
+        logOperacional.error('qstash.lembrete.sem_chave_assinatura', {
+            ...contextoMeta,
+            motivo: 'qstash_sem_chave_assinatura',
+        })
+        await reportarFalhaSilenciosaAguardando('qstash:sem_chave_assinatura', {
+            ...contextoMeta,
+            motivo: 'qstash_sem_chave_assinatura',
+        })
         return { ok: false, motivo: 'qstash_sem_chave_assinatura' }
     }
 
     const scheduledSeconds = Math.floor(targetTimestampMs / 1000)
 
     try {
-        // A URL publicada NÃO carrega segredo nenhum: quem autentica o webhook é o
-        // header assinado (`Upstash-Signature`), verificado por `Receiver` em
-        // `qstash-assinatura.ts`. A chave HMAC é simétrica — publicá-la em query
-        // string a entregava ao log de acesso de cada hop e ao console da Upstash.
-        //
-        // Lembretes já enfileirados continuam válidos: `route.ts` verifica contra
-        // `req.url` — a URL que a requisição de fato traz —, então publicação antiga
-        // (com parâmetro) e nova (sem) convivem, cada uma casando com a própria
-        // claim `sub`. O webhook não lê mais esse parâmetro desde o 01-03.
         const webhookUrl = `${APP_URL}/api/webhooks/lembrete`
         const publishUrl = `${QSTASH_URL}/v2/publish/${webhookUrl}`
 
@@ -172,26 +204,56 @@ export async function agendarLembreteQStash(
         })
 
         if (!response.ok) {
-            // O corpo da resposta NÃO é lido para log: o erro do QStash costuma
-            // ecoar a URL de destino, e log de aplicação não é lugar de URL de
-            // publicação.
-            console.error(`Falha ao registrar agendamento no QStash: http_${response.status}`)
-            return { ok: false, motivo: `http_${response.status}` }
+            const statusCode = response.status
+            const motivo = `http_${statusCode}`
+            console.error(`Falha ao registrar agendamento no QStash: http_${statusCode}`)
+            
+            logOperacional.error('qstash.lembrete.falha_http', {
+                ...contextoMeta,
+                statusCode,
+                motivo,
+            })
+
+            await reportarFalhaSilenciosaAguardando('qstash:publish_http_error', {
+                ...contextoMeta,
+                statusCode,
+                motivo,
+            })
+            return { ok: false, motivo }
         }
 
         const dataRes = await response.json().catch(() => null)
         const messageId = dataRes?.messageId
 
         if (!messageId) {
-            // Mesma disciplina do bloco acima: registra-se a ausência do campo, não
-            // o objeto de resposta — que também pode ecoar a URL de destino.
             console.error('QStash não retornou messageId no publish.')
+            logOperacional.error('qstash.lembrete.sem_message_id', {
+                ...contextoMeta,
+                motivo: 'sem_message_id',
+            })
+            await reportarFalhaSilenciosaAguardando('qstash:publish_sem_message_id', {
+                ...contextoMeta,
+                motivo: 'sem_message_id',
+            })
             return { ok: false, motivo: 'sem_message_id' }
         }
+
+        logOperacional.info('qstash.lembrete.agendado', {
+            ...contextoMeta,
+            resultado: 'agendado',
+        })
 
         return { ok: true, messageId }
     } catch (err) {
         console.error('Erro de conexão ao agendar job no QStash:', err)
+        logOperacional.error('qstash.lembrete.falha_rede', {
+            ...contextoMeta,
+            motivo: 'erro_rede',
+        })
+        await reportarFalhaSilenciosaAguardando('qstash:publish_network_error', {
+            ...contextoMeta,
+            motivo: 'erro_rede',
+        })
         return { ok: false, motivo: 'erro_rede' }
     }
 }
@@ -201,8 +263,21 @@ export async function agendarLembreteQStash(
  * 404 é tratado como sucesso brando (o job já não existe / já executou).
  */
 export async function cancelarLembreteQStash(messageId: string): Promise<ResultadoEnvio> {
+    const contextoMeta = {
+        fluxo: 'qstash_cancelamento',
+        provider: 'qstash',
+    }
+
     if (!QSTASH_TOKEN) {
         console.warn('QSTASH_TOKEN não configurado. Não há como cancelar lembrete.')
+        logOperacional.warn('qstash.cancelamento.sem_token', {
+            ...contextoMeta,
+            motivo: 'qstash_sem_token',
+        })
+        await reportarFalhaSilenciosaAguardando('qstash:sem_token', {
+            ...contextoMeta,
+            motivo: 'qstash_sem_token',
+        })
         return { ok: false, motivo: 'qstash_sem_token' }
     }
 
@@ -216,15 +291,37 @@ export async function cancelarLembreteQStash(messageId: string): Promise<Resulta
 
         // 404 = mensagem inexistente (já executada/cancelada): sucesso brando.
         if (response.ok || response.status === 404) {
+            logOperacional.info('qstash.cancelamento.sucesso', {
+                ...contextoMeta,
+                statusCode: response.status,
+            })
             return { ok: true }
         }
 
-        // O corpo da resposta NÃO é lido para log: o erro do QStash costuma ecoar a
-        // URL de destino da mensagem referenciada.
-        console.error(`Falha ao cancelar lembrete no QStash: http_${response.status}`)
-        return { ok: false, motivo: `http_${response.status}` }
+        const statusCode = response.status
+        const motivo = `http_${statusCode}`
+        console.error(`Falha ao cancelar lembrete no QStash: http_${statusCode}`)
+        logOperacional.error('qstash.cancelamento.falha_http', {
+            ...contextoMeta,
+            statusCode,
+            motivo,
+        })
+        await reportarFalhaSilenciosaAguardando('qstash:cancel_http_error', {
+            ...contextoMeta,
+            statusCode,
+            motivo,
+        })
+        return { ok: false, motivo }
     } catch (err) {
         console.error('Erro de conexão ao cancelar job no QStash:', err)
+        logOperacional.error('qstash.cancelamento.falha_rede', {
+            ...contextoMeta,
+            motivo: 'erro_rede',
+        })
+        await reportarFalhaSilenciosaAguardando('qstash:cancel_network_error', {
+            ...contextoMeta,
+            motivo: 'erro_rede',
+        })
         return { ok: false, motivo: 'erro_rede' }
     }
 }
@@ -240,12 +337,23 @@ interface RegistroDisparo {
 
 /**
  * Registra um disparo na tabela de auditoria `disparos_whatsapp`.
- * O log jamais quebra o chamador: qualquer erro é apenas logado no console.
+ * O log jamais quebra o chamador: qualquer erro é registrado e reportado ao Sentry.
  */
 export async function registrarDisparo(
     client: SupabaseClient,
     { tenantId, agendamentoId, tipo, status, motivo, qstashMessageId }: RegistroDisparo,
 ): Promise<void> {
+    const tenantHash = hashTenantId(tenantId)
+    const agendamentoHash = agendamentoId ? hashAgendamentoId(agendamentoId) : undefined
+    const contextoMeta = {
+        fluxo: 'auditoria_whatsapp',
+        operacao: 'registrar_disparo',
+        tenantHash,
+        agendamentoHash,
+        motivo: motivo ?? undefined,
+        resultado: status,
+    }
+
     try {
         const { error } = await client.from('disparos_whatsapp').insert({
             tenant_id: tenantId,
@@ -258,8 +366,30 @@ export async function registrarDisparo(
 
         if (error) {
             console.error('Erro ao registrar disparo de WhatsApp (ignorado):', error.message)
+            logOperacional.error('auditoria_whatsapp.falha_insert', {
+                ...contextoMeta,
+                motivo: 'insert_failed',
+            })
+            await reportarExcecaoAguardando(erroSinteticoSupabase(error, 'auditoria_whatsapp_insert_failed'), {
+                fluxo: 'auditoria_whatsapp',
+                etapa: 'insert_disparo',
+                tenantHash,
+                agendamentoHash,
+            })
+        } else {
+            logOperacional.info('auditoria_whatsapp.persistida', contextoMeta)
         }
     } catch (err) {
         console.error('Falha inesperada ao registrar disparo de WhatsApp (ignorado):', err)
+        logOperacional.error('auditoria_whatsapp.falha_inesperada', {
+            ...contextoMeta,
+            motivo: 'excecao_inesperada',
+        })
+        await reportarExcecaoAguardando(err, {
+            fluxo: 'auditoria_whatsapp',
+            etapa: 'insert_disparo_catch',
+            tenantHash,
+            agendamentoHash,
+        })
     }
 }
