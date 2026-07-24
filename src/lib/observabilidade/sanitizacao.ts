@@ -99,6 +99,7 @@ export interface FormatoDeLog {
  * ALLOWLIST das chaves de `attributes` de log operacional.
  */
 const ATRIBUTOS_DE_LOG_PERMITIDOS = new Set([
+    'codigo',
     'fluxo',
     'etapa',
     'operacao',

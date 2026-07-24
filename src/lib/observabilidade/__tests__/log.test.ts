@@ -13,6 +13,7 @@ describe('Sentry Logs & logOperacional Sanitização', () => {
 
     it('manter em attributes apenas chaves da allowlist', () => {
         const entrada = {
+            codigo: 'whatsapp.confirmacao.falha_http',
             fluxo: 'booking',
             etapa: 'confirmacao',
             motivo: 'http_500',
@@ -29,6 +30,7 @@ describe('Sentry Logs & logOperacional Sanitização', () => {
         const limpo = sanitizarAtributosLog(entrada)
 
         expect(limpo).toEqual({
+            codigo: 'whatsapp.confirmacao.falha_http',
             fluxo: 'booking',
             etapa: 'confirmacao',
             motivo: 'http_500',
