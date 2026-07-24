@@ -93,14 +93,18 @@ async function testarSentry() {
     let Sentry = null
     for (const pacote of ['@sentry/nextjs', '@sentry/node']) {
         try {
-            Sentry = await import(pacote)
+            const mod = await import(pacote)
+            // Interop CJS/ESM: importado por Node cru, `@sentry/nextjs` expõe
+            // `init` no namespace mas mantém `captureException`/`flush` só no
+            // `default`. Normaliza para o objeto que de fato tem a captura.
+            Sentry = mod?.captureException ? mod : (mod?.default ?? mod)
             break
         } catch {
             // tenta o próximo
         }
     }
 
-    if (!Sentry?.init) {
+    if (!Sentry?.init || !Sentry?.captureException) {
         console.log('sentry: indisponivel (SDK não carregou fora do runtime do Next)')
         console.log('        verifique pelo produto: provoque um erro em /dashboard e olhe Issues')
         return
