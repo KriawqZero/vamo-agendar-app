@@ -52,11 +52,13 @@ proposta**, nunca como commit. É o diff que mostra o que ele sabe e a gente nã
 | `dataCollection: {}` com `userInfo: false` comentado | Definir o objeto **inverte a base para os defaults permissivos** do SDK (`resolveDataCollectionOptions.js:18`): todo campo omitido passa a coletar |
 | `tunnelRoute` | Colide com o matcher amplo de `src/proxy.ts` — o comentário que o próprio wizard gera avisa disso |
 | bloco `webpack` | No-op sob Turbopack, com aviso de deprecação |
-| `enableLogs: true`, `tracesSampleRate: 1` | Não foram decisões nossas; 100% de tracing queima o tier gratuito |
+| `tunnelRoute` | Colide com o matcher amplo de `src/proxy.ts` — o comentário que o próprio wizard gera avisa disso |
+| `webpack` | No-op sob Turbopack, com aviso de deprecação |
+| `tracesSampleRate: 1` | 100% de tracing queima o tier gratuito — mantido em 0 |
 
-Dele foi adotado o upload de source map, com org e projeto reais. O resto foi descartado.
-
-### O que o wizard do PostHog propôs (v2.46.0, 2026-07-21, mesclado em `5df0671` + este reendurecimento)
+> [!NOTE]
+> **Sentry Logs (SDK @sentry/nextjs 10.67.0)**:
+> O Sentry Logs foi ativado com `enableLogs: true` e `beforeSendLog: sanitizarLogSentry` em `src/lib/observabilidade/opcoes-sentry.ts`. O logger estruturado `logOperacional` (`src/lib/observabilidade/log.ts`) emite logs com códigos estáticos e allowlist de atributos (`fluxo`, `etapa`, `operacao`, `resultado`, `provider`, `motivo`, `statusCode`, `tenantHash`, `agendamentoHash`, `runtime`, `tentativa`, `retry`, `duracaoMs`). Nenhuma PII é coletada.
 
 Rodado duas vezes no mesmo dia. Na primeira, revertido por inteiro — **erro nosso**: a
 arquitetura dele era melhor que a nossa e jogamos fora junto com os defaults ruins. Na

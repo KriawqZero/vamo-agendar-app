@@ -3,15 +3,7 @@
 Lista viva de tarefas identificadas. Revisar antes de cada nova etapa de
 desenvolvimento — e obrigatoriamente antes de implementar o checkout Asaas.
 
-Última atualização: 2026-07-17 (P0.12-desktop — responsividade real + split de 2
-painéis no desktop do booking público — resolvido, ver "Itens resolvidos". Antes
-dele: P0.12(b) e (c) — customização do tenant e redesign mobile-first do booking
-público — resolvidos; fecham também o P1.11. Decisões do owner registradas: **toda
-customização visual é exclusiva do Pro** e o **Plus caminha para descontinuação**
-(não ganha recursos novos; tratado em conversa futura); imagens por upload próprio no
-Supabase Storage (bucket `imagens-perfis`), nunca por URL. P1.8 parcialmente
-alinhado: e-mail saiu da UI pública, WhatsApp obrigatório por ora, regra-alvo "pelo
-menos um dos dois" registrada. Priorização de 2026-07-12 mantida).
+Última atualização: 2026-07-24 (Quick Task `260724-observabilidade-mensageria` — Observabilidade Real da Mensageria com Sentry Logs, Sentry Issues aguardadas, PostHog e auditoria append-only em PostgreSQL/`disparos_whatsapp` — resolvido). Antes dele: P0.12-desktop.
 
 ---
 

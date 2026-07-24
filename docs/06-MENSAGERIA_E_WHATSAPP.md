@@ -179,12 +179,12 @@ Regras: `ultima_verificacao_em` marca a última resposta real do gateway; `updat
 Log **append-only** de auditoria por tenant (ver `supabase/schemas/09_disparos_whatsapp.sql`): `tipo` (`confirmacao` | `lembrete` | `teste`), `status` (`enviado` | `agendado` | `executado` | `falha` | `ignorado` | `cancelado`), `motivo` (código curto: `whatsapp_desconectado`, `agendamento_cancelado`, `plano_sem_whatsapp`, `erro_rede`, `http_<código>`...), `qstash_message_id` e `agendamento_id` (NULL para teste). **Nunca** armazena conteúdo de mensagem nem telefone. RLS: SELECT/INSERT apenas `authenticated` do próprio tenant; sem UPDATE/DELETE; sem `anon` — as escritas do fluxo público/webhook usam `createAdminClient()` no servidor.
 
 Semântica dos registros:
-- Booking público: `confirmacao/enviado|falha` + `lembrete/agendado` (com `qstash_message_id`) ou `lembrete/falha`. Se o tenant tem o recurso mas a conexão está inativa: `confirmacao/falha` motivo `whatsapp_desconectado`. Sem config ou plano sem WhatsApp: nada é logado.
-- Webhook de lembrete: `lembrete/executado`, `lembrete/falha` (mantendo HTTP 500 para retry do QStash — linhas duplicadas entre tentativas são esperadas) ou `lembrete/ignorado` (motivos acima).
+- Booking público: `confirmacao/enviado|falha` + `lembrete/agendado` (com `qstash_message_id`), `lembrete/falha` ou `lembrete/ignorado` (`motivo: lembrete_fora_da_janela` quando `targetTime <= now`). Se o tenant Pro tem o recurso mas a conexão está inativa: `confirmacao/falha` motivo `whatsapp_desconectado`. Sem config em tenant Pro: `confirmacao/falha` motivo `config_ausente`. Plano sem WhatsApp (Gratuito): registrado como condição normal sem Sentry Issue.
+- Webhook de lembrete: `lembrete/executado`, `lembrete/falha` (mantendo HTTP 500 para retry do QStash) ou `lembrete/ignorado` (motivos acima).
 - Cancelamento de agendamento: a action busca o último `lembrete/agendado`, chama `DELETE {QSTASH_URL}/v2/messages/{messageId}` (404 = sucesso brando) e registra `lembrete/cancelado`. O webhook re-checa o status como segunda defesa.
 - Mensagem de teste: `teste/enviado|falha` (INSERT via cliente autenticado — é para isso que existe a política de INSERT).
 
-Invariante: **nenhuma falha de mensageria (Evolution, QStash ou o próprio INSERT do log) quebra a criação/cancelamento de agendamento** — `registrarDisparo()` engole o próprio erro e os fluxos ficam em try/catch.
+Invariante: **nenhuma falha de mensageria quebra a criação/cancelamento de agendamento para o visitante**, mas **toda falha técnica ou de transporte gera Sentry Log estruturado, Sentry Issue aguardada/flushed e evento de falha no PostHog**. `registrarDisparo()` emite `auditoria_whatsapp:insert_failed` e `logOperacional.error` se a escrita no banco falhar, sem recursão.
 
 O painel "Últimos disparos" em `/dashboard/whatsapp` (`listarDisparosWhatsApp()`) traduz os motivos para frases amigáveis — é a resposta do suporte para "por que a mensagem não saiu?". Ele substituiu a antiga página `/debug/qstash` (removida; lembrar de apagar a env `DEBUG_QSTASH` dos ambientes).
 
