@@ -21,7 +21,9 @@ findings:
   warning: 2
   info: 3
   total: 5
-status: issues_found
+status: resolved
+resolved: 2026-07-24T13:09:00Z
+resolution_commit: e9f3b8f
 ---
 
 # Phase 2: Code Review Report
@@ -29,7 +31,7 @@ status: issues_found
 **Reviewed:** 2026-07-23T17:43:20Z
 **Depth:** standard
 **Files Reviewed:** 12
-**Status:** issues_found
+**Status:** resolved
 
 ## Summary
 
@@ -147,6 +149,35 @@ that sends a semantically-equal but differently-formatted instant (`...:00Z` vs
 free. Acceptable as-is given the flow; noted so a future caller does not reuse the action
 with a hand-built timestamp.
 **Fix:** If a non-UI caller is ever added, compare by epoch (`new Date(sl.datetime).getTime() === dataObj.getTime()`) rather than string identity.
+
+## Resolution — 2026-07-24
+
+Commit `e9f3b8f` resolveu os dois warnings e os dois itens informativos
+acionáveis:
+
+- **WR-01:** a consulta agora busca interseção de períodos e normaliza os dois
+  extremos contra o dia consultado. Um teste cobre
+  `[ontem 23:30, hoje 00:30)`.
+- **WR-02:** o conflito walk-in escolhe deterministicamente o primeiro
+  agendamento com `order + limit(1) + maybeSingle`.
+- **IN-01:** o dublê honra `status <> cancelado` e um teste garante que
+  cancelamento libera o slot na engine.
+- **IN-02:** a notificação recebe o mesmo nome aparado e telefone saneado que
+  foram persistidos.
+- **IN-03:** aceito como contrato atual. Os callers existentes ecoam o ISO
+  produzido pela engine; normalização por epoch fica para um futuro caller que
+  construa timestamps por conta própria.
+
+Gates após o patch:
+
+- `pnpm test`: 18 arquivos, 261 testes verdes;
+- `pnpm test:integracao`: 15 testes verdes contra o Supabase de dev;
+- `pnpm lint`: verde;
+- `pnpm exec tsc --noEmit --pretty false`: verde;
+- `pnpm build`: verde.
+
+Os dois UATs visuais do owner continuam pendentes e não foram marcados por este
+fechamento de review.
 
 ---
 
