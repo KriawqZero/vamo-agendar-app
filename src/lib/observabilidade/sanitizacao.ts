@@ -89,8 +89,60 @@ export interface FormatoDeBreadcrumb {
     data?: { url?: unknown }
 }
 
+export interface FormatoDeLog {
+    level?: string
+    message?: string
+    attributes?: Record<string, unknown>
+}
+
+/**
+ * ALLOWLIST das chaves de `attributes` de log operacional.
+ */
+const ATRIBUTOS_DE_LOG_PERMITIDOS = new Set([
+    'fluxo',
+    'etapa',
+    'operacao',
+    'resultado',
+    'provider',
+    'motivo',
+    'statusCode',
+    'tenantHash',
+    'agendamentoHash',
+    'runtime',
+    'tentativa',
+    'retry',
+    'duracaoMs',
+])
+
+/**
+ * `beforeSendLog`: reduz `attributes` à sua allowlist e nega qualquer PII.
+ */
+export function sanitizarLogSentry<T extends FormatoDeLog>(log: T): T {
+    if (log && typeof log === 'object' && log.attributes && typeof log.attributes === 'object') {
+        const novosAtributos: Record<string, unknown> = {}
+        for (const [chave, valor] of Object.entries(log.attributes)) {
+            if (
+                ATRIBUTOS_DE_LOG_PERMITIDOS.has(chave) ||
+                chave.startsWith('sentry.') ||
+                chave.startsWith('server.')
+            ) {
+                if (
+                    typeof valor === 'string' ||
+                    typeof valor === 'number' ||
+                    typeof valor === 'boolean'
+                ) {
+                    novosAtributos[chave] = valor
+                }
+            }
+        }
+        log.attributes = novosAtributos
+    }
+    return log
+}
+
 /**
  * Categorias de breadcrumb que NUNCA saem deste processo.
+
  *
  * `console` é a mais perigosa do projeto inteiro, e não por hipótese: o
  * breadcrumb de console carrega `message` (texto formatado) E `data.arguments`

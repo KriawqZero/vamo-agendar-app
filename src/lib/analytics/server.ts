@@ -2,25 +2,8 @@ import { after } from 'next/server'
 import { PostHog } from 'posthog-node'
 import { hostPostHog, opcoesServidorPostHog } from './opcoes-posthog'
 import { hashTenantId } from './tenant'
-
-/**
- * Captura de eventos de funil no servidor (SOMENTE servidor).
- *
- * Usa `posthog-node` com envio imediato: um cliente POR EVENTO, seguido de
- * `await shutdown()`. Parece caro e é de propósito — route handler e Server
- * Action do Next são derrubados por invocação, e o SDK enfileira em memória
- * antes de mandar. Cliente compartilhado sem flush garantido perde o evento em
- * silêncio, que é o modo de falha mais caro possível numa ferramenta de
- * analytics: o número simplesmente fica menor e ninguém desconfia.
- *
- * Abordagem de não-bloqueio (documentada em docs/08-ANALYTICS_E_FUNIL.md): o
- * `after()` de 'next/server' é chamado DENTRO deste helper — os chamadores
- * (server actions, route handlers) apenas invocam a função. Fora de contexto
- * de request `after()` LANÇA, e é por isso que existe o fallback
- * fire-and-forget: o webhook do lembrete é exatamente esse caso.
- *
- * Nenhum caminho lança: analytics jamais quebra o produto.
- */
+import { logOperacional } from '../observabilidade/log'
+import { reportarFalhaSilenciosaAguardando } from '../observabilidade/reportar'
 
 type PropsEvento = Record<string, string | number | boolean | null>
 
@@ -58,6 +41,14 @@ async function enviarAoPostHog(
         }
     } catch (err) {
         console.error(`[analytics] falha ao enviar evento "${evento}" (ignorada):`, err)
+        logOperacional.error('analytics_posthog.falha_entrega', {
+            fluxo: 'analytics_posthog',
+            operacao: evento,
+        })
+        await reportarFalhaSilenciosaAguardando('analytics_posthog:delivery_failed', {
+            fluxo: 'analytics_posthog',
+            operacao: evento,
+        })
     }
 }
 

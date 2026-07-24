@@ -17,7 +17,7 @@
 
 import { dsnDoSentry as dsn } from './dsn'
 
-type ContextoObservabilidade = Record<string, string | number | boolean | null>
+export type ContextoObservabilidade = Record<string, string | number | boolean | null | undefined>
 
 /** Reporta uma exceção ao Sentry. No-op sem DSN; nunca lança. */
 export function reportarExcecao(erro: unknown, contexto?: ContextoObservabilidade): void {
@@ -71,3 +71,15 @@ export async function reportarExcecaoAguardando(
 export function reportarFalhaSilenciosa(rotulo: string, contexto?: ContextoObservabilidade): void {
     reportarExcecao(new Error(rotulo), contexto)
 }
+
+/**
+ * Variante AGUARDADA de reportarFalhaSilenciosa, para quem finaliza a requisição
+ * ou responde a um webhook imediatamente em seguida.
+ */
+export async function reportarFalhaSilenciosaAguardando(
+    rotulo: string,
+    contexto?: ContextoObservabilidade,
+): Promise<void> {
+    await reportarExcecaoAguardando(new Error(rotulo), contexto)
+}
+

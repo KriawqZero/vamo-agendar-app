@@ -9,7 +9,10 @@ import {
 import { PLANOS } from './planos'
 import { obterPlanoVigentePublico } from './assinaturas'
 import { capturarEventoTenant } from './analytics/server'
-import { reportarExcecao } from './observabilidade/reportar'
+import { reportarExcecaoAguardando, reportarFalhaSilenciosaAguardando } from './observabilidade/reportar'
+import { erroSinteticoSupabase } from './observabilidade/erro-supabase'
+import { logOperacional } from './observabilidade/log'
+import { hashTenantId, hashAgendamentoId } from './observabilidade/hash'
 
 interface NotificacoesAgendamentoParams {
     agendamentoId: string
@@ -24,12 +27,8 @@ interface NotificacoesAgendamentoParams {
  * Fase de notificações pós-agendamento: confirmação síncrona via WhatsApp e
  * lembrete futuro agendado no QStash, ambos registrados em `disparos_whatsapp`.
  *
- * NUNCA lança — qualquer falha é engolida e apenas logada. Mensageria jamais
- * pode quebrar a criação de um agendamento (invariante do produto).
- *
- * `client` precisa enxergar `whatsapp_configs` do tenant: no fluxo público
- * (visitante anon) é o cliente privilegiado; no fluxo B2B o cliente
- * autenticado do próprio tenant também serve (RLS permite).
+ * NUNCA lança — qualquer falha é capturada, logada no Sentry e auditada no banco.
+ * Mensageria jamais pode quebrar a criação de um agendamento (invariante do produto).
  */
 export async function dispararNotificacoesAgendamento(
     client: SupabaseClient,
@@ -42,40 +41,88 @@ export async function dispararNotificacoesAgendamento(
         timezone,
     }: NotificacoesAgendamentoParams,
 ): Promise<void> {
-    try {
-        // Sem telefone não há canal de WhatsApp — nada a disparar nem registrar.
-        if (!clienteTelefone) return
+    const tenantHash = hashTenantId(tenantId)
+    const agendamentoHash = hashAgendamentoId(agendamentoId)
+    const contextoMeta = {
+        fluxo: 'notificacoes_agendamento',
+        tenantHash,
+        agendamentoHash,
+    }
 
-        const { data: perfil } = await client
+    try {
+        logOperacional.info('mensageria.iniciada', contextoMeta)
+
+        // Sem telefone não há canal de WhatsApp — trata-se como invariante quebrado
+        if (!clienteTelefone || !clienteTelefone.trim()) {
+            logOperacional.error('whatsapp.telefone.ausente', contextoMeta)
+            await reportarFalhaSilenciosaAguardando('whatsapp:telefone_ausente', contextoMeta)
+            await registrarDisparo(client, {
+                tenantId,
+                agendamentoId,
+                tipo: 'confirmacao',
+                status: 'falha',
+                motivo: 'telefone_ausente',
+            })
+            capturarEventoTenant('whatsapp_confirmation_failed', tenantId, {
+                motivo: 'telefone_ausente',
+            })
+            return
+        }
+
+        // Leitura do perfil da empresa
+        const { data: perfil, error: perfilError } = await client
             .from('perfis_empresas')
             .select('nome_estabelecimento')
             .eq('tenant_id', tenantId)
             .maybeSingle()
 
+        if (perfilError) {
+            logOperacional.error('whatsapp.perfis.query_error', contextoMeta)
+            await reportarExcecaoAguardando(
+                erroSinteticoSupabase(perfilError, 'perfis_query_error'),
+                { ...contextoMeta, etapa: 'query_perfil' },
+            )
+        }
+
         const empresaNome = perfil?.nome_estabelecimento || 'Estabelecimento'
 
-        const { data: config } = await client
+        // Leitura das configurações de WhatsApp
+        const { data: config, error: configError } = await client
             .from('whatsapp_configs')
             .select('*')
             .eq('tenant_id', tenantId)
             .maybeSingle()
 
-        // Plano indeterminado (falha de leitura) cai no ramo conservador junto
-        // com "plano sem WhatsApp", e aqui isso é o comportamento CERTO, não
-        // uma confusão como era no webhook: esta fase é síncrona ao agendamento
-        // e não tem canal de retry — a alternativa a não enviar seria segurar a
-        // confirmação do cliente final, que o invariante do produto proíbe
-        // ("mensageria jamais quebra a criação de um agendamento"). O sinal da
-        // falha não se perde: `obterPlanoVigentePublico` já reportou.
+        if (configError) {
+            logOperacional.error('whatsapp.configs.query_error', contextoMeta)
+            await reportarExcecaoAguardando(
+                erroSinteticoSupabase(configError, 'configs_query_error'),
+                { ...contextoMeta, etapa: 'query_configs' },
+            )
+        }
+
         const { plano } = await obterPlanoVigentePublico(client, tenantId)
         const planoTemWhatsapp = PLANOS[plano].recursos.whatsapp
 
-        // Sem config ou plano sem WhatsApp: mensageria não faz parte do fluxo
-        // deste tenant — não há disparo a registrar.
-        if (config && planoTemWhatsapp) {
-            if (config.status !== 'conectado' || !config.instance_token) {
-                // O tenant tem o recurso, mas a conexão não está ativa: falha silenciosa
-                // para o cliente (frictionless), registrada para auditoria do profissional.
+        if (planoTemWhatsapp) {
+            if (!config || !config.instance_name) {
+                // Tenant Pro sem whatsapp_configs: falha operacional acionável
+                logOperacional.warn('whatsapp.config.ausente_pro', contextoMeta)
+                await reportarFalhaSilenciosaAguardando('whatsapp:config_ausente_para_plano_pro', contextoMeta)
+                await registrarDisparo(client, {
+                    tenantId,
+                    agendamentoId,
+                    tipo: 'confirmacao',
+                    status: 'falha',
+                    motivo: 'config_ausente',
+                })
+                capturarEventoTenant('whatsapp_confirmation_failed', tenantId, {
+                    motivo: 'config_ausente',
+                })
+            } else if (config.status !== 'conectado' || !config.instance_token) {
+                // Tenant tem config, mas status não é conectado
+                logOperacional.warn('whatsapp.confirmacao.desconectado', contextoMeta)
+                await reportarFalhaSilenciosaAguardando('whatsapp:desconectado_ao_confirmar', contextoMeta)
                 await registrarDisparo(client, {
                     tenantId,
                     agendamentoId,
@@ -83,11 +130,11 @@ export async function dispararNotificacoesAgendamento(
                     status: 'falha',
                     motivo: 'whatsapp_desconectado',
                 })
-                // Analytics: espelho agregado do disparo (fonte da verdade é o Postgres).
                 capturarEventoTenant('whatsapp_confirmation_failed', tenantId, {
                     motivo: 'whatsapp_desconectado',
                 })
             } else {
+                // Envio de confirmação
                 const dateObj = new Date(dataHora)
                 const dataHoraStr = formatarDataHora(dataHora, timezone)
 
@@ -103,6 +150,7 @@ export async function dispararNotificacoesAgendamento(
                     config.instance_token,
                     clienteTelefone,
                     textoConfirmacao,
+                    contextoMeta,
                 )
 
                 await registrarDisparo(client, {
@@ -112,7 +160,7 @@ export async function dispararNotificacoesAgendamento(
                     status: envio.ok ? 'enviado' : 'falha',
                     motivo: envio.ok ? null : envio.motivo,
                 })
-                // Analytics: espelho agregado do disparo (fonte da verdade é o Postgres).
+
                 if (envio.ok) {
                     capturarEventoTenant('whatsapp_confirmation_sent', tenantId)
                 } else {
@@ -121,10 +169,21 @@ export async function dispararNotificacoesAgendamento(
                     })
                 }
 
+                // Agendamento do lembrete futuro
                 const targetTime = dateObj.getTime() - config.tempo_lembrete_minutos * 60 * 1000
                 const now = Date.now()
 
-                if (targetTime > now) {
+                if (targetTime <= now) {
+                    // Agendamento próximo onde o lembrete ficaria no passado
+                    logOperacional.info('qstash.lembrete.fora_da_janela', contextoMeta)
+                    await registrarDisparo(client, {
+                        tenantId,
+                        agendamentoId,
+                        tipo: 'lembrete',
+                        status: 'ignorado',
+                        motivo: 'lembrete_fora_da_janela',
+                    })
+                } else {
                     const agendado = await agendarLembreteQStash(
                         agendamentoId,
                         tenantId,
@@ -139,7 +198,6 @@ export async function dispararNotificacoesAgendamento(
                             status: 'agendado',
                             qstashMessageId: agendado.messageId,
                         })
-                        // Analytics: espelho agregado do disparo (fonte da verdade é o Postgres).
                         capturarEventoTenant('whatsapp_reminder_scheduled', tenantId)
                     } else {
                         await registrarDisparo(client, {
@@ -149,20 +207,22 @@ export async function dispararNotificacoesAgendamento(
                             status: 'falha',
                             motivo: agendado.motivo,
                         })
-                        // Falha no agendamento do lembrete: mesmo evento de falha do
-                        // lembrete, distinguível pelo motivo (ex.: qstash_sem_token).
                         capturarEventoTenant('whatsapp_reminder_failed', tenantId, {
                             motivo: agendado.motivo ?? null,
                         })
                     }
                 }
             }
+        } else {
+            // Plano sem WhatsApp (Gratuito): condição normal de negócio
+            logOperacional.info('whatsapp.plano.sem_whatsapp', contextoMeta)
         }
     } catch (err) {
         console.error('Erro ao processar notificações automáticas do agendamento:', err)
-        // Este catch engole QUALQUER exceção inesperada do fluxo de mensageria
-        // por contrato do produto (a falha não pode atrapalhar o cliente final).
-        // Sem este reporte, a exceção morre no console do Railway.
-        reportarExcecao(err, { fluxo: 'notificacoes_agendamento' })
+        logOperacional.error('notificacoes_agendamento.excecao', contextoMeta)
+        await reportarExcecaoAguardando(err, {
+            ...contextoMeta,
+            etapa: 'disparar_notificacoes',
+        })
     }
 }

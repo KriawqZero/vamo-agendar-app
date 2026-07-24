@@ -268,6 +268,7 @@ Nenhum ainda.
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
 | 260721-jif | Fundação operacional — Sentry, PostHog e Resend (etapa preparatória, pré-requisito da Phase 1) | 2026-07-21 | b80c408 | Needs Review | [260721-jif-fundacao-operacional-sentry-posthog-e-re](./quick/260721-jif-fundacao-operacional-sentry-posthog-e-re/) |
+| 260724-observabilidade-mensageria | Observabilidade Real da Mensageria (Sentry Logs, Sentry Issues aguardadas, PostHog e auditoria append-only em disparos_whatsapp) | 2026-07-24 | HEAD | Needs Review | [260724-observabilidade-mensageria](./quick/260724-observabilidade-mensageria/) |
 | 2 | Adiciona "type": "http" ao servidor Sentry em .mcp.json (elimina warning do /mcp) | 2026-07-21 | ddcda54 | — | — |
 
 **Status `Needs Review`**: as 4 tarefas de código fecharam e foram verificadas (0 gaps,

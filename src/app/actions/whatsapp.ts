@@ -10,6 +10,8 @@ import {
     registrarDisparo,
     type ResultadoEnvio
 } from '@/lib/whatsapp-helper'
+import { logOperacional } from '@/lib/observabilidade/log'
+import { hashTenantId } from '@/lib/observabilidade/hash'
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080'
 const EVOLUTION_GLOBAL_API_KEY = process.env.EVOLUTION_GLOBAL_API_KEY || 'global_key_here'
@@ -326,9 +328,17 @@ export async function sincronizarStatusWhatsApp() {
     // como prop a um Client Component e seria serializado até o browser.
     const { data: config } = await supabase
         .from('whatsapp_configs')
-        .select('id, instance_name, status, ultima_verificacao_em, mensagem_confirmacao, mensagem_lembrete, tempo_lembrete_minutos')
+        .select('id, instance_name, status, ultima_verificacao_em, tempo_lembrete_minutos, mensagem_confirmacao, mensagem_lembrete, updated_at')
         .eq('tenant_id', orgId)
         .maybeSingle()
+
+    if (config) {
+        logOperacional.info('whatsapp.status.sincronizado', {
+            tenantHash: hashTenantId(orgId),
+            fluxo: 'sincronizacao_whatsapp',
+            resultado: config.status,
+        })
+    }
 
     // Sem config ou sem instância provisionada: nada a sincronizar.
     if (!config || !config.instance_name) {
@@ -482,7 +492,8 @@ export async function enviarMensagemTesteWhatsApp(telefone: string): Promise<Res
         config.instance_name,
         config.instance_token,
         telefoneLimpo,
-        texto
+        texto,
+        { tenantHash: hashTenantId(orgId), fluxo: 'mensagem_teste' },
     )
 
     await registrarDisparo(supabase, {
