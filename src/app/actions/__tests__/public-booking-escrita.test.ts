@@ -65,11 +65,25 @@ vi.mock('@/lib/assinaturas', async (importarOriginal) => {
     const real = await importarOriginal<typeof import('@/lib/assinaturas')>()
     return { ...real, obterPlanoVigentePublico: vi.fn(real.obterPlanoVigentePublico) }
 })
+// 4. observabilidade — mesmo motivo dos três acima: nada de teste pode emitir
+//    para o Sentry. Mas aqui o mock é também SUJEITO de asserção: SC4 exige
+//    provar que a PERDA DE CORRIDA (23P01 → slot_indisponivel) NÃO chama
+//    `reportarExcecao` — condição esperada de negócio não vai ao Sentry
+//    (CLAUDE.md §Observabilidade). Contrafactual que dá sentido à asserção: se
+//    o ramo `agError?.code === '23P01'` de public-booking.ts fosse removido, a
+//    corrida cairia no `erro_interno` genérico logo abaixo, que CHAMA
+//    reportarExcecao — e inundaria o Sentry com perda de corrida esperada.
+vi.mock('@/lib/observabilidade/reportar', () => ({
+    reportarExcecao: vi.fn(),
+    reportarExcecaoAguardando: vi.fn(async () => {}),
+    reportarFalhaSilenciosa: vi.fn(),
+}))
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { diaLocal, somarDias } from '@/lib/timezone'
 import { dispararNotificacoesAgendamento } from '@/lib/notificacoes-agendamento'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
+import { reportarExcecao, reportarFalhaSilenciosa } from '@/lib/observabilidade/reportar'
 import {
     criarAgendamentoPublico,
     obterDadosBookingPublico,
@@ -354,7 +368,7 @@ describe.skipIf(!temCredenciais)(
                 slug: SLUG_GRATUITO_TESTE,
                 servicoId: servicoIdTeste,
                 dataHora: slots[0].datetime,
-                clienteNome: 'Cliente de Integração',
+                clienteNome: '  Cliente de Integração  ',
                 // Formatado de propósito: a sanitização é por remoção de não-dígitos.
                 clienteTelefone: TELEFONE_FORMATADO,
             })
@@ -388,6 +402,8 @@ describe.skipIf(!temCredenciais)(
                 expect.objectContaining({
                     agendamentoId: agendamento.id,
                     tenantId: TENANT_TESTE,
+                    clienteNome: 'Cliente de Integração',
+                    clienteTelefone: TELEFONE_SANITIZADO,
                 }),
             )
         })
@@ -761,6 +777,216 @@ describe.skipIf(!temCredenciais)(
             } finally {
                 await removerTenantVizinho()
             }
+        })
+
+        // -------------------------------------------------------------------
+        // SC3 (AGE-03) — ATOMICIDADE DO DOUBLE-BOOKING CONTRA O BANCO REAL
+        //
+        // A atomicidade não é observável em teste hermético: um mock de
+        // Supabase provaria só o mock. O que FECHA SC3 é a exclusion
+        // constraint `ag_sem_sobreposicao` VIVA no banco (aplicada no 02-05)
+        // recusando o segundo insert sobreposto com SQLSTATE 23P01, e a action
+        // discriminando esse 23P01 para `slot_indisponivel` (02-03). Este caso
+        // prova as duas pontas de uma vez, contra o Supabase de dev.
+        //
+        // ⚠️ `Promise.all` em processo APROXIMA a corrida, não a garante: a
+        // serialização real é do banco. Por isso a asserção DEFINITIVA é o
+        // COUNT de linhas ativas === 1 — o número que só a constraint sabe
+        // segurar —, não a suposição de que os 8 flights colidiram no mesmo
+        // instante. É a diferença que manteve o gap verde na Phase 1: verde de
+        // produtor não é verde de garantia; aqui a garantia é a contagem.
+        // -------------------------------------------------------------------
+        it('SC3 público: N chamadas concorrentes ao MESMO slot → exatamente 1 ativo (constraint + 23P01)', async () => {
+            // Terreno limpo: a contagem exata no fim só é verdadeira se nada
+            // dos casos anteriores sobrar no intervalo-alvo. Ordem obrigatória
+            // (agendamentos antes de clientes) por causa do ON DELETE RESTRICT.
+            await admin.from('agendamentos').delete().eq('tenant_id', TENANT_TESTE)
+            await admin.from('clientes').delete().eq('tenant_id', TENANT_TESTE)
+
+            // Slot da PRÓPRIA engine (nunca literal cravado): é a saída que
+            // `criarAgendamentoPublico` revalida por igualdade exata, então
+            // consumi-la exercita o contrato anti double-booking em vez de
+            // contorná-lo com um horário inventado.
+            const slots = await slotsLivresDaFixture()
+            expect(slots.length, `A fixture não cobriu ${dataAlvo}.`).toBeGreaterThan(0)
+            const slotAlvo = slots[0].datetime
+
+            // SC4: zera os contadores IMEDIATAMENTE antes da corrida para isolar
+            // o que ela sozinha dispara ao Sentry. Casos anteriores deste
+            // describe exercitam ramos que reportam (namespace ambíguo); a
+            // asserção abaixo é só sobre esta corrida.
+            vi.mocked(reportarExcecao).mockClear()
+            vi.mocked(reportarFalhaSilenciosa).mockClear()
+
+            const N = 8
+            const resultados = await Promise.all(
+                Array.from({ length: N }, (_, i) =>
+                    criarAgendamentoPublico({
+                        slug: SLUG_GRATUITO_TESTE,
+                        servicoId: servicoIdTeste,
+                        dataHora: slotAlvo,
+                        // Mesmo telefone de propósito: força os 8 pela RPC atômica
+                        // `reaproveitar_ou_criar_cliente` também sob concorrência.
+                        clienteNome: `Concorrente ${i}`,
+                        clienteTelefone: TELEFONE_FORMATADO,
+                    }),
+                ),
+            )
+
+            const vencedores = resultados.filter((r) => r.ok)
+            const perdedores = resultados.filter((r) => !r.ok && r.motivo === 'slot_indisponivel')
+            expect(vencedores).toHaveLength(1)
+            expect(perdedores).toHaveLength(N - 1)
+            // Nenhum outro motivo: um `erro_interno` disfarçado aqui seria a
+            // corrida virando falha crua em vez de discriminante amigável.
+            expect(resultados.filter((r) => !r.ok)).toHaveLength(N - 1)
+
+            // A asserção DEFINITIVA — a que só a constraint no banco faz valer.
+            const { count } = await admin
+                .from('agendamentos')
+                .select('id', { count: 'exact', head: true })
+                .eq('tenant_id', TENANT_TESTE)
+                .neq('status', 'cancelado')
+            expect(count).toBe(1)
+
+            // SC4 (metade empírica): os N-1 perdedores voltaram
+            // `slot_indisponivel` SEM que a perda de corrida fosse ao Sentry.
+            // Perda de corrida é condição ESPERADA — não pode virar exceção
+            // reportada. (O contrafactual está no JSDoc do mock: sem o ramo
+            // 23P01, isto viraria `erro_interno` e reportarExcecao dispararia.)
+            expect(reportarExcecao).not.toHaveBeenCalled()
+            expect(reportarFalhaSilenciosa).not.toHaveBeenCalled()
+
+            // ---------------------------------------------------------------
+            // Metade WALK-IN do SC3 no NÍVEL DA CONSTRAINT (role-agnóstico).
+            //
+            // A exclusion constraint não sabe quem chamou: dois inserts admin
+            // diretos e sobrepostos, mesmo tenant, status <> 'cancelado',
+            // provam a recusa INDEPENDENTE do fluxo — logo cobrem também o
+            // walk-in autenticado, que grava na mesma tabela sob a mesma
+            // constraint. A corrida walk-in autenticada EM PROCESSO (mock de
+            // auth do Clerk) fica best-effort; a garantia que importa é a do
+            // banco, e é esta. Fronteira registrada em SUMMARY/PENDENCIAS.
+            // ---------------------------------------------------------------
+            const { data: clienteWalkin, error: cwErr } = await admin
+                .from('clientes')
+                .insert({
+                    tenant_id: TENANT_TESTE,
+                    telefone: '11955554444',
+                    nome: 'Walk-in Constraint',
+                })
+                .select('id')
+                .single()
+            expect(cwErr, cwErr?.message).toBeNull()
+
+            // Par de períodos que SE SOBREPÕEM, ancorado longe do slot já
+            // ocupado acima para isolar a causa da recusa na sobreposição
+            // entre os DOIS inserts, não com o agendamento vencedor. A
+            // constraint compara período por tenant e ignora horário comercial
+            // (é overlap puro), então quaisquer instantes sobrepostos servem.
+            const base = new Date(slotAlvo)
+            base.setUTCHours(base.getUTCHours() + 3)
+            const inicioA = base.toISOString()
+            const fimA = new Date(base.getTime() + 30 * 60_000).toISOString()
+            const inicioB = new Date(base.getTime() + 15 * 60_000).toISOString()
+            const fimB = new Date(base.getTime() + 45 * 60_000).toISOString()
+
+            const insertDireto = (dataHora: string, dataHoraFim: string) =>
+                admin.from('agendamentos').insert({
+                    tenant_id: TENANT_TESTE,
+                    cliente_id: clienteWalkin!.id,
+                    servico_id: servicoIdTeste,
+                    data_hora: dataHora,
+                    data_hora_fim: dataHoraFim,
+                    status: 'confirmado',
+                })
+
+            const primeiro = await insertDireto(inicioA, fimA)
+            expect(primeiro.error, primeiro.error?.message).toBeNull()
+
+            const segundo = await insertDireto(inicioB, fimB)
+            // SQLSTATE, nunca a .message (que embute org_id e o horário de
+            // terceiro): o código é estável entre versões do Postgres.
+            expect(
+                segundo.error,
+                'O segundo insert sobreposto passou — ag_sem_sobreposicao não está barrando no banco.',
+            ).not.toBeNull()
+            expect(segundo.error?.code).toBe('23P01')
+
+            // Limpeza do que este caso criou. O afterAll também limpa; isto é o
+            // cinto de segurança para não poluir contagens de casos futuros.
+            await admin.from('agendamentos').delete().eq('tenant_id', TENANT_TESTE)
+            await admin.from('clientes').delete().eq('tenant_id', TENANT_TESTE)
+        })
+
+        // -------------------------------------------------------------------
+        // SC5 (AGE-05) — UPSERT COALESCE ATÔMICO CONTRA O BANCO REAL
+        //
+        // O caso :395 já prova que o telefone reaproveita a linha (não
+        // duplica). O que FALTAVA é o COALESCE: a segunda reserva pública
+        // preenche só o que estava vazio (e-mail) e JAMAIS sobrescreve o nome
+        // curado que o profissional salvou no dashboard. É a semântica que o
+        // `supabase-js .upsert()` não expressa — overwrite de linha inteira —
+        // e por isso vive na RPC `reaproveitar_ou_criar_cliente`
+        // (`ON CONFLICT DO UPDATE SET nome = COALESCE(clientes.nome, EXCLUDED.nome)`).
+        // Um mock provaria só o mock; a atomicidade é propriedade do banco.
+        // -------------------------------------------------------------------
+        it('SC5: reincidente pelo telefone reaproveita o id, e-mail ausente é preenchido, nome curado NÃO é sobrescrito (COALESCE)', async () => {
+            await admin.from('agendamentos').delete().eq('tenant_id', TENANT_TESTE)
+            await admin.from('clientes').delete().eq('tenant_id', TENANT_TESTE)
+
+            const TELEFONE_COALESCE_FMT = '(11) 96666-5555'
+            const TELEFONE_COALESCE = '11966665555'
+            const NOME_CURADO = 'Nome Curado No Dashboard'
+
+            // Cliente pré-existente: nome curado (como o profissional salvaria
+            // no dashboard) e SEM e-mail. É a linha que a segunda reserva
+            // pública deve COMPLETAR, nunca reescrever.
+            const { data: clienteInicial, error: ciErr } = await admin
+                .from('clientes')
+                .insert({
+                    tenant_id: TENANT_TESTE,
+                    telefone: TELEFONE_COALESCE,
+                    nome: NOME_CURADO,
+                })
+                .select('id, email')
+                .single()
+            expect(ciErr, ciErr?.message).toBeNull()
+            expect(clienteInicial!.email).toBeNull()
+
+            // Segunda reserva pelo MESMO telefone, com nome diferente e um
+            // e-mail — a chamada pública que passa pela RPC de upsert.
+            const slots = await slotsLivresDaFixture()
+            expect(slots.length).toBeGreaterThan(0)
+            await criarComSucesso({
+                slug: SLUG_GRATUITO_TESTE,
+                servicoId: servicoIdTeste,
+                dataHora: slots[0].datetime,
+                clienteNome: 'Nome Público Diferente',
+                clienteTelefone: TELEFONE_COALESCE_FMT,
+                clienteEmail: 'reincidente@exemplo.com',
+            })
+
+            const { data: clientes } = await admin
+                .from('clientes')
+                .select('id, nome, email')
+                .eq('tenant_id', TENANT_TESTE)
+                .eq('telefone', TELEFONE_COALESCE)
+
+            // Uma linha só: reaproveitou pelo (tenant, telefone), não duplicou.
+            expect(clientes).toHaveLength(1)
+            // Mesmo id: o upsert caiu no ON CONFLICT da linha existente.
+            expect(clientes![0].id).toBe(clienteInicial!.id)
+            // E-mail antes ausente foi PREENCHIDO — COALESCE(clientes.email,
+            // EXCLUDED.email) com o lado esquerdo nulo devolve o novo.
+            expect(clientes![0].email).toBe('reincidente@exemplo.com')
+            // Nome curado PRESERVADO: COALESCE(clientes.nome, EXCLUDED.nome), e
+            // clientes.nome é NOT NULL, então o lado esquerdo sempre vence — a
+            // chamada pública não sobrescreve o que o profissional curou.
+            expect(clientes![0].nome).toBe(NOME_CURADO)
+
+            await admin.from('agendamentos').delete().eq('tenant_id', TENANT_TESTE)
+            await admin.from('clientes').delete().eq('tenant_id', TENANT_TESTE)
         })
     },
 )

@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lançamento público
-current_phase: 01
-current_phase_name: hardening-da-superf-cie-p-blica
+current_phase: 02
+current_phase_name: integridade-da-agenda
 status: complete
-stopped_at: Phase 01 FECHADA — 5/5 SC medidos verdes por DDL direto; CR-02 e WR-03 corrigidos; CR-01 deferido como dívida (instrumento, não vulnerabilidade)
-last_updated: "2026-07-23T00:00:00.000Z"
+stopped_at: Completed 02-06-PLAN.md
+last_updated: "2026-07-23T17:33:32.972Z"
 last_activity: 2026-07-23
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 19
-  completed_plans: 19
+  total_phases: 2
+  completed_phases: 2
+  total_plans: 25
+  completed_plans: 25
 last_activity_desc: "Phase 01 FECHADA (aceitando gaps não-bloqueantes). Os cinco Success Criteria do ROADMAP foram medidos DIRETAMENTE na 4ª verificação (acesso DDL ao banco): SC1/SC2/SC3 anônimos em 401/42501 com controle positivo, SC4 exercitado por objeto descartável criado e removido (anon f/f/f, service t/t/t), SC5 por harness de boot e webhook — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC: CR-02 (escrita pública sem teto de campo) foi CORRIGIDO nos commits e7adc01/738a896/600e429 com pnpm test 241/241, lint e build verdes; WR-03 (PENDENCIAS descrevendo o mundo pré-fase) foi CORRIGIDO; CR-01 (falso-verde do harness em alvo parcial) fica como DÍVIDA DEFERIDA — é instrumento quebrado, não vulnerabilidade, e os SC foram provados por DDL direto, não por esse script. Próximo: /gsd-discuss-phase 02"
 ---
 
@@ -23,12 +23,12 @@ last_activity_desc: "Phase 01 FECHADA (aceitando gaps não-bloqueantes). Os cinc
 See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 **Core value:** Um agendamento real, feito por um cliente final que nunca ouviu falar do VamoAgendar, cair na agenda do profissional sem que nada quebre no caminho.
-**Current focus:** Phase 01 — hardening-da-superf-cie-p-blica
+**Current focus:** Phase 02 — integridade-da-agenda
 
 ## Current Position
 
-Phase: 01 (hardening-da-superf-cie-p-blica) — COMPLETE
-Plan: 19 of 19
+Phase: 02 (integridade-da-agenda) — EXECUTING
+Plan: 6 of 6
 
 ### Planejamento da 3ª rodada (2026-07-22, branch `fase-01-gaps-rodada-3`)
 
@@ -67,7 +67,7 @@ Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code rev
 Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
 
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
-Last activity: 2026-07-22
+Last activity: 2026-07-23
 
 Progress: [██████████] 100% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
 
@@ -132,6 +132,12 @@ Primeira verificação das quatro com acesso DDL ao banco de dev — os cinco Su
 | Phase 01 P17 | ~25min | 2 tasks | 2 files |
 | Phase 01 P18 | ~31min | 2 tasks | 5 files |
 | Phase 01 P19 | ~30min | 3 tasks | 2 files |
+| Phase 02 P01 | 5min | 2 tasks | 2 files |
+| Phase 02 P02 | 20min | 3 tasks | 3 files |
+| Phase 02 P03 | ~10min | 2 tasks | 2 files |
+| Phase 02 P04 | ~25min | 3 tasks | 3 files |
+| Phase 02 P05 | ~18min | 3 tasks | 1 files |
+| Phase 02 P06 | ~10min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -220,6 +226,15 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase 01]: 01-19: a condição que sustenta a citação do exit 0 do harness anônimo foi escrita nos TRÊS pontos onde o PENDENCIAS o cita, não só na seção nova — quem remover scripts/verificar-controle-harness-anon.sh remove o direito de citar o exit code
 - [Phase 01]: 01-19: os dez warnings da 2ª rodada de review entraram no PENDENCIAS como ponteiros (rótulo + uma linha + seção), sem conserto proposto, e a colisão de rótulos WR-* entre a 1ª e a 2ª rodada foi resolvida por escrito com o comando que recupera o relatório antigo do git
 - [Phase 01]: 01-19: escapada de plataforma aceita com registro (T-01-19-02) — tabela criada por supabase_admin herda anon/authenticated; item aberto com dono (quem habilitar a extensão) e gatilho (próxima habilitação), sem conserto preventivo
+- [Phase ?]: 02-01: engine deriva ocupação de data_hora_fim (D-02); join servicos + fallback || 30 removidos — fecha AGE-01/AGE-02
+- [Phase ?]: 02-01: agendamento que cruza a meia-noite soma 1440*diffDias ao end (Pitfall 4), em vez de clampar
+- [Phase ?]: 02-02: periodo é coluna GENERATED (não trigger) — sonda empírica DDL no PG 17.6 aceitou tstzrange(a,b,'[)') STORED; construtor imutável, decisão por medição
+- [Phase ?]: 02-02: constraint nomeada explicitamente (clientes_tenant_telefone_key) no schema E na migration — nome idêntico evita drift no db diff futuro
+- [Phase ?]: 02-02: migration de integridade autorada mas NÃO aplicada — apply é 02-05 [BLOCKING] com pré-voo autoritativo pós-limpeza D-06; requisitos AGE-01/03/05 ainda não marcados (falso-verde evitado)
+- [Phase ?]: 02-03: fluxo público usa RPC atômica de cliente (dedupe COALESCE) e discrimina 23P01 → slot_indisponivel sem Sentry
+- [Phase ?]: 02-05: migration de integridade APLICADA ao dev via execute_sql (D-06 limpo, pré-voo 0/0); ledger 21 versions=21 arquivos (20260723162858 alinhada sem realinhamento DML — execute_sql preserva a version); anon sem EXECUTE na RPC, authenticated/service_role com
+- [Phase ?]: 02-05: apply via execute_sql preservou a version inserida — realinhamento por DML só é necessário com apply_migration, não com o INSERT manual no ledger
+- [Phase ?]: 02-06: SC3/SC4/SC5 provados empiricamente contra o Supabase de dev; walk-in do SC3 no nível da constraint (role-agnóstica), corrida walk-in autenticada em processo ficou best-effort
 
 ### Pending Todos
 
@@ -273,6 +288,6 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-23T00:00:00.000Z
-Stopped at: Phase 01 marcada COMPLETA (CR-02 e WR-03 corrigidos; CR-01 deferido como dívida). Próximo: /gsd-discuss-phase 02
+Last session: 2026-07-23T17:33:06.850Z
+Stopped at: Completed 02-06-PLAN.md
 Resume file: None

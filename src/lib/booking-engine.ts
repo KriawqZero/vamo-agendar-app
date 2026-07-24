@@ -273,27 +273,19 @@ export async function obterSlotsDisponiveis({
     const menorDuracaoAtiva =
         duracoesAtivas.length > 0 ? Math.min(...duracoesAtivas) : duracaoServicoMinutos
 
-    // 5. Buscar Agendamentos existentes não cancelados para esta data
-    // Os agendamentos são gravados como timestamp UTC; buscamos tudo que cai no
-    // dia local `dateStr` no fuso do estabelecimento. `fim` é EXCLUSIVO (00:00 do
-    // dia seguinte), evitando o buraco/overlap do antigo 23:59:59.
+    // 5. Buscar agendamentos não cancelados cujo PERÍODO intersecta esta data.
+    // Filtrar só pelo início perderia uma reserva que começou na noite anterior
+    // e termina na madrugada consultada. `fim` é EXCLUSIVO (00:00 do dia
+    // seguinte), evitando o buraco/overlap do antigo 23:59:59.
     const { inicio, fim } = limitesDoDia(dateStr, timezone)
 
     let queryAgendamentos = supabase
         .from('agendamentos')
-        .select(
-            `
-            data_hora,
-            status,
-            servicos (
-                duracao_minutos
-            )
-        `,
-        )
+        .select('data_hora, data_hora_fim, status')
         .eq('tenant_id', tenantId)
         .neq('status', 'cancelado')
-        .gte('data_hora', inicio.toISOString())
         .lt('data_hora', fim.toISOString())
+        .gt('data_hora_fim', inicio.toISOString())
 
     // Remarcação: o próprio agendamento não deve colidir consigo mesmo.
     if (ignorarAgendamentoId) {
@@ -307,17 +299,31 @@ export async function obterSlotsDisponiveis({
         return []
     }
 
-    // Converte os agendamentos existentes em janelas de minutos ocupados
+    // Converte os agendamentos existentes em janelas de minutos ocupados. A
+    // ocupação vem EXCLUSIVAMENTE de `data_hora_fim`, gravado no ato da reserva —
+    // nunca de um join com `servicos`. Assim editar a duração de um serviço não
+    // move o término de um agendamento já marcado (AGE-01) e um serviço
+    // desativado continua ocupando o tempo reservado, sem o antigo fallback de
+    // 30 min (AGE-02).
     const slotsOcupados: Intervalo[] = (agendamentos || []).map((ag) => {
-        // Hora do agendamento de volta para a parede local do estabelecimento
+        // Início e término de volta para a parede local do estabelecimento.
         const [h, m] = horaLocal(ag.data_hora, timezone).split(':').map(Number)
-        const start = h * 60 + m
-        // Se a duração do serviço não estiver disponível, assume 30min padrão
-        // @ts-expect-error — join do Supabase tipado como array; runtime é objeto único
-        const duracao = ag.servicos?.duracao_minutos || 30
-        const end = start + duracao
+        const [hf, mf] = horaLocal(ag.data_hora_fim, timezone).split(':').map(Number)
+        const diaInicio = diaLocal(ag.data_hora, timezone)
+        const diaFim = diaLocal(ag.data_hora_fim, timezone)
 
-        return { start, end }
+        // Pitfall 4 nos DOIS sentidos: normalizamos início e fim contra o dia
+        // CONSULTADO, não um contra o outro. Assim [ontem 23:30, hoje 00:30)
+        // vira [0, 30), e [hoje 23:30, amanhã 00:30) vira [1410, 1440).
+        const offsetInicio =
+            Math.round((Date.parse(diaInicio) - Date.parse(dateStr)) / 86_400_000) * 1440
+        const offsetFim =
+            Math.round((Date.parse(diaFim) - Date.parse(dateStr)) / 86_400_000) * 1440
+
+        return {
+            start: Math.max(0, h * 60 + m + offsetInicio),
+            end: Math.min(1440, hf * 60 + mf + offsetFim),
+        }
     })
 
     // 6. Intervalos livres do dia: janelas de funcionamento − bloqueios − ocupados
