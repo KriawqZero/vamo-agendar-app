@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 02
 current_phase_name: integridade-da-agenda
 status: complete
-stopped_at: Completed 02-06-PLAN.md
-last_updated: "2026-07-23T17:33:32.972Z"
-last_activity: 2026-07-23
+stopped_at: "Quick task 260724-observabilidade-mensageria mergeada no master (PR #11, merge a9d071a)"
+last_updated: "2026-07-24T19:09:06Z"
+last_activity: 2026-07-24
 progress:
-  total_phases: 2
+  total_phases: 12
   completed_phases: 2
   total_plans: 25
   completed_plans: 25
-last_activity_desc: "Phase 01 FECHADA (aceitando gaps não-bloqueantes). Os cinco Success Criteria do ROADMAP foram medidos DIRETAMENTE na 4ª verificação (acesso DDL ao banco): SC1/SC2/SC3 anônimos em 401/42501 com controle positivo, SC4 exercitado por objeto descartável criado e removido (anon f/f/f, service t/t/t), SC5 por harness de boot e webhook — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC: CR-02 (escrita pública sem teto de campo) foi CORRIGIDO nos commits e7adc01/738a896/600e429 com pnpm test 241/241, lint e build verdes; WR-03 (PENDENCIAS descrevendo o mundo pré-fase) foi CORRIGIDO; CR-01 (falso-verde do harness em alvo parcial) fica como DÍVIDA DEFERIDA — é instrumento quebrado, não vulnerabilidade, e os SC foram provados por DDL direto, não por esse script. Próximo: /gsd-discuss-phase 02"
+last_activity_desc: "Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 — 6/6 planos, veredito do verificador human_needed com 5/5 must-haves verificados e 2 itens de UAT de TELA abertos (aviso âmbar público e detalhe do walk-in); AGE-01..05 marcados em REQUIREMENTS. Depois dela veio a quick task 260724-observabilidade-mensageria (fora do roadmap, disparada por incidente do owner: agendamento testado, confirmação e lembrete não entregues e NADA em PostHog, Sentry Issues, Sentry Logs ou log do Railway). Ela está mergeada no master (PR #11, merge a9d071a; commits a03cc39 → cd63aa3) e é BASELINE — não reimplementar. Baseline reconferida nesta sessão: pnpm test 280/280 em 20 arquivos. O que ela deixou aberto é só verificação de painel (não fecha por teste), listada em docs/PENDENCIAS.md. Próximo passo do roadmap: /gsd-discuss-phase 03 (Anti-abuso no booking público) — mas ele tem uma DECISÃO DO OWNER como pré-requisito: Upstash Redis vs. RPC atômica no Postgres para o rate limit."
 ---
 
 # Project State
@@ -27,10 +27,61 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 02 (integridade-da-agenda) — EXECUTING
-Plan: 6 of 6
+Phase: 02 (integridade-da-agenda) — **COMPLETA** (6/6 planos, verificada em 2026-07-23 com veredito `human_needed`: 5/5 must-haves verificados, 2 itens de UAT de tela abertos)
+Branch: `master` (working tree limpo, HEAD `a9d071a`)
+Próximo: **Phase 03 — Anti-abuso no booking público** (`/gsd-discuss-phase 03`), com uma decisão do owner pendente antes de planejar
 
-### Planejamento da 3ª rodada (2026-07-22, branch `fase-01-gaps-rodada-3`)
+### ⛳ Quick task 260724-observabilidade-mensageria — BASELINE, não reimplementar
+
+Mergeada no `master` em 2026-07-24 pelo PR #11 (merge `a9d071a`; commits `a03cc39` →
+`31c2aa5` → `25338f0` → `cd63aa3`). Não é uma fase do roadmap: entrou por incidente do
+owner — agendamento testado, confirmação e lembrete não entregues, e **nada** em PostHog,
+Sentry Issues, Sentry Logs ou no log do Railway.
+
+Causa raiz que ela fechou (do `INCIDENT.md` da própria task): Sentry Logs nunca esteve
+ligado (`enableLogs` ausente, integração de console descartada de propósito e nenhum logger
+próprio no lugar); `reportarExcecao`/`reportarFalhaSilenciosa` eram `void import(...)`
+fire-and-forget, e Server Action/webhook do Next 16 encerram antes de a Promise do Sentry
+enviar; e `notificacoes-agendamento.ts` engolia em silêncio erro de query de perfil/config,
+`targetTime <= now`, falha da Evolution, falha do INSERT de auditoria e falha de entrega do
+`posthog-node`.
+
+O que passou a existir e é **contrato para código novo**:
+
+- `src/lib/observabilidade/log.ts` — `logOperacional` (`info`/`warn`/`error`/`fatal`) com
+  código estático e **allowlist fechada** de atributos; `beforeSendLog: sanitizarLogSentry`
+  no `opcoesBaseSentry`
+- `src/lib/observabilidade/hash.ts` — `tenantHash`/`agendamentoHash` (salt
+  `ANALYTICS_TENANT_SALT`); identificador de tenant ou de agendamento **só** entra
+  pseudonimizado
+- `reportarExcecaoAguardando` / `reportarFalhaSilenciosaAguardando` com `Sentry.flush(2000)`
+  — obrigatórias em Server Action, webhook e route handler que podem encerrar em seguida
+- Mensagem de Issue **sintética e estática** por modo de falha (`whatsapp:evolution_http_error`,
+  `qstash:publish_http_error`, `auditoria_whatsapp:insert_failed`, `analytics_posthog:delivery_failed`, …)
+  — é o que mantém o agrupamento do Sentry inteiro
+- Quatro pilares com papéis distintos: Sentry Issue (falha acionável), Sentry Log (ciclo de
+  vida pesquisável), PostHog (taxa agregada), `disparos_whatsapp` (auditoria append-only por
+  tenant). Matriz estado a estado no `INCIDENT.md` da task e em `docs/06-MENSAGERIA_E_WHATSAPP.md`
+- `scripts/smoke-observabilidade-mensageria.mjs` — harness operacional dos quatro pilares
+
+Prova que acompanha o baseline: 16 cenários em
+`src/lib/__tests__/notificacoes-agendamento-observabilidade.test.ts` + allowlist/anti-PII em
+`src/lib/observabilidade/__tests__/log.test.ts`. **Reconferido nesta sessão (2026-07-24):
+`pnpm test` → 20 arquivos / 280 testes, tudo verde.**
+
+O que a task **não** fecha e nenhum executor pode fechar: ver evento chegando de fato em
+Sentry Logs, Sentry Issues e PostHog Activity, e a entrega real da mensagem no WhatsApp —
+registrado em `docs/PENDENCIAS.md` §"Verificação humana pendente da quick task 260724".
+A instrumentação diz **onde** falha; ela não conserta a entrega.
+
+Correção de documentação feita nesta sessão (a task havia deixado o arquivo inconsistente):
+`docs/09-OBSERVABILIDADE_E_EMAIL.md` tinha duas linhas duplicadas na tabela do wizard do
+Sentry e havia perdido o heading da seção do wizard do PostHog, o que fazia os parágrafos do
+PostHog lerem como se fossem do Sentry. Restaurado, e a virada de `enableLogs` (de default
+recusado para decisão nossa) ficou escrita com o motivo — a recusa valia enquanto não havia
+allowlist; agora há.
+
+### Planejamento da 3ª rodada (2026-07-22, branch `fase-01-gaps-rodada-3`) — histórico da Phase 01
 
 Três planos, serialização estrita (um por wave), commits `951cd98` (criação) e `ba46c4b` (correções do plan-checker):
 
@@ -235,6 +286,13 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: 02-05: migration de integridade APLICADA ao dev via execute_sql (D-06 limpo, pré-voo 0/0); ledger 21 versions=21 arquivos (20260723162858 alinhada sem realinhamento DML — execute_sql preserva a version); anon sem EXECUTE na RPC, authenticated/service_role com
 - [Phase ?]: 02-05: apply via execute_sql preservou a version inserida — realinhamento por DML só é necessário com apply_migration, não com o INSERT manual no ledger
 - [Phase ?]: 02-06: SC3/SC4/SC5 provados empiricamente contra o Supabase de dev; walk-in do SC3 no nível da constraint (role-agnóstica), corrida walk-in autenticada em processo ficou best-effort
+- [Quick 260724]: reporte ao Sentry em Server Action, webhook e route handler é AGUARDADO (`Sentry.flush`), nunca fire-and-forget — no Next 16 o processo encerra antes de a Promise do `void import()` enviar, e foi por isso que o incidente não deixou rastro em lugar nenhum
+- [Quick 260724]: `enableLogs: true` deixou de ser default recusado do wizard e virou decisão nossa — a recusa valia enquanto não havia allowlist própria; agora vale `beforeSendLog: sanitizarLogSentry` + `logOperacional` com lista fechada de atributos, travada por teste (a doc sozinha nunca segurou nada aqui)
+- [Quick 260724]: mensagem de Sentry Issue é sintética e ESTÁTICA por modo de falha (`whatsapp:evolution_http_error`, `qstash:publish_http_error`, …) — mensagem interpolada estilhaça o agrupamento e transforma um problema em N issues de uma ocorrência
+- [Quick 260724]: "falha silenciosa" foi redefinida por escrito no CLAUDE.md — significa não quebrar o booking B2C e não mostrar erro técnico ao visitante; NÃO significa esconder do owner. Foi a leitura frouxa dessa regra que deixou cinco caminhos engolindo erro sem Issue, Log nem auditoria
+- [Quick 260724]: `registrarDisparo` reporta a própria falha de INSERT por erro SINTÉTICO (`auditoria_whatsapp:insert_failed`) e nunca se re-chama — auditoria que se audita por si vira recursão
+- [Quick 260724]: quatro pilares com perguntas diferentes e nenhuma sobreposição de papel: Issue = falha acionável, Log = ciclo de vida pesquisável, PostHog = taxa agregada, `disparos_whatsapp` = auditoria por tenant. Colapsar dois deles num só foi como o incidente ficou invisível
+- [Quick 260724]: teste verde NÃO fecha observabilidade — o incidente de origem era "nada apareceu no painel", e isso só fecha com olho humano no painel; por isso a verificação de painel nasceu ABERTA em docs/PENDENCIAS.md em vez de a task ser declarada concluída
 
 ### Pending Todos
 
@@ -242,6 +300,13 @@ Nenhum ainda.
 
 ### Blockers/Concerns
 
+- 🔎 **Incidente de origem da quick task 260724 ainda não fechado ponta a ponta.** O código
+  que o tornava invisível está corrigido e testado (280/280), mas ninguém viu ainda um Sentry
+  Log, uma Sentry Issue e um evento do PostHog chegando ao painel depois da mudança — e a
+  entrega real da mensagem no WhatsApp (a queixa original) é outra coisa: a instrumentação diz
+  ONDE falha, não conserta a entrega. Só o owner fecha, e depende de ambiente com as
+  credenciais provisionadas. Checklist em `docs/PENDENCIAS.md` §"Verificação humana pendente
+  da quick task 260724". O SC2 da Phase 11 (evento real visto no painel) se sobrepõe a este item
 - ✅ **RESOLVIDO 2026-07-21 — DNS do subdomínio de e-mail.** `mail.vamoagendar.com.br` verificado no Resend, DKIM propagado (conferido por `dig`). Deixou de bloquear a Phase 4. Remetente: `naoresponda@mail.vamoagendar.com.br`. Restam dois TXT opcionais do owner: DMARC `p=` com `rua` e SPF do subdomínio — nenhum impede enviar
 - **Nenhum endereço do domínio recebe e-mail** (sem MX na raiz e no subdomínio). O `suporte@`/`contato@` da Phase 10 exige provedor de caixa próprio — o Resend só envia. Decisão adiada por escolha do owner em 2026-07-21
 - **Aprovação da conta Asaas para produção**: dependência externa sem prazo, fora do controle do owner. Não bloqueia a construção (sandbox), bloqueia ATI-02 na Phase 12
@@ -268,7 +333,7 @@ Nenhum ainda.
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
 | 260721-jif | Fundação operacional — Sentry, PostHog e Resend (etapa preparatória, pré-requisito da Phase 1) | 2026-07-21 | b80c408 | Needs Review | [260721-jif-fundacao-operacional-sentry-posthog-e-re](./quick/260721-jif-fundacao-operacional-sentry-posthog-e-re/) |
-| 260724-observabilidade-mensageria | Observabilidade Real da Mensageria (Sentry Logs, Sentry Issues aguardadas, PostHog e auditoria append-only em disparos_whatsapp) | 2026-07-24 | HEAD | Needs Review | [260724-observabilidade-mensageria](./quick/260724-observabilidade-mensageria/) |
+| 260724-observabilidade-mensageria | Observabilidade Real da Mensageria (Sentry Logs, Sentry Issues aguardadas, PostHog e auditoria append-only em disparos_whatsapp) | 2026-07-24 | `a03cc39`→`cd63aa3`, merge `a9d071a` (PR #11) | Código fechado — falta verificação de painel (owner) | [260724-observabilidade-mensageria](./quick/260724-observabilidade-mensageria/) |
 | 2 | Adiciona "type": "http" ao servidor Sentry em .mcp.json (elimina warning do /mcp) | 2026-07-21 | ddcda54 | — | — |
 
 **Status `Needs Review`**: as 4 tarefas de código fecharam e foram verificadas (0 gaps,
@@ -289,6 +354,19 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-23T17:33:06.850Z
-Stopped at: Completed 02-06-PLAN.md
+Last session: 2026-07-24T19:09:06Z
+Stopped at: Quick task `260724-observabilidade-mensageria` mergeada no `master` (PR #11, merge `a9d071a`) e artefatos de planejamento realinhados a ela. Nenhum trabalho de código novo iniciado nesta sessão.
 Resume file: None
+
+**Como retomar (ordem):**
+
+1. Ler o bloco "⛳ Quick task 260724-observabilidade-mensageria — BASELINE" em Current
+   Position acima. A observabilidade da mensageria **está feita** — usar `logOperacional`,
+   as variantes `*Aguardando` e as mensagens sintéticas existentes, nunca reimplementar
+2. Phases 01 e 02 estão fechadas em código; o que resta delas é UAT de tela do owner
+   (7 + 2 itens em `docs/PENDENCIAS.md`, nenhum marcado)
+3. Antes de `/gsd-discuss-phase 03`: a Phase 3 tem **decisão do owner pendente** —
+   Upstash Redis vs. RPC atômica no Postgres para o rate limit (o Redis do Railway não
+   serve: é TCP e pertence à Evolution API). Está em Blockers/Concerns abaixo e nas notas
+   de execução da Phase 3 no ROADMAP. Planejar sem essa escolha é herdar a decisão em vez
+   de tomá-la

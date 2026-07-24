@@ -843,6 +843,36 @@ deve ser assumido como aprovado.
       conflitante** + a agenda **recarregada**. É a metade de tela do walk-in cuja
       metade de banco está provada pela constraint (role-agnóstica).
 
+### 🧪 Verificação humana pendente da quick task `260724-observabilidade-mensageria`
+
+O código da observabilidade da mensageria está fechado e coberto por 16 cenários
+automatizados (`src/lib/__tests__/notificacoes-agendamento-observabilidade.test.ts` +
+`src/lib/observabilidade/__tests__/log.test.ts`). O que **não** está fechado é a única
+coisa que a suíte não sabe medir: se o evento realmente **chega no painel** do
+fornecedor. O incidente que originou a task era exatamente esse — "nada apareceu em
+lugar nenhum" — então fechar por teste verde seria repetir o erro que o gerou.
+
+- [ ] **Ver um Sentry Log estruturado chegar** (busca por `whatsapp.confirmacao.*` ou
+      `qstash.lembrete.*`) depois de um agendamento real em ambiente com
+      `NEXT_PUBLIC_SENTRY_DSN` provisionado. Sentry Logs é produto separado de Issues:
+      DSN válido não garante log ingerido
+- [ ] **Ver uma Sentry Issue agrupada** com a mensagem sintética (ex.:
+      `whatsapp:evolution_http_error`) e **conferir que ela não carrega PII** — nome,
+      telefone, texto da mensagem, `instance_token` ou `apikey`
+- [ ] **Ver o evento no PostHog Activity** (`whatsapp_confirmation_sent` /
+      `whatsapp_confirmation_failed` / `whatsapp_reminder_scheduled`)
+- [ ] **Rodar `node scripts/smoke-observabilidade-mensageria.mjs`** contra o ambiente
+      real e conferir a matriz dos quatro pilares que ele imprime
+- [ ] **Fechar o incidente de origem**: confirmação e lembrete de fato entregues no
+      WhatsApp. A instrumentação diz **onde** falha; ela não conserta a entrega. Se a
+      Evolution estiver desconectada, agora isso vira `disparos_whatsapp` +
+      Issue + Log em vez de silêncio — mas alguém precisa olhar
+
+*Ponto de ambiente:* `APP_URL` não existe no `.env.local` de dev (o código aplica
+fallback), e é a URL de callback que o QStash chama no lembrete. Em produção ela já
+está na lista de obrigatórias de `src/lib/env.ts` — boot morre sem ela, de propósito.
+Em dev, lembrete agendado localmente aponta para o fallback.
+
 ### Rate limiting e proteção contra agendamentos falsos/abuso
 
 Preservar a Fricção Zero para o cliente final, mas impedir que um script preencha toda

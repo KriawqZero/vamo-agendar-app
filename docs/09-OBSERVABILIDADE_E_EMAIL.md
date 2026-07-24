@@ -52,13 +52,24 @@ proposta**, nunca como commit. É o diff que mostra o que ele sabe e a gente nã
 | `dataCollection: {}` com `userInfo: false` comentado | Definir o objeto **inverte a base para os defaults permissivos** do SDK (`resolveDataCollectionOptions.js:18`): todo campo omitido passa a coletar |
 | `tunnelRoute` | Colide com o matcher amplo de `src/proxy.ts` — o comentário que o próprio wizard gera avisa disso |
 | bloco `webpack` | No-op sob Turbopack, com aviso de deprecação |
-| `tunnelRoute` | Colide com o matcher amplo de `src/proxy.ts` — o comentário que o próprio wizard gera avisa disso |
-| `webpack` | No-op sob Turbopack, com aviso de deprecação |
-| `tracesSampleRate: 1` | 100% de tracing queima o tier gratuito — mantido em 0 |
+| `tracesSampleRate: 1` | Não foi decisão nossa; 100% de tracing queima o tier gratuito — mantido em 0 |
+
+Dele foi adotado o upload de source map, com org e projeto reais. O resto foi descartado.
 
 > [!NOTE]
-> **Sentry Logs (SDK @sentry/nextjs 10.67.0)**:
-> O Sentry Logs foi ativado com `enableLogs: true` e `beforeSendLog: sanitizarLogSentry` em `src/lib/observabilidade/opcoes-sentry.ts`. O logger estruturado `logOperacional` (`src/lib/observabilidade/log.ts`) emite logs com códigos estáticos e allowlist de atributos (`fluxo`, `etapa`, `operacao`, `resultado`, `provider`, `motivo`, `statusCode`, `tenantHash`, `agendamentoHash`, `runtime`, `tentativa`, `retry`, `duracaoMs`). Nenhuma PII é coletada.
+> **`enableLogs: true` deixou de ser default recusado e virou decisão nossa** na quick task
+> `260724-observabilidade-mensageria` (2026-07-24, SDK `@sentry/nextjs` 10.67.0). A recusa
+> original valia enquanto não havia logger próprio: log ligado sem allowlist é PII indo para
+> o Sentry pelo caminho que o `beforeSend` de evento não cobre. O que mudou é que agora existe
+> o filtro — `beforeSendLog: sanitizarLogSentry` em `src/lib/observabilidade/opcoes-sentry.ts` —
+> e um logger estruturado com códigos estáticos, `logOperacional` (`src/lib/observabilidade/log.ts`),
+> cuja allowlist de atributos é fechada (`fluxo`, `etapa`, `operacao`, `resultado`, `provider`,
+> `motivo`, `statusCode`, `tenantHash`, `agendamentoHash`, `runtime`, `tentativa`, `retry`,
+> `duracaoMs`). Identificador de tenant e de agendamento só entram pseudonimizados
+> (`src/lib/observabilidade/hash.ts`, salt `ANALYTICS_TENANT_SALT`). A trava é teste, como as
+> outras: `src/lib/observabilidade/__tests__/log.test.ts`.
+
+### O que o wizard do PostHog propôs (v2.46.0, 2026-07-21, mesclado em `5df0671` + este reendurecimento)
 
 Rodado duas vezes no mesmo dia. Na primeira, revertido por inteiro — **erro nosso**: a
 arquitetura dele era melhor que a nossa e jogamos fora junto com os defaults ruins. Na

@@ -99,7 +99,7 @@ precisa ser sabido antes.
 
 - [ ] **Etapa preparatória: Fundação operacional** - Sentry, PostHog e Resend de pé antes da Phase 1 começar
 - [x] **Phase 1: Hardening da superfície pública** - A chave publicável deixa de servir a base de profissionais e a agenda de todos os tenants
-- [ ] **Phase 2: Integridade da agenda** - Duração gravada no agendamento e proteção atômica contra double-booking
+- [x] **Phase 2: Integridade da agenda** - Duração gravada no agendamento e proteção atômica contra double-booking
 - [ ] **Phase 3: Anti-abuso no booking público** - Rate limit e honeypot sem nenhuma fricção visível ao cliente
 - [ ] **Phase 4: Canal de e-mail transacional** - Resend em domínio próprio, com remetente reconhecível e supressão de bounce
 - [ ] **Phase 5: Contato flexível no booking** - Cliente final agenda com e-mail OU WhatsApp e recebe a confirmação pelo que informou
@@ -501,6 +501,7 @@ Plans:
 - Limpeza de dados de teste: `SELECT` com o mesmo `WHERE` + conferência de contagem antes de converter em `DELETE`. Se até esta fase o banco ainda for o Free sem backup, um `DELETE` mal filtrado não tem desfazer — ver "Rede de proteção do banco — condição, não fase" no topo deste roadmap
 - O hook já existe pronto em `.claude/hooks/migrations-prod.md` — a entrega é ativá-lo
 - OPE-02 foi entregue na etapa preparatória — esta fase assume o Sentry de pé e cobre o que sobra: o painel do owner (OPE-01) e o funil verificado com tráfego real (OPE-03)
+- **A instrumentação da mensageria já existe** (quick task `260724-observabilidade-mensageria`, 2026-07-24, PR #11 / `a9d071a`): Sentry Logs estruturados, Issues com mensagem sintética e flush aguardado, eventos de PostHog e auditoria em `disparos_whatsapp` cobrem confirmação, lembrete e webhook ponta a ponta. Esta fase **consome** esses sinais para montar o painel do owner — não os reimplementa. O que a quick task deixou aberto é verificação humana de painel, listada em `docs/PENDENCIAS.md` §"Verificação humana pendente da quick task 260724"; o SC2 desta fase (evento real visto no painel) se sobrepõe a ela
 
 ---
 
@@ -532,9 +533,9 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| Etapa preparatória. Fundação operacional | 0/1 | Not started | - |
-| 1. Hardening da superfície pública | 19/19 | In Progress|  |
-| 2. Integridade da agenda | 6/6 | In Progress|  |
+| Etapa preparatória. Fundação operacional | 1/1 | Código fechado — 2 gates do owner abertos | 2026-07-21 |
+| 1. Hardening da superfície pública | 19/19 | Complete (7 UAT de tela abertos) | 2026-07-23 |
+| 2. Integridade da agenda | 6/6 | Complete (2 UAT de tela abertos) | 2026-07-23 |
 | 3. Anti-abuso no booking público | 0/TBD | Not started | - |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |
 | 5. Contato flexível no booking | 0/TBD | Not started | - |
