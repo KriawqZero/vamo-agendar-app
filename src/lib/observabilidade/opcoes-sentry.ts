@@ -1,3 +1,5 @@
+import { sanitizarLogSentry } from './sanitizacao'
+
 /**
  * Opções-base do Sentry — FONTE ÚNICA das travas anti-PII.
  *
@@ -37,6 +39,10 @@ export function semIntegracaoDeConsole<T extends { name: string }>(integracoes: 
 }
 
 export const opcoesBaseSentry = {
+    // Ativação explícita e versionada dos Sentry Logs.
+    enableLogs: true,
+    beforeSendLog: sanitizarLogSentry,
+
     // Só erro nesta etapa. Atenção: sob Turbopack o `treeshake` do
     // `withSentryConfig` é no-op — isto zera o TRÁFEGO de trace, mas o código
     // do tracing continua no bundle. O custo real está medido no SUMMARY.
