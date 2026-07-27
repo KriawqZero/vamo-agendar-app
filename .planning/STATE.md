@@ -6,12 +6,12 @@ current_phase: 02
 current_phase_name: integridade-da-agenda
 status: complete
 stopped_at: Phase 03 context gathered
-last_updated: "2026-07-27T16:56:40.479Z"
-last_activity: 2026-07-23
+last_updated: "2026-07-27T18:14:28.760Z"
+last_activity: 2026-07-27
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 25
+  total_plans: 31
   completed_plans: 25
 last_activity_desc: "Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 — 6/6 planos, veredito do verificador human_needed com 5/5 must-haves verificados e 2 itens de UAT de TELA abertos (aviso âmbar público e detalhe do walk-in); AGE-01..05 marcados em REQUIREMENTS. Depois dela veio a quick task 260724-observabilidade-mensageria (fora do roadmap, disparada por incidente do owner: agendamento testado, confirmação e lembrete não entregues e NADA em PostHog, Sentry Issues, Sentry Logs ou log do Railway). Ela está mergeada no master (PR #11, merge a9d071a; commits a03cc39 → cd63aa3) e é BASELINE — não reimplementar. Baseline reconferida nesta sessão: pnpm test 280/280 em 20 arquivos. O que ela deixou aberto é só verificação de painel (não fecha por teste), listada em docs/PENDENCIAS.md. Próximo passo do roadmap: /gsd-discuss-phase 03 (Anti-abuso no booking público) — mas ele tem uma DECISÃO DO OWNER como pré-requisito: Upstash Redis vs. RPC atômica no Postgres para o rate limit."
 ---
@@ -123,7 +123,7 @@ Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code rev
 Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
 
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
-Last activity: 2026-07-23
+Last activity: 2026-07-27
 
 Progress: [██████████] 100% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
 
