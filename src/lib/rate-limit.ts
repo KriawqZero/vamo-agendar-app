@@ -41,10 +41,9 @@ import { reportarFalhaSilenciosaAguardando } from './observabilidade/reportar'
 /**
  * As quatro camadas do desenho da fase, declaradas de uma vez.
  *
- * Só `escrita_ip` tem limiter real neste plano (é o tracer); as demais devolvem
- * passe até os planos seguintes preencherem as instâncias. Declarar as quatro
- * agora evita duas edições do mesmo tipo e deixa explícito, para quem lê, que
- * camada ausente é PASSE — nunca bloqueio acidental.
+ * As TRÊS de escrita já têm limiter real (`escrita_ip` no 03-01, `escrita_telefone`
+ * e `teto_tenant` aqui); `leitura_ip` devolve passe até o plano 03-04 instanciá-la.
+ * Camada sem instância é PASSE — nunca bloqueio acidental.
  */
 export type CamadaRateLimit = 'escrita_ip' | 'escrita_telefone' | 'teto_tenant' | 'leitura_ip'
 
@@ -83,7 +82,13 @@ if (!redis && process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 
 /**
  * Limiters por camada. `Partial` de propósito: camada sem entrada aqui devolve
  * PASSE em `verificarLimite`, que é o estado correto tanto no no-op de dev
- * quanto nas três camadas ainda não implementadas.
+ * quanto na camada de leitura, ainda não implementada.
+ *
+ * As três camadas de escrita têm papéis DIFERENTES e é por isso que existem
+ * três, e não uma calibrada no meio: IP é o filtro folgado que barra o script
+ * ingênuo sem punir CGNAT; telefone é o filtro apertado que impede encher a
+ * agenda com um número só; o teto de tenant é o desacelerador do ataque que já
+ * derrotou os outros dois rotacionando IP e telefone.
  */
 const LIMITERS: Partial<Record<CamadaRateLimit, Ratelimit>> = redis
     ? {
@@ -91,7 +96,7 @@ const LIMITERS: Partial<Record<CamadaRateLimit, Ratelimit>> = redis
           // deliberadamente folgada: CGNAT de operadora móvel faz clientes
           // distintos dividirem o mesmo IP, e um salão que divulgou o link
           // recebe rajada legítima. IP é a camada mais frouxa das três — quem
-          // aperta de verdade é telefone + teto de tenant (plano 03-03).
+          // aperta de verdade são as duas abaixo.
           // `analytics` fica no default (false): o CONTEXT veda a flag da
           // Upstash como substituto do D-11, e ligá-la custaria comandos extras
           // no Redis mais a obrigação de aguardar o `pending`.
@@ -99,6 +104,52 @@ const LIMITERS: Partial<Record<CamadaRateLimit, Ratelimit>> = redis
               redis,
               limiter: Ratelimit.slidingWindow(10, '10 m'),
               prefix: 'rl:escrita:ip',
+              timeout: TIMEOUT_MS,
+          }),
+
+          // ⚠️ CONVERSÃO DO D-08, escrita aqui porque o número no código não é
+          // o número da decisão — e a diferença entre os dois é uma escolha,
+          // não um descuido.
+          //
+          // O D-08 diz "~3 agendamentos por hora" por telefone. `limit()` é
+          // check-then-consume: o token é gasto na TENTATIVA, antes de o
+          // agendamento existir, e `slidingWindow` não tem refund. O caso que a
+          // decisão protege — mãe agendando três serviços com o mesmo número —
+          // gasta 4 tokens se UMA das tentativas perder a corrida de
+          // double-booking e for repetida. Com 3, a terceira criança ficaria de
+          // fora por causa de uma colisão de horário.
+          //
+          // 5 tentativas/h é a implementação do "~3 agendamentos/h" com a margem
+          // que o "~" da decisão explicitamente autoriza. É constante de
+          // CALIBRAÇÃO, reversível: mexer aqui não muda nenhum contrato.
+          //
+          // A chave é telefone + tenant (composta em `verificarLimite`): o mesmo
+          // número agendando em dois estabelecimentos são dois baldes, senão a
+          // cliente fiel de dois salões seria barrada por usar o produto como
+          // esperado.
+          escrita_telefone: new Ratelimit({
+              redis,
+              limiter: Ratelimit.slidingWindow(5, '1 h'),
+              prefix: 'rl:escrita:tel',
+              timeout: TIMEOUT_MS,
+          }),
+
+          // Teto por tenant (D-09) — 30 criações por hora, somadas TODAS as
+          // origens. O papel dele é explicitamente parcial e está declarado
+          // assim no CONTEXT: não impede o enchimento total do horizonte de um
+          // tenant pequeno, DESACELERA o ataque distribuído (IPs e telefones
+          // rotativos, que derrotam as duas camadas acima) o bastante para a
+          // Issue do D-12 dar tempo de reação humana. O enchimento total é risco
+          // ACEITO pelo owner, desde que exista o detector.
+          //
+          // 30/h é folgado para o perfil real do produto (profissional autônomo
+          // e pequena empresa): um salão que criasse 30 agendamentos numa hora
+          // pelo link público estaria tendo um dia excepcional, e é justamente
+          // por isso que o estouro merece alarme em vez de silêncio.
+          teto_tenant: new Ratelimit({
+              redis,
+              limiter: Ratelimit.slidingWindow(30, '1 h'),
+              prefix: 'rl:escrita:tenant',
               timeout: TIMEOUT_MS,
           }),
       }
