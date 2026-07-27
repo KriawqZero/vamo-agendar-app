@@ -49,8 +49,11 @@ describe('Sentry Logs & logOperacional Sanitização', () => {
             etapa: 'confirmacao',
             motivo: 'http_500',
             statusCode: 500,
-            tenantHash: 'hash_123',
-            agendamentoHash: 'hash_456',
+            // Fixtures com FORMA de hash (16 hex). Antes eram `hash_123` /
+            // `hash_456`, que nenhum hash do projeto produz — e desde o WR-07 a
+            // sanitização valida a forma, não só o nome da chave.
+            tenantHash: 'a1b2c3d4e5f60718',
+            agendamentoHash: '0f1e2d3c4b5a6978',
             nomeCliente: 'PII_TESTE_MARIA',
             telefone: '5567999998888',
             email: 'cliente@pii-teste.com',
@@ -66,8 +69,8 @@ describe('Sentry Logs & logOperacional Sanitização', () => {
             etapa: 'confirmacao',
             motivo: 'http_500',
             statusCode: 500,
-            tenantHash: 'hash_123',
-            agendamentoHash: 'hash_456',
+            tenantHash: 'a1b2c3d4e5f60718',
+            agendamentoHash: '0f1e2d3c4b5a6978',
         })
 
         // Asserções negativas estritas de PII
@@ -131,9 +134,9 @@ describe('Allowlist de rate limit e códigos novos (03-02, D-11)', () => {
     })
 
     it('preserva os atributos novos de rate limit (`camada` e `chaveHash`)', () => {
-        const limpo = sanitizarAtributosLog({ camada: 'escrita_ip', chaveHash: 'abc123' })
+        const limpo = sanitizarAtributosLog({ camada: 'escrita_ip', chaveHash: 'abc1230000000000' })
 
-        expect(limpo).toEqual({ camada: 'escrita_ip', chaveHash: 'abc123' })
+        expect(limpo).toEqual({ camada: 'escrita_ip', chaveHash: 'abc1230000000000' })
     })
 
     it('NÃO deixa passar telefone, IP nem orgId — a allowlist continua FECHADA', () => {
@@ -141,13 +144,13 @@ describe('Allowlist de rate limit e códigos novos (03-02, D-11)', () => {
         // separa por CHAVE, e não simplesmente descarta o objeto inteiro.
         const limpo = sanitizarAtributosLog({
             camada: 'escrita_ip',
-            chaveHash: 'abc123',
+            chaveHash: 'abc1230000000000',
             telefone: '5567999998888',
             ip: '203.0.113.7',
             orgId: 'org_PII_TESTE',
         })
 
-        expect(limpo).toEqual({ camada: 'escrita_ip', chaveHash: 'abc123' })
+        expect(limpo).toEqual({ camada: 'escrita_ip', chaveHash: 'abc1230000000000' })
         expect(limpo).not.toHaveProperty('telefone')
         expect(limpo).not.toHaveProperty('ip')
         expect(limpo).not.toHaveProperty('orgId')
@@ -156,6 +159,34 @@ describe('Allowlist de rate limit e códigos novos (03-02, D-11)', () => {
         expect(comoTexto).not.toContain('5567999998888')
         expect(comoTexto).not.toContain('203.0.113.7')
         expect(comoTexto).not.toContain('org_PII_TESTE')
+    })
+
+    it('descarta campo de hash cujo VALOR não tem forma de hash (WR-07)', () => {
+        // ⚠️ A barreira antiga filtrava por CHAVE, então `chaveHash` e
+        // `tenantHash` aceitavam qualquer string — inclusive um IP ou um
+        // telefone cru, se um chamador futuro esquecesse de hashear. O
+        // invariante nunca-PII neste caminho era convenção de chamador, apesar
+        // de o JSDoc do campo afirmar o contrário. Agora é estrutura.
+        const limpo = sanitizarAtributosLog({
+            camada: 'escrita_ip',
+            chaveHash: '203.0.113.7',
+            tenantHash: 'org_PII_TESTE',
+            agendamentoHash: 'nao-e-hash',
+        })
+
+        expect(limpo).toEqual({ camada: 'escrita_ip' })
+
+        const comoTexto = JSON.stringify(limpo)
+        expect(comoTexto).not.toContain('203.0.113.7')
+        expect(comoTexto).not.toContain('org_PII_TESTE')
+    })
+
+    it('recusa hash com tamanho ou alfabeto errados', () => {
+        // Curto, longo e com maiúscula: nenhum é o que `hashComSal` produz, e
+        // aceitar "quase certo" reabriria a porta por descuido de chamador.
+        expect(sanitizarAtributosLog({ chaveHash: 'abc123' })).toBeUndefined()
+        expect(sanitizarAtributosLog({ chaveHash: 'a1b2c3d4e5f607189' })).toBeUndefined()
+        expect(sanitizarAtributosLog({ chaveHash: 'A1B2C3D4E5F60718' })).toBeUndefined()
     })
 
     it('declara frase amigável em pt-BR para os códigos de bloqueio e de honeypot', () => {
@@ -179,7 +210,7 @@ describe('logOperacionalAguardando — entrega garantida antes do return (Pitfal
         await logOperacionalAguardando.warn('ratelimit.bloqueio', {
             fluxo: 'booking_publico',
             camada: 'escrita_ip',
-            chaveHash: 'abc123',
+            chaveHash: 'abc1230000000000',
         })
 
         expect(sentryLoggerMock.warn).toHaveBeenCalledWith(
@@ -188,7 +219,7 @@ describe('logOperacionalAguardando — entrega garantida antes do return (Pitfal
                 codigo: 'ratelimit.bloqueio',
                 fluxo: 'booking_publico',
                 camada: 'escrita_ip',
-                chaveHash: 'abc123',
+                chaveHash: 'abc1230000000000',
             },
         )
         // O `flush` é a diferença INTEIRA entre esta variante e a
