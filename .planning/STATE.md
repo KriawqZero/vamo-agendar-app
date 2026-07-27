@@ -4,8 +4,8 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 03
 current_phase_name: anti-abuso-no-booking-p-blico
-status: complete
-stopped_at: Completed 03-06-PLAN.md — Phase 03 encerrada em código
+status: awaiting_uat
+stopped_at: "Phase 03 executada (6/6), revisada (4 CRITICAL + 9 WARNING corrigidos) e verificada — veredito human_needed, 7 itens em 03-UAT.md. NÃO marcada completa."
 last_updated: "2026-07-27T19:30:29.997Z"
 last_activity: 2026-07-27
 progress:
@@ -30,12 +30,40 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 Phase: 03 (anti-abuso-no-booking-p-blico) — **6/6 planos executados; fase encerrada em CÓDIGO, não em EFEITO**
 Branch: `gsd/phase-03-anti-abuso-no-booking-p-blico`
 Concluídos: **03-01** (camada de IP do rate limit), **03-02** (telemetria do bloqueio — Sentry Log aguardado + PostHog), **03-03** (camadas de telefone 5/1h e teto por tenant 30/1h + Issue `ratelimit:teto_tenant_atingido`), **03-04** (teto de leitura 60/1min em `obterSlotsPublicos` + as duas vars do Upstash na lista de obrigatórias de produção), **03-05** (honeypot com sucesso falso) e **03-06** (fechamento: decisão D-01 documentada, PENDENCIAS e gate da fase)
-Próximo: verificação da fase — mas ver a ressalva abaixo antes de medir qualquer Success Criterion
+Próximo: **`/gsd-verify-work 03`** — 7 itens de UAT persistidos em `03-UAT.md`. A fase NÃO
+está marcada completa; o veredito do verificador foi `human_needed`.
+
+### Depois dos 6 planos veio um ciclo de review que mudou o código materialmente
+
+Não pule isto ao ler os seis SUMMARYs: **eles descrevem o estado PRÉ-fix.** O code review
+(`03-REVIEW.md`) achou 4 CRITICAL + 9 WARNING, todos corrigidos em 11 commits
+(`c0ca2ce`..`25997ce`, relatório em `03-REVIEW-FIX.md`). Quatro falso-verdes reais caíram
+ali: `teto_tenant` contava TENTATIVAS (30 requisições com `servicoId` lixo negavam
+agendamento a um tenant inteiro por uma hora, sem criar nada); o balde `'desconhecido'`
+somava todos os visitantes de todos os tenants quando o header faltava; o `Sentry.flush`
+aguardado no caminho de rejeição fazia rejeitar custar mais que aceitar, com o honeypot
+(endpoint sem teto) disparando um flush por requisição; e a allowlist do log validava
+CHAVE e nunca VALOR — `chaveHash` aceitava um telefone cru. Deltas de comportamento:
+`ipDoVisitante` prefere `x-real-ip` e devolve `null` (não balde) quando indeterminável;
+`teto_tenant` conta criações via `verificarLimiteSemConsumir`; o flush mora atrás do
+`after()` do Next.
+
+### D-10 REVISADO pelo owner em 2026-07-27 (ratificação pós-execução)
+
+O fix do WR-03 (`c6c43c2`) trocou a copy do bloqueio de LEITURA de `COPY_ERRO_SLOTS` para
+`COPY_MUITAS_TENTATIVAS` e pôs contagem regressiva no botão — contra a letra do D-10 e dos
+must_haves de 03-01/03-04, **sem** ratificação, e com a asserção de teste reescrita junto
+(a suíte verde parou de sinalizar). O verificador reproduziu como gap; o owner **ratificou**
+o desvio. Registro no formato do D-06: texto original do D-10 intacto em `03-CONTEXT.md`
+com a revisão anotada ao lado, must_haves marcados SUPERSEDIDO, e `override_log` no
+frontmatter do `03-VERIFICATION.md` com os três custos aceitos. Reversível por
+`git revert c6c43c2`. **Lição registrada:** o gap não foi achado por teste — foi achado
+pelo verificador lendo o must_have contra o código.
 
 🚩 **ABU-01, ABU-02 e ABU-03 seguem ABERTOS, por decisão do 03-06.** A fase entrega o
-código inteiro e provado (gate sobre o HEAD final: `pnpm lint` exit 0, `pnpm test` **353
-testes em 22 arquivos** — baseline pré-fase 280/20 —, `pnpm build` exit 0 com 14 rotas
-**sem** as env do Upstash no ambiente, `npx tsc --noEmit` exit 0). O que ela **não**
+código inteiro e provado (gate sobre o HEAD final `46569ea`: `pnpm lint` exit 0,
+`pnpm test` **381 testes em 23 arquivos** — baseline pré-fase 280/20 —, `pnpm build` exit 0
+com 14 rotas **sem** as env do Upstash no ambiente, `npx tsc --noEmit` exit 0). O que ela **não**
 entrega é proteção ativa: sem as credenciais do Upstash as quatro camadas rodam em no-op.
 Marcar qualquer um dos três seria afirmar comportamento de execução que ninguém mediu —
 o falso-verde que a Phase 01 reprovou quatro vezes. A razão de cada um está escrita na
