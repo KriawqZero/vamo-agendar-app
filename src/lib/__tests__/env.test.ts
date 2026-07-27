@@ -53,6 +53,39 @@ describe('validarEnvObrigatorio', () => {
         for (const nome of ausentes) expect(mensagem).toContain(nome)
     })
 
+    it('em produção sem as DUAS do Upstash lança nomeando ambas na mesma mensagem', () => {
+        vi.stubEnv('NODE_ENV', 'production')
+        const ausentes = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN']
+        preencherTodas(ausentes)
+        for (const nome of ausentes) vi.stubEnv(nome, '')
+
+        let capturado: unknown
+        try {
+            validarEnvObrigatorio()
+        } catch (err) {
+            capturado = err
+        }
+
+        expect(capturado).toBeInstanceOf(Error)
+        const mensagem = (capturado as Error).message
+        // As duas de uma vez, junto de qualquer outra ausente: descobrir uma
+        // variável por deploy é o modo de falha que a lista inteira evita.
+        for (const nome of ausentes) expect(mensagem).toContain(nome)
+    })
+
+    it('fora de produção, ausência das do Upstash NÃO lança (no-op declarado — D-04)', () => {
+        vi.stubEnv('NODE_ENV', 'development')
+        preencherTodas(['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'])
+        vi.stubEnv('UPSTASH_REDIS_REST_URL', '')
+        vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', '')
+
+        // Dev roda sem Upstash de propósito (não consumir a janela de um
+        // database compartilhado com produção): o rate limit fica em no-op
+        // com aviso de console, e isso é o comportamento desejado — não pode
+        // derrubar o boot local.
+        expect(() => validarEnvObrigatorio()).not.toThrow()
+    })
+
     it('string só com espaço em branco conta como ausente', () => {
         vi.stubEnv('NODE_ENV', 'production')
         preencherTodas()
@@ -76,9 +109,9 @@ describe('validarEnvObrigatorio', () => {
 })
 
 describe('OBRIGATORIAS_EM_PRODUCAO', () => {
-    it('tem os quatorze nomes acordados, sem duplicata', () => {
-        expect(OBRIGATORIAS_EM_PRODUCAO).toHaveLength(14)
-        expect(new Set(OBRIGATORIAS_EM_PRODUCAO).size).toBe(14)
+    it('tem os dezesseis nomes acordados, sem duplicata', () => {
+        expect(OBRIGATORIAS_EM_PRODUCAO).toHaveLength(16)
+        expect(new Set(OBRIGATORIAS_EM_PRODUCAO).size).toBe(16)
     })
 
     it('exige as DUAS chaves de assinatura do QStash (SEG-05)', () => {
@@ -86,6 +119,16 @@ describe('OBRIGATORIAS_EM_PRODUCAO', () => {
         // sem janela de quebra, e sem ela o webhook lança em runtime.
         expect(OBRIGATORIAS_EM_PRODUCAO).toContain('QSTASH_CURRENT_SIGNING_KEY')
         expect(OBRIGATORIAS_EM_PRODUCAO).toContain('QSTASH_NEXT_SIGNING_KEY')
+    })
+
+    it('exige as DUAS credenciais do Upstash Redis (Phase 3, D-04)', () => {
+        // Critério de entrada da lista, satisfeito da forma mais literal
+        // possível: sem elas o rate limit inteiro entra em NO-OP silencioso —
+        // toda requisição passa, nenhum erro aparece, e o produto sobe em
+        // produção anunciando uma proteção que não existe. É exatamente o
+        // falso-verde que esta lista existe para matar.
+        expect(OBRIGATORIAS_EM_PRODUCAO).toContain('UPSTASH_REDIS_REST_URL')
+        expect(OBRIGATORIAS_EM_PRODUCAO).toContain('UPSTASH_REDIS_REST_TOKEN')
     })
 
     it('não inclui as chaves do Clerk (falham alto e imediato por conta própria)', () => {
