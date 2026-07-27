@@ -100,8 +100,19 @@ describe('campo armadilha do booking público — atributos de invisibilidade', 
     })
 
     it('oculta por POSICIONAMENTO off-screen, não por supressão de renderização', () => {
-        // Positivo: o wrapper tira o campo da tela empurrando-o para fora dela.
-        expect(BLOCO).toMatch(/-left-\[\d{4,}px\]/)
+        // Positivo: o wrapper tira o campo da tela empurrando-o para fora dela,
+        // por `style` INLINE (WR-06). A asserção mudou junto com o código, e a
+        // razão está no comentário do componente: `-left-[9999px]` é valor
+        // arbitrário do Tailwind e precisa ser GERADO — se a classe deixasse de
+        // ser emitida, o campo ficava visível no formulário e TODAS as asserções
+        // desta suíte continuavam passando, porque a string seguia no fonte.
+        // Style inline não depende de geração, então o modo de falha some.
+        expect(BLOCO).toMatch(/position:\s*'absolute'/)
+        expect(BLOCO).toMatch(/left:\s*'-\d{4,}px'/)
+
+        // Negativo do que a mudança NÃO pode ter reintroduzido: a ocultação
+        // continua sem depender de classe utilitária alguma.
+        expect(BLOCO).not.toMatch(/-left-\[\d+px\]/)
 
         // Negativos: parte dos bots ignora campo suprimido — com `display:none`
         // ou `hidden` a armadilha continuaria invisível para pessoas E para os

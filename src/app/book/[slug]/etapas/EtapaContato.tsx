@@ -120,12 +120,29 @@ export default function EtapaContato({
                  * - Ocultação por POSICIONAMENTO off-screen, JAMAIS por
                  *   `display:none` ou pelo atributo `hidden`: parte dos bots pula
                  *   campo suprimido, e aí a armadilha não pegaria ninguém.
+                 * - ⚠️ O posicionamento é `style` INLINE, e não classe do
+                 *   Tailwind (WR-06). `-left-[9999px]` é valor arbitrário, o que
+                 *   significa que a classe precisa ser GERADA: se ela deixar de
+                 *   ser emitida (mudança de `content`, o bloco migrar para um
+                 *   arquivo fora do scan, um utilitário conflitante ganhar
+                 *   precedência), o resultado é um `<input type="text">` vazio e
+                 *   VISÍVEL no meio do formulário de contato. Style inline não
+                 *   depende de geração nenhuma e continua sendo posicionamento,
+                 *   não supressão — o modo de falha simplesmente deixa de
+                 *   existir, o que é mais barato que testá-lo.
                  * - Campo NÃO CONTROLADO (sem estado React): não participa do
                  *   fluxo de dados legítimo, só viaja no FormData do submit.
                  */}
                 <div
                     aria-hidden="true"
-                    className="absolute -left-[9999px] top-0 h-px w-px overflow-hidden"
+                    style={{
+                        position: 'absolute',
+                        left: '-9999px',
+                        top: 0,
+                        height: 1,
+                        width: 1,
+                        overflow: 'hidden',
+                    }}
                 >
                     <input
                         name="info_adicional"
