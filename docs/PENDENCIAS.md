@@ -1057,6 +1057,25 @@ autofill proprietária)
       tela confirmou. Taxa incompatível com tráfego de bot esperado significa que o campo
       precisa mudar (nome, atributos ou a própria armadilha).
 
+**(d) Qual header de IP a Railway realmente entrega — medição, não crença**
+(aberto pelo CR-01 da revisão de código da fase, 2026-07-27)
+
+A extração de IP passou a preferir `x-real-ip` e, no fallback, a entrada **mais à direita**
+de `x-forwarded-for` — nunca a primeira, que é texto do cliente quando o proxy apenas anexa
+em vez de descartar. A ordem escolhida é estritamente mais difícil de forjar que a anterior,
+mas **continua sendo inferência**: a fonte da garantia original era fórum oficial, não doc
+formal, e duas das quatro camadas dependem dela.
+
+- [ ] Contra o deploy, mandar `curl -H 'X-Forwarded-For: 1.2.3.4' -H 'X-Real-IP: 5.6.7.8'` e
+      conferir **qual valor o app enxerga** (basta provocar um bloqueio e comparar o
+      `chaveHash` do Sentry Log com o hash de cada candidato). Se a Railway não puser
+      `x-real-ip`, ou se o XFF chegar com mais de um hop anexado pela própria plataforma, a
+      camada de IP precisa ser recalibrada — no segundo caso, a entrada mais à direita seria
+      o IP interno do edge e somaria visitantes distintos num balde só.
+- [ ] Conferir que a Issue `ratelimit:ip_indeterminavel` **não** aparece em produção. Se
+      aparecer, as camadas por IP estão em PASSE (fail-open deliberado do CR-04) e o
+      problema é de infraestrutura, não de tráfego — o header sumiu.
+
 ### 🔑 Rotação das signing keys do QStash — ação do owner, prazo 2026-08-05
 
 **Só o owner fecha este item.** A rotação acontece no painel da Upstash; nenhum

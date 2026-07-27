@@ -952,11 +952,18 @@ export async function obterDadosBookingPublico(slug: string) {
     // para a confiança no produto. A função de LEITURA que ganhou teto é
     // `obterSlotsPublicos`, que tem canal de erro discriminado.
     //
-    // O custo de deixá-la aberta é baixo e conhecido: uma requisição por
-    // VISITA (o page load), contra dezenas de consultas de grade na mesma
-    // sessão. O vetor real de varredura é a grade, não a capa da página.
-    // Desvio do D-06 ratificado pelo owner em 2026-07-27; reavaliação em fase
-    // futura se o page load virar alvo medido.
+    // ⚠️ O argumento de UX acima sustenta a decisão sozinho, e é só ele. O
+    // argumento de CUSTO que acompanhava esta decisão foi RETIRADO (WR-08): ele
+    // dizia "uma requisição por VISITA (o page load), contra dezenas de
+    // consultas de grade na mesma sessão", e essa contagem assume comportamento
+    // de NAVEGADOR — precisamente o que o modelo de ameaça rejeita em todo o
+    // resto deste arquivo ("qualquer um lê o id da Server Action no bundle e
+    // chama com o payload que quiser"). Um script chama esta action num laço:
+    // quatro consultas com cliente privilegiado por requisição, sem teto algum.
+    //
+    // Risco residual nomeado e medido pelo eixo certo (carga no Supabase, não
+    // número de page loads). Desvio do D-06 ratificado pelo owner em
+    // 2026-07-27; reavaliação em fase futura se o page load virar alvo medido.
     //
     // Leitura pública inteira no cliente PRIVILEGIADO (a role anon perdeu a
     // Data API nesta fase). Com o RLS fora do caminho, o filtro por tenant e a

@@ -70,34 +70,72 @@ Quatro camadas, cada uma com um vetor de ataque distinto:
 |---|---|---|---|
 | `escrita_ip` | 10 / 10 min | `criarAgendamentoPublico` | folgada de propósito — CGNAT de operadora móvel faz clientes reais dividirem IP |
 | `escrita_telefone` | 5 / 1 h por tenant | `criarAgendamentoPublico` | a mais apertada; acomoda o caso família e barra ench-agenda com número único |
-| `teto_tenant` | 30 / 1 h | `criarAgendamentoPublico` | **desacelera** o ataque distribuído (IP e telefone rotativos) para dar tempo de reação humana; não o impede |
+| `teto_tenant` | 30 **criações** / 1 h | `criarAgendamentoPublico` | **desacelera** o ataque distribuído (IP e telefone rotativos) para dar tempo de reação humana; não o impede |
 | `leitura_ip` | 60 / 1 min | `obterSlotsPublicos` | teto folgado contra martelar a grade; quem 60/min barra é script que não lê tela |
+
+⚠️ **"Criações" no `teto_tenant` é literal, e a distinção não é detalhe.** `limit()` é
+check-then-consume: usar a mesma chamada para decidir e para contar faria a camada contar
+TENTATIVAS, e aí 30 requisições com `servicoId` inexistente negariam agendamento a um
+tenant inteiro por uma hora — o atacante bloquearia a agenda sem criar nada, que é o
+inverso do risco aceito no D-09. Por isso, e só nesta camada, a decisão vem de
+`verificarLimiteSemConsumir` (leitura via `getRemaining`, com teto de latência próprio
+porque a lib não aplica o dela ao `getRemaining`) e o token é gasto **depois** do INSERT
+bem-sucedido. As outras três consomem na tentativa, que é o comportamento correto delas.
 
 Propriedades que valem para as quatro:
 
-- **Chave pseudonimizada dentro do próprio módulo** (sha256 + `ANALYTICS_TENANT_SALT`):
-  IP e telefone são dado pessoal e **nunca** entram crus no store do fornecedor terceiro.
-  O chamador passa o valor cru e não tem como esquecer de hashear.
-- **Fail-open com teto de ~500 ms.** Redis indisponível ou lento **libera** a requisição e
-  reporta `ratelimit:redis_unavailable` (Issue sintética, variante aguardada). Fornecedor
-  fora do ar nunca derruba o booking — mesma assimetria do resto do caminho público:
-  permissivo na disponibilidade.
+- **Chave pseudonimizada dentro do próprio módulo** (`hashComSal`, sha256 +
+  `ANALYTICS_TENANT_SALT` + **domínio**): IP e telefone são dado pessoal e **nunca** entram
+  crus no store do fornecedor terceiro. O chamador passa o valor cru e não tem como
+  esquecer de hashear. O domínio (`ratelimit`) é o que impede a chave do contador de
+  coincidir com o `tenantHash` publicado na telemetria — enquanto as duas funções eram
+  idênticas, ler um evento do Sentry bastava para apontar o balde no Redis. Salt ausente
+  abre Issue (`hash:sem_salt`) uma vez por processo, em vez de degradar em silêncio.
+- **IP do visitante:** `x-real-ip` primeiro (valor único posto pelo proxy, que o cliente
+  não consegue estender) e, como fallback, a entrada **mais à direita** de
+  `x-forwarded-for` — nunca a primeira, que é texto do cliente quando o proxy apenas anexa.
+  Valor sem forma de IP é recusado; IP indeterminável devolve `null`, a camada vira PASSE e
+  o estado abre Issue (`ratelimit:ip_indeterminavel`) uma vez por processo. Um balde
+  compartilhado ali transformaria header ausente em queda total do booking público.
+- **Fail-open com teto de ~500 ms, e o teto é real.** Redis indisponível ou lento **libera**
+  a requisição e reporta `ratelimit:redis_unavailable` (Issue sintética, entrega garantida
+  por `Sentry.flush`, mas emitida **depois da resposta** via `after()` e no máximo uma vez
+  por minuto por camada). Aguardar o flush em linha somava até 2 s por camada ao teto
+  declarado — pior caso ~5 s num agendamento legítimo durante a queda do fornecedor, que é
+  exatamente o cenário que o fail-open existe para tornar indolor.
 - **Bloqueio é condição esperada, não incidente:** vai para Sentry Log (`ratelimit.bloqueio`)
   + PostHog (`booking_rate_limited`), sem Issue. A única exceção é o estouro do teto por
   tenant (`ratelimit:teto_tenant_atingido`) — o sinal raro de ataque real em andamento.
+  Toda emissão do caminho de rejeição sai **depois da resposta** e com throttle por
+  processo; sem isso, rejeitar custava mais que aceitar exatamente sob flood, e quem
+  escolhia o volume de eventos era o atacante. A **taxa do PostHog não é amostrada**: é ela
+  que responde "quanto está sendo barrado", e detector amostrado não detecta.
 - **A resposta ao bloqueio é honesta** (`muitas_tentativas` + copy amigável), nunca sucesso
   falso: sob CGNAT a certeza de bot é baixa, e pessoa real achando que agendou sem ter
-  agendado é o pior desfecho possível para a confiança no produto.
+  agendado é o pior desfecho possível para a confiança no produto. Vale nas **duas**
+  superfícies — na caixa de horários a copy também é a de rate limit, e o botão "Tentar de
+  novo" fica em espera por alguns segundos em vez de convidar a queimar outro token.
 
 `obterDadosBookingPublico` fica **fora** do teto de leitura, de propósito: seu contrato é
 `null → notFound()`, então bloqueio viraria "estabelecimento não existe" para visitante
-legítimo — uma defesa pior que a ausência dela. A decisão está escrita no próprio código e
-travada por teste.
+legítimo — uma defesa pior que a ausência dela. É o argumento de **UX** que sustenta a
+decisão, e ele basta sozinho.
+
+O argumento de **custo** que acompanhava essa decisão ("uma requisição por visita, contra
+dezenas de consultas de grade na mesma sessão") **não** se sustenta e foi retirado: ele
+assume comportamento de navegador, que é precisamente o que o modelo de ameaça rejeita em
+todo o resto — um script chama a action num laço e paga quatro consultas com cliente
+privilegiado por requisição, sem teto algum. Fica registrado como **risco residual medido
+pelo eixo certo** (carga no Supabase, não número de page loads), a reavaliar se o page load
+virar alvo medido.
 
 ### Honeypot
 
 Campo armadilha `info_adicional` no formulário público, oculto por **posicionamento
-off-screen** (nunca `display:none`/`hidden`, que parte dos bots pula), fora da tabulação,
+off-screen em `style` inline** (nunca `display:none`/`hidden`, que parte dos bots pula; e
+inline em vez de classe utilitária porque valor arbitrário do Tailwind precisa ser GERADO —
+classe não emitida deixaria o campo visível no formulário sem nenhum sintoma), fora da
+tabulação,
 não anunciado por leitor de tela e com nome fora do vocabulário que as heurísticas de
 autofill reconhecem. Quem o preenche recebe **sucesso falso** com zero I/O — sem
 agendamento, sem cliente, sem WhatsApp, sem lembrete. Bot que recebe erro tenta de novo;
