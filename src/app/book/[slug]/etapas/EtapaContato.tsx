@@ -93,6 +93,49 @@ export default function EtapaContato({
                         O estabelecimento usa este número para confirmar seu horário.
                     </p>
                 </div>
+
+                {/*
+                 * CAMPO ARMADILHA (honeypot) — defesa complementar ao rate limit
+                 * da Phase 3. Bot genérico de formulário preenche tudo o que
+                 * encontra; ao preencher este campo ele se identifica sozinho, e
+                 * `criarAgendamentoPublico` devolve sucesso PLAUSÍVEL sem criar
+                 * nada. Bot que recebe erro tenta de novo; bot que recebe sucesso
+                 * vai embora — por isso a resposta é sucesso falso aqui, e erro
+                 * honesto no rate limit (D-07).
+                 *
+                 * Cada atributo existe por um motivo, e nenhum é decorativo:
+                 *
+                 * - `name="info_adicional"`: nome deliberadamente NEUTRO e fora
+                 *   do vocabulário de autofill (nada de website, url, address,
+                 *   phone2 — as heurísticas do navegador casam por
+                 *   name/autocomplete). Autofill preenchendo este campo é PESSOA
+                 *   REAL recebendo sucesso falso, o pior desfecho possível. O
+                 *   nome também não denuncia a armadilha no payload nem no
+                 *   bundle: quem lê o fonte compilado não a reconhece pelo nome.
+                 * - `autoComplete="off"`: a segunda trava contra o autofill.
+                 * - `tabIndex={-1}`: fora da ordem de tabulação — quem navega por
+                 *   teclado nunca cai aqui.
+                 * - `aria-hidden` (wrapper e input): leitor de tela não anuncia,
+                 *   e não há `<label>` associado.
+                 * - Ocultação por POSICIONAMENTO off-screen, JAMAIS por
+                 *   `display:none` ou pelo atributo `hidden`: parte dos bots pula
+                 *   campo suprimido, e aí a armadilha não pegaria ninguém.
+                 * - Campo NÃO CONTROLADO (sem estado React): não participa do
+                 *   fluxo de dados legítimo, só viaja no FormData do submit.
+                 */}
+                <div
+                    aria-hidden="true"
+                    className="absolute -left-[9999px] top-0 h-px w-px overflow-hidden"
+                >
+                    <input
+                        name="info_adicional"
+                        type="text"
+                        defaultValue=""
+                        autoComplete="off"
+                        tabIndex={-1}
+                        aria-hidden="true"
+                    />
+                </div>
             </form>
         </section>
     )

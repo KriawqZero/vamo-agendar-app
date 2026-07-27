@@ -340,6 +340,13 @@ interface AgendamentoPublicoParams {
     clienteNome: string
     clienteTelefone: string // WhatsApp
     clienteEmail?: string
+    /**
+     * Campo ARMADILHA (honeypot) do formulário público — nome deliberadamente
+     * neutro no fio, para que nem o payload nem o bundle denunciem a armadilha.
+     * Pessoa real nunca o preenche (é invisível, fora da tabulação e não
+     * anunciado por leitor de tela); vindo preenchido, quem enviou é bot.
+     */
+    infoAdicional?: string
 }
 
 /**

@@ -260,6 +260,13 @@ export default function BookingApp({
             }
             const nomeInformado = String(formData.get('nome') ?? '').trim()
             const telefoneLimpo = String(formData.get('telefone') ?? '').replace(/\D/g, '')
+            // Campo ARMADILHA do EtapaContato: invisível, fora da tabulação e não
+            // anunciado por leitor de tela — pessoa real nunca o preenche. É lido
+            // aqui SEM validação e SEM interferir nas validações abaixo (o cliente
+            // legítimo segue exatamente o mesmo caminho de antes); quem decide o
+            // que fazer com ele é a action, que devolve sucesso falso quando vem
+            // preenchido. Nome neutro dos dois lados do fio, de propósito.
+            const infoAdicional = String(formData.get('info_adicional') ?? '')
             if (!nomeInformado) {
                 setErroEnvio('Informe seu nome.')
                 return null
@@ -275,6 +282,7 @@ export default function BookingApp({
                     dataHora: slotSelecionado.datetime,
                     clienteNome: nomeInformado,
                     clienteTelefone: telefoneLimpo,
+                    infoAdicional,
                 })
                 if (res.ok) {
                     setAgendamentoCriado(res.agendamento)
