@@ -27,9 +27,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // por isso não quebra a recarga por caso feita com `import()` dinâmico.
 import type { CamadaRateLimit } from '@/lib/rate-limit'
 
-const { limitMock, reportarMock, reportarSincronoMock, headersMock, configsCriadas } = vi.hoisted(
-    () => ({
+const {
+    limitMock,
+    getRemainingMock,
+    reportarMock,
+    reportarSincronoMock,
+    headersMock,
+    configsCriadas,
+} = vi.hoisted(() => ({
         limitMock: vi.fn(),
+        getRemainingMock: vi.fn(),
         reportarMock: vi.fn(async () => {}),
         reportarSincronoMock: vi.fn(),
         headersMock: vi.fn(),
@@ -63,6 +70,10 @@ vi.mock('@upstash/ratelimit', () => ({
         // camadas, sem isto "consultou o Redis" e "consultou a camada certa"
         // seriam indistinguíveis.
         limit = (chave: string) => limitMock(chave, this.config.prefix)
+        // Leitura SEM consumo (CR-02). É mock separado de propósito: "consultou
+        // o orçamento" e "gastou um token" precisam ser distinguíveis, senão a
+        // prova central do CR-02 não existe.
+        getRemaining = (chave: string) => getRemainingMock(chave, this.config.prefix)
     },
 }))
 
@@ -106,6 +117,7 @@ async function carregarModulo(comCredenciais: boolean) {
 
 beforeEach(() => {
     limitMock.mockReset()
+    getRemainingMock.mockReset()
     reportarMock.mockReset()
     reportarSincronoMock.mockReset()
     headersMock.mockReset()
@@ -344,6 +356,95 @@ describe('camada teto_tenant — desacelerador do ataque distribuído (D-09)', (
             camada: 'teto_tenant',
             motivo: 'timeout',
         })
+    })
+})
+
+describe('verificarLimiteSemConsumir — decidir sem gastar token (CR-02)', () => {
+    it('CONSULTA o orçamento sem gastar token nenhum', async () => {
+        const { verificarLimiteSemConsumir, hashChaveRateLimit } = await carregarModulo(true)
+        getRemainingMock.mockResolvedValue({ remaining: 12, reset: 0, limit: 30 })
+
+        await expect(verificarLimiteSemConsumir('teto_tenant', [TENANT_FIXTURE])).resolves.toBe(
+            true,
+        )
+
+        // A prova INTEIRA do CR-02 está nestas duas linhas: consultou o
+        // orçamento e NÃO chamou `limit()`. Enquanto a decisão vinha de
+        // `limit()`, toda tentativa gastava uma das 30 criações da hora.
+        expect(getRemainingMock).toHaveBeenCalledWith(
+            hashChaveRateLimit(TENANT_FIXTURE),
+            'rl:escrita:tenant',
+        )
+        expect(limitMock).not.toHaveBeenCalled()
+    })
+
+    it('BLOQUEIA quando o orçamento zerou', async () => {
+        const { verificarLimiteSemConsumir } = await carregarModulo(true)
+        getRemainingMock.mockResolvedValue({ remaining: 0, reset: 0, limit: 30 })
+
+        await expect(verificarLimiteSemConsumir('teto_tenant', [TENANT_FIXTURE])).resolves.toBe(
+            false,
+        )
+        // Bloqueio continua sendo decisão pura: a Issue do D-12 é da AÇÃO.
+        expect(reportarMock).not.toHaveBeenCalled()
+    })
+
+    it('a chave enviada continua pseudonimizada (contrato 3)', async () => {
+        const { verificarLimiteSemConsumir } = await carregarModulo(true)
+        getRemainingMock.mockResolvedValue({ remaining: 5, reset: 0, limit: 30 })
+
+        await verificarLimiteSemConsumir('teto_tenant', [TENANT_FIXTURE])
+
+        expect(String(getRemainingMock.mock.calls[0]?.[0] ?? '')).not.toContain(TENANT_FIXTURE)
+    })
+
+    it('PASSA no no-op e na chave que não se forma', async () => {
+        const { verificarLimiteSemConsumir: semCredenciais } = await carregarModulo(false)
+        await expect(semCredenciais('teto_tenant', [TENANT_FIXTURE])).resolves.toBe(true)
+
+        const { verificarLimiteSemConsumir } = await carregarModulo(true)
+        await expect(verificarLimiteSemConsumir('teto_tenant', [''])).resolves.toBe(true)
+        await expect(verificarLimiteSemConsumir('teto_tenant', [null])).resolves.toBe(true)
+
+        expect(getRemainingMock).not.toHaveBeenCalled()
+    })
+
+    it('PASSA com Issue sintética quando o fornecedor REJEITA (fail-open, D-02)', async () => {
+        const { verificarLimiteSemConsumir } = await carregarModulo(true)
+        getRemainingMock.mockRejectedValue(new Error('fetch failed'))
+
+        await expect(verificarLimiteSemConsumir('teto_tenant', [TENANT_FIXTURE])).resolves.toBe(
+            true,
+        )
+        expect(reportarMock).toHaveBeenCalledWith('ratelimit:redis_unavailable', {
+            fluxo: 'rate_limit',
+            camada: 'teto_tenant',
+            motivo: 'erro',
+        })
+    })
+
+    it('PASSA por TIMEOUT próprio — `getRemaining` não tem o teto nativo da lib', async () => {
+        // Medido no fonte instalado: `applyTimeout` embrulha só o `limit()`.
+        // Sem o `Promise.race` local, esta seria a única consulta do módulo sem
+        // teto de latência — numa fase cujo argumento é que meio segundo de
+        // espera extra já é inaceitável.
+        vi.useFakeTimers()
+        try {
+            const { verificarLimiteSemConsumir } = await carregarModulo(true)
+            getRemainingMock.mockReturnValue(new Promise(() => {}))
+
+            const decisao = verificarLimiteSemConsumir('teto_tenant', [TENANT_FIXTURE])
+            await vi.advanceTimersByTimeAsync(600)
+
+            await expect(decisao).resolves.toBe(true)
+            expect(reportarMock).toHaveBeenCalledWith('ratelimit:redis_unavailable', {
+                fluxo: 'rate_limit',
+                camada: 'teto_tenant',
+                motivo: 'timeout',
+            })
+        } finally {
+            vi.useRealTimers()
+        }
     })
 })
 

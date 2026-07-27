@@ -34,14 +34,24 @@ vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: createAdminClientMoc
 // Next. A suíte precisa continuar hermética. O contrato do módulo real (no-op,
 // fail-open, chave pseudonimizada) é provado em `src/lib/__tests__/rate-limit.test.ts`;
 // aqui o que se prova é o que a AÇÃO faz com a resposta dele.
-const { verificarLimiteMock, ipDoVisitanteMock, hashChaveRateLimitMock } = vi.hoisted(() => ({
+const {
+    verificarLimiteMock,
+    verificarLimiteSemConsumirMock,
+    ipDoVisitanteMock,
+    hashChaveRateLimitMock,
+} = vi.hoisted(() => ({
     verificarLimiteMock: vi.fn(),
+    verificarLimiteSemConsumirMock: vi.fn(),
     ipDoVisitanteMock: vi.fn(),
     hashChaveRateLimitMock: vi.fn(),
 }))
 
 vi.mock('@/lib/rate-limit', () => ({
     verificarLimite: verificarLimiteMock,
+    // Mock SEPARADO do de consumo, e a separação é a prova do CR-02: com um mock
+    // só, "consultou o teto do tenant" e "gastou uma das 30 criações da hora"
+    // seriam a mesma chamada, que é exatamente a confusão que o defeito era.
+    verificarLimiteSemConsumir: verificarLimiteSemConsumirMock,
     ipDoVisitante: ipDoVisitanteMock,
     hashChaveRateLimit: hashChaveRateLimitMock,
 }))
@@ -114,6 +124,13 @@ const { dispararNotificacoesAgendamentoMock } = vi.hoisted(() => ({
 vi.mock('@/lib/notificacoes-agendamento', () => ({
     dispararNotificacoesAgendamento: dispararNotificacoesAgendamentoMock,
 }))
+
+// A engine entra mockada só para que o caso de CRIAÇÃO bem-sucedida (prova
+// positiva do CR-02) exista sem montar um banco inteiro de fixture. Devolve `[]`
+// por padrão, então nenhum outro caso muda de comportamento.
+const { obterSlotsDisponiveisMock } = vi.hoisted(() => ({ obterSlotsDisponiveisMock: vi.fn() }))
+
+vi.mock('@/lib/booking-engine', () => ({ obterSlotsDisponiveis: obterSlotsDisponiveisMock }))
 
 import {
     criarAgendamentoPublico,
@@ -196,12 +213,50 @@ function adminQueResolveTenant() {
 }
 
 /**
+ * Admin fake que vai até o fim: resolve o perfil, entrega o serviço, aceita a
+ * RPC de cliente e devolve a linha do INSERT. Existe para um caso só — provar
+ * que o token do teto por tenant é consumido DEPOIS da criação (CR-02), que é a
+ * metade positiva que a asserção negativa sozinha não cobre.
+ */
+function adminQueCriaAgendamento() {
+    const admin = {
+        from(tabela: string) {
+            const dados =
+                tabela === 'perfis_empresas'
+                    ? PERFIL_FIXTURE
+                    : tabela === 'servicos'
+                      ? { duracao_minutos: 30, nome: 'Corte' }
+                      : tabela === 'agendamentos'
+                        ? {
+                              id: 'ag-fixture-1',
+                              data_hora: PARAMS_VALIDOS.dataHora,
+                              status: 'confirmado',
+                          }
+                        : null
+            const consulta = {
+                select: () => consulta,
+                eq: () => consulta,
+                in: () => consulta,
+                order: () => consulta,
+                insert: () => consulta,
+                maybeSingle: async () => ({ data: dados, error: null }),
+                single: async () => ({ data: dados, error: null }),
+            }
+            return consulta
+        },
+        rpc: async () => ({ data: 'cliente-fixture-1', error: null }),
+    }
+    return admin
+}
+
+/**
  * Configura a resposta de CADA camada por nome. Sem isto, um `mockResolvedValue`
  * único faria "telefone bloqueou" e "tenant bloqueou" serem o mesmo cenário — e
  * os dois têm destinos de telemetria diferentes, que é justamente o que se prova.
  */
 function respostaPorCamada(mapa: Partial<Record<string, boolean>>) {
     verificarLimiteMock.mockImplementation(async (camada: string) => mapa[camada] ?? true)
+    verificarLimiteSemConsumirMock.mockImplementation(async (camada: string) => mapa[camada] ?? true)
 }
 
 /**
@@ -224,6 +279,8 @@ beforeEach(() => {
     // troca isto — assim nenhum outro caso passa por acidente de mock.
     verificarLimiteMock.mockReset()
     verificarLimiteMock.mockResolvedValue(true)
+    verificarLimiteSemConsumirMock.mockReset()
+    verificarLimiteSemConsumirMock.mockResolvedValue(true)
     ipDoVisitanteMock.mockReset()
     ipDoVisitanteMock.mockResolvedValue('203.0.113.7')
     hashChaveRateLimitMock.mockReset()
@@ -239,6 +296,8 @@ beforeEach(() => {
     reportarFalhaSilenciosaAguardandoMock.mockResolvedValue(undefined)
     dispararNotificacoesAgendamentoMock.mockReset()
     dispararNotificacoesAgendamentoMock.mockResolvedValue(undefined)
+    obterSlotsDisponiveisMock.mockReset()
+    obterSlotsDisponiveisMock.mockResolvedValue([])
 })
 
 describe('criarAgendamentoPublico — teto e formato dos campos de contato (CR-02)', () => {
@@ -449,7 +508,11 @@ describe('criarAgendamentoPublico — camadas de telefone e tenant (ABU-01, D-08
             '11999998888',
             TENANT_FIXTURE,
         ])
-        expect(verificarLimiteMock).toHaveBeenCalledWith('teto_tenant', [TENANT_FIXTURE])
+        // ASSIMETRIA do CR-02: telefone CONSOME (tentativa repetida com o mesmo
+        // número é o abuso que o D-08 mira), tenant só CONSULTA.
+        expect(verificarLimiteSemConsumirMock).toHaveBeenCalledWith('teto_tenant', [
+            TENANT_FIXTURE,
+        ])
         expect(tabelasConsultadas).toContain('perfis_empresas')
     })
 
@@ -538,6 +601,45 @@ describe('criarAgendamentoPublico — camadas de telefone e tenant (ABU-01, D-08
         // INSERT, que é onde mora o custo real.
         expect(tabelasConsultadas).toContain('perfis_empresas')
         expect(tabelasConsultadas).not.toContain('servicos')
+    })
+
+    it('tentativa bloqueada pelo TELEFONE não queima o token do tenant (WR-02)', async () => {
+        respostaPorCamada({ escrita_telefone: false })
+
+        await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        // Enquanto as duas camadas consumiam em `Promise.all`, uma requisição já
+        // condenada pelo telefone ainda gastava uma das 30 criações da hora do
+        // tenant — era o motor barato do CR-02.
+        expect(verificarLimiteMock).not.toHaveBeenCalledWith('teto_tenant', expect.anything())
+    })
+
+    it('tentativa com SERVIÇO inválido não queima o token do tenant (CR-02)', async () => {
+        respostaPorCamada({})
+
+        const resultado = await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        // O fake não tem serviço: a requisição morre em `servico_invalido`. Era
+        // com 30 requisições assim que um atacante negava agendamento a um
+        // tenant inteiro por uma hora, sem criar nada.
+        expect(resultado.ok).toBe(false)
+        if (!resultado.ok) expect(resultado.motivo).toBe('servico_invalido')
+        expect(verificarLimiteMock).not.toHaveBeenCalledWith('teto_tenant', expect.anything())
+    })
+
+    it('consome o token do tenant DEPOIS do INSERT bem-sucedido (CR-02)', async () => {
+        createAdminClientMock.mockReturnValue(adminQueCriaAgendamento())
+        obterSlotsDisponiveisMock.mockResolvedValue([
+            { time: '10:00', datetime: PARAMS_VALIDOS.dataHora },
+        ])
+        respostaPorCamada({})
+
+        const resultado = await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        // Metade positiva: "30 por hora" volta a significar 30 CRIAÇÕES por
+        // hora, que é o que o D-09 decidiu e o que a documentação afirma.
+        expect(resultado.ok).toBe(true)
+        expect(verificarLimiteMock).toHaveBeenCalledWith('teto_tenant', [TENANT_FIXTURE])
     })
 
     it('com as três camadas liberando, o fluxo segue idêntico ao baseline', async () => {
@@ -708,6 +810,7 @@ describe('criarAgendamentoPublico — honeypot com sucesso falso (ABU-01/ABU-02,
         // pior que o spam que a armadilha existe para barrar.
         expect(createAdminClientMock).not.toHaveBeenCalled()
         expect(verificarLimiteMock).not.toHaveBeenCalled()
+        expect(verificarLimiteSemConsumirMock).not.toHaveBeenCalled()
         expect(dispararNotificacoesAgendamentoMock).not.toHaveBeenCalled()
     })
 

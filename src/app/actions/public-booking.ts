@@ -10,7 +10,12 @@ import type { PlanoId } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 import { ehHexValida } from '@/lib/cores'
 import { capturarEventoServidor, capturarEventoTenant } from '@/lib/analytics/server'
-import { hashChaveRateLimit, ipDoVisitante, verificarLimite } from '@/lib/rate-limit'
+import {
+    hashChaveRateLimit,
+    ipDoVisitante,
+    verificarLimite,
+    verificarLimiteSemConsumir,
+} from '@/lib/rate-limit'
 import { logOperacionalAguardando } from '@/lib/observabilidade/log'
 import {
     reportarExcecao,
@@ -577,12 +582,21 @@ export async function criarAgendamentoPublico({
     // As duas correm em PARALELO de propósito: o cliente legítimo paga a
     // latência de UMA ida ao Redis, não de duas somadas (ABU-02/D-06). Nenhuma
     // das duas lança, e as duas devolvem PASSE se o fornecedor falhar (D-02).
+    //
+    // ⚠️ ASSIMETRIA DELIBERADA entre as duas, e é ela que fecha o CR-02/WR-02: a
+    // de telefone CONSUME (é ela que precisa contar tentativa, porque tentativa
+    // repetida com o mesmo número é exatamente o abuso que o D-08 mira), a de
+    // tenant só CONSULTA. Enquanto as duas consumiam, uma requisição já
+    // condenada pelo bloqueio de telefone ainda queimava o token do tenant, e
+    // uma requisição com `servicoId` lixo também — 30 delas negavam agendamento
+    // a um tenant inteiro por uma hora, sem criar nada. O token do tenant sai
+    // agora depois do INSERT, onde "criação" quer dizer criação.
     const [passouTelefone, passouTenant] = await Promise.all([
         // Telefone + tenant: o mesmo número agendando em dois estabelecimentos
         // são dois baldes. Telefone JÁ normalizado, senão a formatação digitada
         // escolheria o balde.
         verificarLimite('escrita_telefone', [telefoneLimpo, tenantId]),
-        verificarLimite('teto_tenant', [tenantId]),
+        verificarLimiteSemConsumir('teto_tenant', [tenantId]),
     ])
 
     if (!passouTelefone) {
@@ -796,6 +810,19 @@ export async function criarAgendamentoPublico({
         }
         return { ok: false, motivo: 'erro_interno' }
     }
+
+    // ⚠️ AQUI, e só aqui, o token do teto por tenant é consumido (CR-02): o
+    // agendamento já existe na agenda do profissional, então "30 por hora" volta
+    // a significar 30 CRIAÇÕES por hora — que é o que o D-09 decidiu e o que a
+    // documentação sempre afirmou. O retorno é ignorado de propósito: a decisão
+    // de bloquear já foi tomada lá em cima, com a consulta sem consumo; o que
+    // esta chamada faz é registrar o fato consumado para a PRÓXIMA requisição.
+    //
+    // Awaited, e não diferido: o contador só vale alguma coisa se for confiável,
+    // e o custo é uma ida ao Redis com teto de 500 ms e fail-open — irrisório ao
+    // lado do disparo de notificações que vem logo abaixo. Este é o caminho de
+    // SUCESSO, que o atacante não consegue amplificar de graça.
+    await verificarLimite('teto_tenant', [tenantId])
 
     // Funil: agendamento público concluído (sem nome/telefone — nunca PII).
     try {

@@ -141,8 +141,15 @@ const LIMITERS: Partial<Record<CamadaRateLimit, Ratelimit>> = redis
               timeout: TIMEOUT_MS,
           }),
 
-          // Teto por tenant (D-09) — 30 criações por hora, somadas TODAS as
-          // origens. O papel dele é explicitamente parcial e está declarado
+          // Teto por tenant (D-09) — 30 CRIAÇÕES por hora, somadas TODAS as
+          // origens. "Criações" é literal desde o CR-02 da revisão: esta camada
+          // é a única consultada por `verificarLimiteSemConsumir` antes do
+          // trabalho e consumida só DEPOIS do INSERT bem-sucedido. Antes ela
+          // contava TENTATIVAS, e 30 requisições com `servicoId` lixo negavam
+          // agendamento a um tenant inteiro por uma hora — o atacante bloqueava
+          // a agenda sem criar nada, que é o inverso do risco que o D-09 aceitou.
+          //
+          // O papel dele é explicitamente parcial e está declarado
           // assim no CONTEXT: não impede o enchimento total do horizonte de um
           // tenant pequeno, DESACELERA o ataque distribuído (IPs e telefones
           // rotativos, que derrotam as duas camadas acima) o bastante para a
@@ -317,7 +324,52 @@ function avisarIpIndeterminavel(): void {
 }
 
 /**
- * Consulta a camada indicada. `true` = PASSA, `false` = BLOQUEADO.
+ * Monta a chave pseudonimizada, ou `null` quando ela não se deixa formar.
+ *
+ * ⚠️ Parte AUSENTE (`null`, `undefined`, vazia ou só espaços) e lista vazia
+ * devolvem `null`, e quem recebe `null` responde PASSE (CR-04/WR-09). Sem esta
+ * guarda, `[]` e `['']` produziam uma chave que TODOS os chamadores daquela
+ * camada dividiam: um `tenant_id` vazio numa linha bastaria para o `teto_tenant`
+ * de todos os tenants colapsar num contador só, e um IP indeterminável faria o
+ * mesmo com o booking inteiro. "Não sei formar a chave" é caso de fail-open,
+ * igual a "o fornecedor não respondeu" — nunca de bloqueio.
+ */
+function montarChave(partesChave: Array<string | null | undefined>): string | null {
+    if (partesChave.length === 0) return null
+    if (partesChave.some((parte) => !parte?.trim())) return null
+
+    return partesChave.map((parte) => hashChaveRateLimit(parte as string)).join(':')
+}
+
+/** Marcador de "o fornecedor não respondeu dentro do teto". */
+const TEMPO_ESGOTADO = Symbol('rate-limit:timeout')
+
+/**
+ * Aplica o teto de `TIMEOUT_MS` a uma promessa do fornecedor.
+ *
+ * Existe porque `limit()` traz timeout nativo e `getRemaining()` NÃO traz —
+ * medido no fonte instalado (`applyTimeout` só embrulha o `limit`). Sem isto, a
+ * consulta sem consumo do CR-02 seria o único ponto do módulo sem teto de
+ * latência, justamente numa fase cujo argumento inteiro é que meio segundo de
+ * espera extra já é inaceitável para o cliente final.
+ */
+async function comTeto<T>(promessa: Promise<T>): Promise<T | typeof TEMPO_ESGOTADO> {
+    let cronometro: ReturnType<typeof setTimeout> | undefined
+    try {
+        return await Promise.race([
+            promessa,
+            new Promise<typeof TEMPO_ESGOTADO>((resolve) => {
+                cronometro = setTimeout(() => resolve(TEMPO_ESGOTADO), TIMEOUT_MS)
+            }),
+        ])
+    } finally {
+        if (cronometro) clearTimeout(cronometro)
+    }
+}
+
+/**
+ * Consulta a camada indicada CONSUMINDO um token. `true` = PASSA, `false` =
+ * BLOQUEADO.
  *
  * `true` cobre três situações que o chamador não precisa distinguir e não deve
  * tentar: passou dentro da janela, no-op por falta de env, e fail-open por falha
@@ -327,13 +379,9 @@ function avisarIpIndeterminavel(): void {
  * pseudonimização acontece aqui dentro — assim nenhum chamador consegue esquecer
  * de hashear, que é a única forma de o contrato 3 ser violado.
  *
- * ⚠️ Parte AUSENTE (`null`, `undefined`, vazia ou só espaços) devolve PASSE, e
- * a lista vazia também (CR-04/WR-09). Sem esta guarda, `[]` e `['']` produziam
- * uma chave que TODOS os chamadores daquela camada dividiam: um `tenant_id`
- * vazio numa linha bastaria para o `teto_tenant` de todos os tenants colapsar
- * num contador só, e um IP indeterminável faria o mesmo com o booking inteiro.
- * "Não sei formar a chave" é caso de fail-open, igual a "o fornecedor não
- * respondeu" — nunca de bloqueio.
+ * ⚠️ É CHECK-THEN-CONSUME: o token é gasto na TENTATIVA, não no resultado. Onde
+ * essa diferença importa (o teto por tenant), use `verificarLimiteSemConsumir`
+ * para decidir e chame esta função só depois do fato consumado.
  */
 export async function verificarLimite(
     camada: CamadaRateLimit,
@@ -342,9 +390,8 @@ export async function verificarLimite(
     const limiter = LIMITERS[camada]
     if (!limiter) return true
 
-    if (partesChave.length === 0 || partesChave.some((parte) => !parte?.trim())) return true
-
-    const chave = partesChave.map((parte) => hashChaveRateLimit(parte as string)).join(':')
+    const chave = montarChave(partesChave)
+    if (chave === null) return true
 
     try {
         const resultado = await limiter.limit(chave)
@@ -366,6 +413,59 @@ export async function verificarLimite(
         // derruba o booking (D-02) — o Core Value do projeto é o agendamento
         // real chegando à agenda, e uma guarda de abuso não pode ser o que o
         // impede.
+        await reportarFalhaSilenciosaAguardando('ratelimit:redis_unavailable', {
+            fluxo: 'rate_limit',
+            camada,
+            motivo: 'erro',
+        })
+        return true
+    }
+}
+
+/**
+ * Consulta a camada SEM consumir token. `true` = ainda tem orçamento, `false` =
+ * esgotado.
+ *
+ * ⚠️ Existe por causa do CR-02, e o defeito que ela corrige merece estar escrito
+ * aqui: `limit()` é check-then-consume, então usar a mesma função para DECIDIR e
+ * para CONTAR fazia o teto por tenant contar tentativas em vez de criações. O
+ * efeito concreto era um caminho barato de negação de serviço contra o Core
+ * Value do produto — 30 requisições com `servicoId` lixo (ou com um telefone já
+ * queimado, que ainda assim queimava o token do tenant no `Promise.all`)
+ * esvaziavam a janela, e a partir dali todo visitante legítimo daquele tenant
+ * recebia `muitas_tentativas` por uma hora. O atacante negava agendamentos sem
+ * criar nenhum, que é o inverso do risco aceito no D-09.
+ *
+ * Separar leitura de consumo é o que devolve o significado ao número: aqui só se
+ * pergunta, e o token sai quando um agendamento REAL entra na agenda.
+ *
+ * Mesmo contrato de sempre: nunca lança, PASSE no no-op, PASSE na chave que não
+ * se forma e PASSE quando o fornecedor falha.
+ */
+export async function verificarLimiteSemConsumir(
+    camada: CamadaRateLimit,
+    partesChave: Array<string | null | undefined>,
+): Promise<boolean> {
+    const limiter = LIMITERS[camada]
+    if (!limiter) return true
+
+    const chave = montarChave(partesChave)
+    if (chave === null) return true
+
+    try {
+        const resultado = await comTeto(limiter.getRemaining(chave))
+
+        if (resultado === TEMPO_ESGOTADO) {
+            await reportarFalhaSilenciosaAguardando('ratelimit:redis_unavailable', {
+                fluxo: 'rate_limit',
+                camada,
+                motivo: 'timeout',
+            })
+            return true
+        }
+
+        return resultado.remaining > 0
+    } catch {
         await reportarFalhaSilenciosaAguardando('ratelimit:redis_unavailable', {
             fluxo: 'rate_limit',
             camada,
