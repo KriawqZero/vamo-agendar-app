@@ -1009,6 +1009,13 @@ medir** está abaixo, e é exatamente o tipo de item que a lição da quick task
 verde não fecha observabilidade") e o histórico da Phase 01 mandam nascer aberto. Nada aqui
 foi aprovado; nada aqui deve ser assumido como aprovado.
 
+**Código fechado em 2026-07-27** sobre o HEAD final da fase, com saída real observada:
+`pnpm lint` exit 0 · `pnpm test` **353 testes em 22 arquivos** (baseline pré-fase: 280 em
+20 — a fase só acrescentou, zero regressão) · `pnpm build` exit 0 com 14 rotas, rodado
+**sem** as variáveis do Upstash no ambiente (prova viva do no-op do D-04) · `npx tsc
+--noEmit` exit 0. **Restam exclusivamente os itens manuais abaixo** — nenhum deles é
+alcançável por comando.
+
 **(a) Prova comportamental do SC1 — script real contra Redis real**
 
 - [ ] Com as credenciais de **dev** do Upstash no ambiente, subir `next start` e rodar um
