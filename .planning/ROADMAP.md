@@ -285,7 +285,7 @@ Plans:
   2. O cliente legítimo agenda sem nenhuma etapa nova: nenhum CAPTCHA, nenhum campo visível a mais, nenhum atraso perceptível
   3. O owner consegue ver quantas requisições foram barradas e por qual chave (IP, telefone ou tenant), o suficiente para saber se o limite está pegando gente de verdade
 
-**Plans**: 6 plans
+**Plans**: 1/6 plans executed
 
 Plans:
 
@@ -293,7 +293,7 @@ Plans:
 `src/app/actions/public-booking.ts` (e três tocam `src/lib/rate-limit.ts`); paralelismo
 faria a prova medir a árvore errada — mesmo racional das Phases 1 e 2.
 
-- [ ] 03-01-PLAN.md — **Tracer:** camada de IP na escrita ponta a ponta (checkpoint de legitimidade do pacote [SUS] + lib + fronteira + `muitas_tentativas` + copy D-07) (wave 1)
+- [x] 03-01-PLAN.md — **Tracer:** camada de IP na escrita ponta a ponta (checkpoint de legitimidade do pacote [SUS] + lib + fronteira + `muitas_tentativas` + copy D-07) (wave 1)
 - [ ] 03-02-PLAN.md — Observabilidade do bloqueio: `logOperacionalAguardando`, códigos/atributos na allowlist e telemetria da camada de IP (D-11) (wave 2)
 - [ ] 03-03-PLAN.md — Camadas telefone (~5 tentativas/h, D-08) + teto por tenant (30/h, D-09) + Issue `ratelimit:teto_tenant_atingido` (D-12) (wave 3)
 - [ ] 03-04-PLAN.md — Teto de leitura folgado em `obterSlotsPublicos` (D-06/D-10, page load fora — Pitfall 7) + env vars do Redis obrigatórias em produção (D-04) (wave 4)
@@ -549,7 +549,7 @@ faria a prova medir a árvore errada — mesmo racional das Phases 1 e 2.
 | Etapa preparatória. Fundação operacional | 1/1 | Código fechado — 2 gates do owner abertos | 2026-07-21 |
 | 1. Hardening da superfície pública | 19/19 | Complete (7 UAT de tela abertos) | 2026-07-23 |
 | 2. Integridade da agenda | 6/6 | Complete (2 UAT de tela abertos) | 2026-07-23 |
-| 3. Anti-abuso no booking público | 0/6 | Planned | - |
+| 3. Anti-abuso no booking público | 1/6 | In Progress|  |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |
 | 5. Contato flexível no booking | 0/TBD | Not started | - |
 | 6. Diferencial visível — agenda densa | 0/TBD | Not started | - |

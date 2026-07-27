@@ -2,17 +2,17 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lançamento público
-current_phase: 02
-current_phase_name: integridade-da-agenda
+current_phase: 03
+current_phase_name: anti-abuso-no-booking-p-blico
 status: complete
-stopped_at: Phase 03 context gathered
-last_updated: "2026-07-27T18:14:28.760Z"
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-07-27T18:33:39.881Z"
 last_activity: 2026-07-27
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 31
-  completed_plans: 25
+  completed_plans: 26
 last_activity_desc: "Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 — 6/6 planos, veredito do verificador human_needed com 5/5 must-haves verificados e 2 itens de UAT de TELA abertos (aviso âmbar público e detalhe do walk-in); AGE-01..05 marcados em REQUIREMENTS. Depois dela veio a quick task 260724-observabilidade-mensageria (fora do roadmap, disparada por incidente do owner: agendamento testado, confirmação e lembrete não entregues e NADA em PostHog, Sentry Issues, Sentry Logs ou log do Railway). Ela está mergeada no master (PR #11, merge a9d071a; commits a03cc39 → cd63aa3) e é BASELINE — não reimplementar. Baseline reconferida nesta sessão: pnpm test 280/280 em 20 arquivos. O que ela deixou aberto é só verificação de painel (não fecha por teste), listada em docs/PENDENCIAS.md. Próximo passo do roadmap: /gsd-discuss-phase 03 (Anti-abuso no booking público) — mas ele tem uma DECISÃO DO OWNER como pré-requisito: Upstash Redis vs. RPC atômica no Postgres para o rate limit."
 ---
 
@@ -23,11 +23,11 @@ last_activity_desc: "Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 —
 See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 **Core value:** Um agendamento real, feito por um cliente final que nunca ouviu falar do VamoAgendar, cair na agenda do profissional sem que nada quebre no caminho.
-**Current focus:** Phase 02 — integridade-da-agenda
+**Current focus:** Phase 03 — anti-abuso-no-booking-p-blico
 
 ## Current Position
 
-Phase: 02 (integridade-da-agenda) — **COMPLETA** (6/6 planos, verificada em 2026-07-23 com veredito `human_needed`: 5/5 must-haves verificados, 2 itens de UAT de tela abertos)
+Phase: 03 (anti-abuso-no-booking-p-blico) — EXECUTING
 Branch: `master` (working tree limpo, HEAD `a9d071a`)
 Próximo: **Phase 03 — Anti-abuso no booking público** (`/gsd-discuss-phase 03`), com uma decisão do owner pendente antes de planejar
 
@@ -125,7 +125,7 @@ Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
 Last activity: 2026-07-27
 
-Progress: [██████████] 100% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
+Progress: [████████░░] 84% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
 
 ### Resultado da 4ª passagem de verificação (2026-07-22, HEAD `7937aed`)
 
@@ -194,6 +194,7 @@ Primeira verificação das quatro com acesso DDL ao banco de dev — os cinco Su
 | Phase 02 P04 | ~25min | 3 tasks | 3 files |
 | Phase 02 P05 | ~18min | 3 tasks | 1 files |
 | Phase 02 P06 | ~10min | 3 tasks | 2 files |
+| Phase 03 P01 | ~35min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -298,6 +299,11 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Quick 260724]: `registrarDisparo` reporta a própria falha de INSERT por erro SINTÉTICO (`auditoria_whatsapp:insert_failed`) e nunca se re-chama — auditoria que se audita por si vira recursão
 - [Quick 260724]: quatro pilares com perguntas diferentes e nenhuma sobreposição de papel: Issue = falha acionável, Log = ciclo de vida pesquisável, PostHog = taxa agregada, `disparos_whatsapp` = auditoria por tenant. Colapsar dois deles num só foi como o incidente ficou invisível
 - [Quick 260724]: teste verde NÃO fecha observabilidade — o incidente de origem era "nada apareceu no painel", e isso só fecha com olho humano no painel; por isso a verificação de painel nasceu ABERTA em docs/PENDENCIAS.md em vez de a task ser declarada concluída
+- [Phase ?]: [Phase 03]: 03-01: assuncao A1 confirmada por leitura do fonte instalado — Ratelimit.limit() e try/finally SEM catch, entao rejeicao de rede/credencial sobe intacta; o try/catch do fail-open e o UNICO tratamento desse modo de falha (sem ele, Upstash fora do ar derrubaria todo agendamento)
+- [Phase ?]: [Phase 03]: 03-01: rótulo de Issue IDÊNTICO nos dois modos de falha do fornecedor (ratelimit:redis_unavailable), com a distinção em contexto (motivo: erro|timeout) — dois rótulos estilhaçariam o agrupamento que a quick task 260724 pagou para consertar
+- [Phase ?]: [Phase 03]: 03-01: a pseudonimização da chave mora DENTRO de verificarLimite, não no chamador — quem consome passa o valor cru e não tem como esquecer de hashear, que é a única forma de o invariante nunca-PII ser violado por descuido
+- [Phase ?]: [Phase 03]: 03-01: guarda de IP fica DEPOIS das validações síncronas baratas (payload inválido não gasta comando no Redis) e ANTES de createAdminClient() (flood não gasta consulta no Supabase) — padrão 01-18 aplicado ao caminho de escrita
+- [Phase ?]: [Phase 03]: 03-01: CamadaRateLimit declara as quatro camadas com Partial<Record> de limiters — camada sem instância devolve PASSE, nunca bloqueio acidental, e há teste que prova a ausência em vez de deixá-la implícita
 
 ### Pending Todos
 
@@ -333,6 +339,7 @@ Nenhum ainda.
 
 - **Ponto de atenção do 01-14 (não é bloqueador, é aviso para revisão futura de privilégio):** `salvarPerfilEmpresa` passou a usar `createAdminClient()` numa consulta — é a única forma de a checagem cruzada entre tenants não ser decorativa (sob RLS ela voltaria sempre vazia). O escopo é mínimo: projeção de UMA coluna (`tenant_id`), `head: true` e `.neq('tenant_id', orgId)`, e o que sai da função é o veredito. Ainda assim é um ponto a mais onde o cliente privilegiado aparece **fora** do fluxo público, e merece o olho de qualquer revisão de privilégio
 - **Dívida aceita e datada por gatilho no 01-14:** a decisão `add-alongside` (duas colunas + constraint + duas camadas de aplicação) **não** cobre manter mais de um alias vivo (redirecionar link antigo depois de trocar o slug) nem um terceiro identificador público (domínio próprio, alias por campanha). Qualquer um dos dois virar requisito força a **promoção** para uma tabela de identificadores públicos — nunca uma terceira coluna. A Phase 7 (fim do Plus) revisita a relação plano↔slug e é o momento natural de reavaliar
+- 🔑 Env vars do Upstash Redis NÃO provisionadas (UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN). Enquanto isso, o rate limit da Phase 3 está em NO-OP: o código está no master mas NENHUMA proteção real está ativa. Ação do owner: criar os databases (prod + dev, mesma conta do QStash — D-05) e provisionar as duas no Railway ANTES de o plano 03-04 acrescentá-las à lista de obrigatórias de src/lib/env.ts (a partir de lá o boot cai sem elas, ampliando a janela de crash-loop já registrada)
 
 ### Quick Tasks Completed
 
@@ -360,9 +367,9 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-27T16:56:40.459Z
-Stopped at: Phase 03 context gathered
-Resume file: .planning/phases/03-anti-abuso-no-booking-p-blico/03-CONTEXT.md
+Last session: 2026-07-27T18:33:06.254Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None
 
 **Como retomar (ordem):**
 
