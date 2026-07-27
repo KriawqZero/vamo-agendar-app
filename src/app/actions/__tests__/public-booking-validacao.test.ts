@@ -409,9 +409,16 @@ describe('criarAgendamentoPublico — camadas de telefone e tenant (ABU-01, D-08
         const fake = adminQueResolveTenant()
         tabelasConsultadas = fake.tabelasConsultadas
         createAdminClientMock.mockReturnValue(fake.admin)
-        // Hash previsível e DISTINTO por valor: com um retorno fixo, "hasheou o
-        // telefone" e "hasheou o IP" seriam a mesma asserção.
-        hashChaveRateLimitMock.mockImplementation((valor: string) => `hash:${valor}`)
+        // Hash falso previsível e DISTINTO por valor (com retorno fixo,
+        // "hasheou o telefone" e "hasheou o IP" seriam a mesma asserção) — e
+        // que NÃO carrega o valor cru dentro de si, senão a prova negativa de
+        // PII acusaria o próprio mock em vez do código sob teste.
+        hashChaveRateLimitMock.mockImplementation(
+            (valor: string) =>
+                ({ '11999998888': 'hash-do-telefone', '203.0.113.7': 'hash-do-ip-fixture' })[
+                    valor
+                ] ?? 'hash-desconhecido',
+        )
     })
 
     it('consulta as duas camadas com as chaves exatas, depois da resolução', async () => {
@@ -438,7 +445,7 @@ describe('criarAgendamentoPublico — camadas de telefone e tenant (ABU-01, D-08
         expect(logAguardandoMock.warn).toHaveBeenCalledWith('ratelimit.bloqueio', {
             fluxo: 'booking_publico',
             camada: 'escrita_telefone',
-            chaveHash: 'hash:11999998888',
+            chaveHash: 'hash-do-telefone',
             tenantHash: hashTenantId(TENANT_FIXTURE),
         })
         // Variante TENANT, e não Servidor: aqui o slug já foi resolvido, então

@@ -12,7 +12,12 @@ import { ehHexValida } from '@/lib/cores'
 import { capturarEventoServidor, capturarEventoTenant } from '@/lib/analytics/server'
 import { hashChaveRateLimit, ipDoVisitante, verificarLimite } from '@/lib/rate-limit'
 import { logOperacionalAguardando } from '@/lib/observabilidade/log'
-import { reportarExcecao, reportarFalhaSilenciosa } from '@/lib/observabilidade/reportar'
+import {
+    reportarExcecao,
+    reportarFalhaSilenciosa,
+    reportarFalhaSilenciosaAguardando,
+} from '@/lib/observabilidade/reportar'
+import { hashTenantId } from '@/lib/observabilidade/hash'
 import { erroSinteticoSupabase } from '@/lib/observabilidade/erro-supabase'
 
 // Projeção explícita das leituras públicas. Coluna nova no banco (ex.: cpf_cnpj
@@ -465,6 +470,95 @@ export async function criarAgendamentoPublico({
 
     const { perfil: tenant } = resolvido
     const tenantId: string = tenant.tenant_id
+
+    // ⚠️ CAMADAS 2 e 3 DO RATE LIMIT — telefone e teto por tenant.
+    //
+    // POR QUE AQUI, e não na fronteira junto com a de IP: a chave exata destas
+    // duas só existe DEPOIS da resolução. Usar o slug como chave dobraria o
+    // orçamento de cada tenant, porque `slug` e `slug_gratuito` são dois textos
+    // que abrem a MESMA agenda — um script alternando entre os dois teria o
+    // dobro do limite de graça. Trocar exatidão por antecedência aqui seria
+    // trocar a defesa pela aparência dela.
+    //
+    // O custo dessa escolha está pago e é pequeno: quem chega até esta linha já
+    // passou pela camada de IP e as duas consultas de resolução são indexadas.
+    // O que o bloqueio economiza é tudo o que vem DEPOIS — serviço, engine de
+    // disponibilidade, RPC e INSERT —, que é onde mora o custo real do caminho.
+    //
+    // As duas correm em PARALELO de propósito: o cliente legítimo paga a
+    // latência de UMA ida ao Redis, não de duas somadas (ABU-02/D-06). Nenhuma
+    // das duas lança, e as duas devolvem PASSE se o fornecedor falhar (D-02).
+    const [passouTelefone, passouTenant] = await Promise.all([
+        // Telefone + tenant: o mesmo número agendando em dois estabelecimentos
+        // são dois baldes. Telefone JÁ normalizado, senão a formatação digitada
+        // escolheria o balde.
+        verificarLimite('escrita_telefone', [telefoneLimpo, tenantId]),
+        verificarLimite('teto_tenant', [tenantId]),
+    ])
+
+    if (!passouTelefone) {
+        // Bloqueio de telefone é ROTINA — mesma natureza do bloqueio de IP: log
+        // pesquisável + taxa agregada, e NENHUMA Issue. O que muda em relação à
+        // camada de IP é a variante do PostHog: aqui o tenant já existe, e a
+        // taxa POR TENANT é o que responde "esta agenda está sendo atacada?".
+        try {
+            await logOperacionalAguardando.warn('ratelimit.bloqueio', {
+                fluxo: 'booking_publico',
+                camada: 'escrita_telefone',
+                chaveHash: hashChaveRateLimit(telefoneLimpo),
+                tenantHash: hashTenantId(tenantId),
+            })
+            capturarEventoTenant('booking_rate_limited', tenantId, {
+                camada: 'escrita_telefone',
+            })
+        } catch (telemetriaErr) {
+            console.error(
+                '[rate-limit] telemetria de bloqueio por telefone não emitida (ignorada):',
+                telemetriaErr,
+            )
+        }
+
+        return { ok: false, motivo: 'muitas_tentativas' }
+    }
+
+    if (!passouTenant) {
+        // ⚠️ ESTE é o único bloqueio da fase que vira Sentry ISSUE (D-12).
+        //
+        // Estourar 30 criações numa hora, somadas TODAS as origens, não é um
+        // cliente insistente: é ataque distribuído em andamento — alguém que já
+        // derrotou as camadas de IP e telefone rotativando ambos. O teto não
+        // impede o enchimento total do horizonte de um tenant pequeno (risco
+        // ACEITO pelo owner), ele desacelera o ataque para que este alarme tenha
+        // tempo de alcançar um humano. É o cenário "ataque às 3h da manhã": sem
+        // Issue, o profissional descobre pela agenda lotada de nomes falsos.
+        //
+        // Mensagem SINTÉTICA e ESTÁTICA, variante AGUARDADA, tenant só como
+        // hash — os três contratos de mensageria do CLAUDE.md, pelos três
+        // motivos: agrupamento que não estilhaça sob ataque, evento que não se
+        // perde quando o runtime congela no `return`, e invariante nunca-PII.
+        try {
+            await logOperacionalAguardando.warn('ratelimit.bloqueio', {
+                fluxo: 'booking_publico',
+                camada: 'teto_tenant',
+                tenantHash: hashTenantId(tenantId),
+            })
+            capturarEventoTenant('booking_rate_limited', tenantId, { camada: 'teto_tenant' })
+            // ACRÉSCIMO à telemetria de rotina, nunca substituição: o alarme
+            // sozinho chegaria sem o histórico que permite dimensionar o ataque.
+            await reportarFalhaSilenciosaAguardando('ratelimit:teto_tenant_atingido', {
+                fluxo: 'booking_publico',
+                camada: 'teto_tenant',
+                tenantHash: hashTenantId(tenantId),
+            })
+        } catch (telemetriaErr) {
+            console.error(
+                '[rate-limit] telemetria do teto por tenant não emitida (ignorada):',
+                telemetriaErr,
+            )
+        }
+
+        return { ok: false, motivo: 'muitas_tentativas' }
+    }
 
     const timezone = tenant.timezone || TIMEZONE_PADRAO
     // Mesmo regrasAcesso usado em obterSlotsPublicos: sem isto, a validação do
