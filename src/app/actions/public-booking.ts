@@ -366,7 +366,79 @@ export async function criarAgendamentoPublico({
     clienteNome,
     clienteTelefone,
     clienteEmail,
+    infoAdicional,
 }: AgendamentoPublicoParams): Promise<ResultadoAgendamentoPublico> {
+    // ⚠️ HONEYPOT — a PRIMEIRA instrução do corpo, antes até das validações de
+    // graça, e a única resposta MENTIROSA deste arquivo inteiro.
+    //
+    // Por que primeiro: custo zero e independência total do resto do payload. Um
+    // bot de formulário raramente preenche o resto direito, e a armadilha não
+    // pode depender de `dataHora` ser parseável para funcionar — quem caiu já se
+    // identificou no primeiro campo.
+    //
+    // Por que SUCESSO e não erro, e por que só aqui (D-07): bot que recebe erro
+    // tenta de novo — com outro IP, outro telefone, outra sessão; bot que recebe
+    // sucesso vai embora. A mentira só se justifica onde a certeza de ser bot é
+    // ALTA, e ela é alta exatamente aqui: o campo é invisível, está fora da
+    // ordem de tabulação, não é anunciado por leitor de tela e não casa com
+    // vocabulário de autofill (ver o comentário do campo em `EtapaContato.tsx`).
+    // No rate limit a certeza é bem menor — CGNAT de operadora faz clientes
+    // REAIS dividirem IP —, e por isso lá o erro é honesto (`muitas_tentativas`)
+    // e nunca sucesso falso: "ela acha que agendou e não agendou" é o pior
+    // desfecho possível para a confiança no produto.
+    //
+    // O que a captura NÃO faz, e cada ausência é deliberada: não instancia o
+    // cliente privilegiado, não gasta comando no Redis, não resolve slug, não
+    // grava cliente, não roda a engine, não faz INSERT, não dispara WhatsApp nem
+    // agenda lembrete. Um agendamento fantasma na agenda do profissional seria
+    // pior que o spam que a armadilha existe para barrar.
+    if (typeof infoAdicional === 'string' && infoAdicional.trim().length > 0) {
+        // Telemetria da captura (D-11), com os mesmos dois destinos do bloqueio
+        // de rate limit e pela mesma razão: captura é ROTINA de endpoint
+        // público, então vive como Log pesquisável e taxa agregada — nunca como
+        // Sentry Issue, que fica reservada ao que exige ação do owner.
+        //
+        // O evento do PostHog tem uma segunda função, e ela é a mais importante:
+        // é o DETECTOR de falso-positivo. Se a taxa de captura for incompatível
+        // com o tráfego de bot esperado, o que está preenchendo o campo é o
+        // autofill do navegador — ou seja, PESSOA REAL recebendo sucesso falso,
+        // o pior desfecho nomeado no D-07. Sem esse número, o defeito seria
+        // invisível: ninguém reclama de um agendamento que a tela confirmou.
+        //
+        // `booking_completed` NÃO sai daqui: o funil do owner não pode contar
+        // bot como cliente. E a variante do log é a AGUARDADA porque o `return`
+        // encerra a Server Action na linha seguinte (incidente 260724).
+        try {
+            await logOperacionalAguardando.warn('honeypot.captura', {
+                fluxo: 'booking_publico',
+            })
+            // Sem propriedades: o slug é dado do VISITANTE, não do tenant
+            // resolvido (a captura acontece antes de qualquer resolução), e
+            // nome/telefone do payload jamais atravessam para fornecedor
+            // terceiro.
+            capturarEventoServidor('booking_honeypot')
+        } catch (telemetriaErr) {
+            // Observabilidade que falha nunca muda a resposta — aqui com um
+            // agravante próprio: um erro devolvido ao bot o faria tentar de novo,
+            // que é exatamente o que a armadilha existe para evitar.
+            console.error('[honeypot] telemetria da captura não emitida (ignorada):', telemetriaErr)
+        }
+
+        // Forma IDÊNTICA a `AgendamentoCriado` — o bot precisa acreditar que
+        // agendou. O fallback de data cobre payload malformado sem lançar: `new
+        // Date()` aqui não é preguiça, é o que impede a armadilha de virar 500
+        // (e 500 é erro, e erro faz o bot voltar).
+        return {
+            ok: true,
+            agendamento: {
+                id: crypto.randomUUID(),
+                data_hora:
+                    typeof dataHora === 'string' && dataHora ? dataHora : new Date().toISOString(),
+                status: 'confirmado',
+            },
+        }
+    }
+
     // 1. Sanitizar e validar dados de entrada básicos
     if (!slug || !servicoId || !dataHora || !clienteNome || !clienteTelefone) {
         return { ok: false, motivo: 'campos_obrigatorios' }
