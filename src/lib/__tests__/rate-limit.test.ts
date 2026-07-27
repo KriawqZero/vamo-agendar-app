@@ -395,15 +395,67 @@ describe('camada leitura_ip — teto folgado da grade de slots (D-06/D-10)', () 
     })
 })
 
+/** Monta um `headers()` falso a partir de um mapa nome → valor. */
+function cabecalhos(mapa: Record<string, string>) {
+    return { get: (nome: string) => mapa[nome] ?? null }
+}
+
 describe('ipDoVisitante', () => {
-    it('usa a PRIMEIRA entrada de x-forwarded-for (cliente real atrás do proxy)', async () => {
+    it('PREFERE x-real-ip, que o cliente não consegue estender (CR-01)', async () => {
         const { ipDoVisitante } = await carregarModulo(true)
-        headersMock.mockResolvedValue({
-            get: (nome: string) =>
-                nome === 'x-forwarded-for' ? `${IP_FIXTURE}, 10.0.0.1, 10.0.0.2` : null,
-        })
+        // O XFF traz um valor forjado na primeira posição — exatamente o ataque
+        // que a leitura antiga (`split(',')[0]`) entregava de graça.
+        headersMock.mockResolvedValue(
+            cabecalhos({
+                'x-real-ip': IP_FIXTURE,
+                'x-forwarded-for': '1.2.3.4, 198.51.100.9',
+            }),
+        )
 
         await expect(ipDoVisitante()).resolves.toBe(IP_FIXTURE)
+    })
+
+    it('sem x-real-ip, usa a ÚLTIMA entrada de x-forwarded-for — a que o proxy anexou', async () => {
+        const { ipDoVisitante } = await carregarModulo(true)
+        headersMock.mockResolvedValue(
+            cabecalhos({ 'x-forwarded-for': `1.2.3.4, 198.51.100.9, ${IP_FIXTURE}` }),
+        )
+
+        // A primeira entrada é texto do CLIENTE quando o proxy apenas anexa em
+        // vez de descartar; a última é a única que o proxy escreveu.
+        await expect(ipDoVisitante()).resolves.toBe(IP_FIXTURE)
+    })
+
+    it('aceita IP com porta e IPv6 entre colchetes', async () => {
+        const { ipDoVisitante } = await carregarModulo(true)
+
+        headersMock.mockResolvedValue(cabecalhos({ 'x-real-ip': `${IP_FIXTURE}:54321` }))
+        await expect(ipDoVisitante()).resolves.toBe(IP_FIXTURE)
+
+        headersMock.mockResolvedValue(cabecalhos({ 'x-real-ip': '[2001:db8::1]:443' }))
+        await expect(ipDoVisitante()).resolves.toBe('2001:db8::1')
+    })
+
+    it('recusa valor sem forma de IP — string arbitrária não vira balde próprio', async () => {
+        const { ipDoVisitante } = await carregarModulo(true)
+        // Sem esta recusa, `x-real-ip: <string aleatória>` compraria uma janela
+        // nova por requisição e a camada deixaria de contar IPs.
+        headersMock.mockResolvedValue(
+            cabecalhos({ 'x-real-ip': 'nao-sou-um-ip', 'x-forwarded-for': '999.999.999.999' }),
+        )
+
+        await expect(ipDoVisitante()).resolves.toBe('desconhecido')
+    })
+
+    it('não cai para a penúltima entrada do XFF quando a última é lixo', async () => {
+        const { ipDoVisitante } = await carregarModulo(true)
+        // Cair para a penúltima devolveria a escolha do balde ao atacante, que
+        // controla tudo o que está à esquerda do que o proxy anexou.
+        headersMock.mockResolvedValue(
+            cabecalhos({ 'x-forwarded-for': `${IP_FIXTURE}, lixo-forjado` }),
+        )
+
+        await expect(ipDoVisitante()).resolves.toBe('desconhecido')
     })
 
     it('devolve o balde comum quando o header não existe — nunca lança', async () => {

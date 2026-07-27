@@ -196,26 +196,85 @@ export function hashChaveRateLimit(valor: string): string {
     return createHash('sha256').update(`${salt}${valor}`).digest('hex').slice(0, 16)
 }
 
+/** IPv4 pontuado, sem validar a faixa de cada octeto (isso é o `.every` abaixo). */
+const FORMATO_IPV4 = /^(\d{1,3}\.){3}\d{1,3}$/
+
+/**
+ * O texto tem FORMA de endereço IP?
+ *
+ * Não é validação canônica e não precisa ser: o objetivo é impedir que uma
+ * string arbitrária escolhida pelo atacante vire balde próprio no Redis. Sem
+ * isto, `x-forwarded-for: qualquer-coisa-aleatoria` compra uma janela nova a
+ * cada requisição — a camada de IP deixa de contar IPs e passa a contar
+ * strings.
+ */
+function ehIpPlausivel(valor: string): boolean {
+    // 45 = maior IPv6 textual possível (IPv4-mapped com máscara).
+    if (valor.length === 0 || valor.length > 45) return false
+    if (FORMATO_IPV4.test(valor)) {
+        return valor.split('.').every((octeto) => Number(octeto) <= 255)
+    }
+    // IPv6: hexadecimal com pelo menos um `:`. A forma exata não importa aqui,
+    // só o fato de o conjunto de caracteres ser fechado.
+    return valor.includes(':') && /^[0-9a-f:.]+$/i.test(valor)
+}
+
+/**
+ * Normaliza uma entrada de header de IP e devolve `null` se ela não parecer um
+ * endereço. Cobre as duas formas com porta que proxies escrevem na prática:
+ * `[2001:db8::1]:443` e `203.0.113.7:54321`.
+ */
+function normalizarIp(bruto: string | null | undefined): string | null {
+    let ip = bruto?.trim() ?? ''
+    if (!ip) return null
+
+    const comColchetes = /^\[([^\]]+)\](?::\d+)?$/.exec(ip)
+    if (comColchetes) {
+        ip = comColchetes[1]
+    } else if (/^\d{1,3}(\.\d{1,3}){3}:\d+$/.test(ip)) {
+        ip = ip.slice(0, ip.indexOf(':'))
+    }
+
+    return ehIpPlausivel(ip) ? ip : null
+}
+
 /**
  * IP do visitante atrás do proxy da Railway.
  *
- * A PRIMEIRA entrada de `x-forwarded-for` é o cliente real: o edge da Railway
- * descarta o header enviado pelo cliente e anexa o IP de conexão. ⚠️ A fonte
- * dessa garantia é fórum oficial, não doc formal (assunção A2 do RESEARCH) — se
- * o header for forjável, um script rotaciona a chave de IP de graça e quem
- * segura o ataque são as camadas de telefone e tenant. Defesa em camadas existe
- * exatamente para essa possibilidade.
+ * ⚠️ A ORDEM DAS FONTES É A DEFESA, e ela mudou por medida de risco (CR-01 da
+ * revisão da fase). Antes esta função lia a PRIMEIRA entrada de
+ * `x-forwarded-for`, apoiada na assunção A2 do RESEARCH ("o edge descarta o
+ * header do cliente e anexa o IP de conexão") — assunção cuja fonte era fórum
+ * oficial, não doc formal. Se o proxy apenas ANEXA em vez de descartar
+ * (comportamento da maioria), a primeira entrada é o valor que o atacante
+ * escreveu, e duas das quatro camadas da fase caem com um header forjado.
  *
- * IP indeterminável vira balde PRÓPRIO (`'desconhecido'`), nunca exceção: todos
- * os "sem IP" dividem uma janela só, então esconder o IP não compra janela
- * infinita. `headers()` é assíncrona no Next 16.
+ * 1. `x-real-ip` primeiro. É header de valor ÚNICO posto pelo proxy — não é
+ *    lista que o cliente consiga estender —, e o próprio repositório já
+ *    documenta e verifica que a Railway o põe em toda requisição (ver a
+ *    allowlist de headers em `observabilidade/sanitizacao.ts`).
+ * 2. `x-forwarded-for` como fallback, lendo a entrada MAIS À DIREITA e só ela:
+ *    com um proxy confiável na frente, a última entrada é a que ele anexou; as
+ *    anteriores são texto do cliente. Cair para a penúltima quando a última é
+ *    lixo devolveria o controle ao atacante, então lixo na última = sem IP.
+ * 3. Toda candidata passa por `normalizarIp`: string que não tem forma de IP
+ *    nunca vira balde.
+ *
+ * IP indeterminável vira balde PRÓPRIO (`'desconhecido'`), nunca exceção — ver
+ * CR-04 para o tratamento desse balde. `headers()` é assíncrona no Next 16.
  */
 export async function ipDoVisitante(): Promise<string> {
     try {
         const cabecalhos = await headers()
-        const encaminhado = cabecalhos.get('x-forwarded-for')
-        const ip = encaminhado?.split(',')[0]?.trim()
-        return ip && ip.length > 0 ? ip : 'desconhecido'
+
+        const real = normalizarIp(cabecalhos.get('x-real-ip'))
+        if (real) return real
+
+        const partes = cabecalhos.get('x-forwarded-for')?.split(',') ?? []
+        const anexadoPeloProxy = normalizarIp(partes.at(-1))
+        if (anexadoPeloProxy) return anexadoPeloProxy
+
+        return 'desconhecido'
     } catch {
         // Contrato 1: fora de contexto de requisição, o balde comum resolve.
         return 'desconhecido'
