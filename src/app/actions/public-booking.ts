@@ -9,8 +9,9 @@ import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
 import type { PlanoId } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 import { ehHexValida } from '@/lib/cores'
-import { capturarEventoTenant } from '@/lib/analytics/server'
-import { ipDoVisitante, verificarLimite } from '@/lib/rate-limit'
+import { capturarEventoServidor, capturarEventoTenant } from '@/lib/analytics/server'
+import { hashChaveRateLimit, ipDoVisitante, verificarLimite } from '@/lib/rate-limit'
+import { logOperacionalAguardando } from '@/lib/observabilidade/log'
 import { reportarExcecao, reportarFalhaSilenciosa } from '@/lib/observabilidade/reportar'
 import { erroSinteticoSupabase } from '@/lib/observabilidade/erro-supabase'
 
@@ -405,6 +406,42 @@ export async function criarAgendamentoPublico({
     // toda falha esperada deste arquivo — nunca `throw`.
     const ipDoCliente = await ipDoVisitante()
     if (!(await verificarLimite('escrita_ip', [ipDoCliente]))) {
+        // Bloqueio MUDO é bloqueio que ninguém consegue calibrar. A telemetria
+        // tem dois destinos, cada um respondendo a uma pergunta diferente
+        // (D-11): o Sentry Log responde "qual camada barrou qual chave" e é
+        // pesquisável caso a caso; o PostHog responde "quanto está sendo
+        // barrado" e é a taxa agregada que diz se 10/10 min está apertado
+        // demais para CGNAT.
+        //
+        // A Sentry ISSUE NÃO é um dos destinos, e a ausência é deliberada:
+        // bloqueio de IP é condição ESPERADA de um endpoint público, igual à
+        // perda de corrida do `23P01` mais abaixo. Issue de rotina é como o
+        // owner para de olhar a ferramenta — a Issue fica reservada ao teto por
+        // tenant e à falha do Redis, que exigem ação humana.
+        //
+        // O log é AGUARDADO porque o `return` encerra a Server Action na linha
+        // seguinte: a variante fire-and-forget perde o evento quando o runtime
+        // congela junto com a resposta (incidente 260724). E o `chaveHash` é o
+        // MESMO hash usado na chave do contador — correlaciona log e Redis sem
+        // que o IP exista em nenhum dos dois.
+        try {
+            await logOperacionalAguardando.warn('ratelimit.bloqueio', {
+                fluxo: 'booking_publico',
+                camada: 'escrita_ip',
+                chaveHash: hashChaveRateLimit(ipDoCliente),
+            })
+            // Variante Servidor, e não Tenant: aqui o slug ainda não foi
+            // resolvido, então não existe `tenant_id` para atribuir o evento.
+            capturarEventoServidor('booking_rate_limited', { camada: 'escrita_ip' })
+        } catch (telemetriaErr) {
+            // Mesmo padrão protegido do ramo `23P01`: observabilidade que
+            // falha nunca pode mudar a resposta que o visitante recebe.
+            console.error(
+                '[rate-limit] telemetria de bloqueio não emitida (ignorada):',
+                telemetriaErr,
+            )
+        }
+
         return { ok: false, motivo: 'muitas_tentativas' }
     }
 
