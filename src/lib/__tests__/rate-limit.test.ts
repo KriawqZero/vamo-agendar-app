@@ -88,6 +88,15 @@ vi.mock('@upstash/redis', () => ({
 
 vi.mock('next/headers', () => ({ headers: headersMock }))
 
+// `after()` do Next mockado para RODAR o callback: a suíte precisa continuar
+// hermética, e o que ela prova é que a emissão acontece — a garantia de que ela
+// acontece depois da resposta é contrato do runtime, não deste módulo.
+vi.mock('next/server', () => ({
+    after: (callback: () => unknown) => {
+        void callback()
+    },
+}))
+
 vi.mock('@/lib/observabilidade/reportar', () => ({
     reportarFalhaSilenciosaAguardando: reportarMock,
     // Variante SÍNCRONA: é a do detector de IP indeterminável (CR-04), que é
@@ -215,6 +224,35 @@ describe('verificarLimite — fail-open nos dois modos de falha (D-02/D-03)', ()
             camada: 'escrita_ip',
             motivo: 'timeout',
         })
+    })
+})
+
+describe('verificarLimite — o reporte de indisponibilidade é THROTTLADO (CR-03)', () => {
+    it('abre UMA Issue por camada mesmo com o fornecedor caindo em toda requisição', async () => {
+        const { verificarLimite } = await carregarModulo(true)
+        limitMock.mockRejectedValue(new Error('fetch failed'))
+
+        for (let i = 0; i < 25; i++) {
+            await expect(verificarLimite('escrita_ip', [IP_FIXTURE])).resolves.toBe(true)
+        }
+
+        // Durante uma queda do Upstash saía uma Issue por checagem por
+        // requisição — três por tentativa de agendamento. O sinal que o owner
+        // precisa ("o Redis está fora") chega inteiro na primeira; as outras só
+        // queimam cota justamente durante o incidente.
+        expect(reportarMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('camadas DIFERENTES têm baldes de throttle diferentes', async () => {
+        const { verificarLimite } = await carregarModulo(true)
+        limitMock.mockRejectedValue(new Error('fetch failed'))
+
+        await verificarLimite('escrita_ip', [IP_FIXTURE])
+        await verificarLimite('leitura_ip', [IP_FIXTURE])
+
+        // Silenciar a camada de leitura porque a de escrita já reportou
+        // esconderia metade do estado do fornecedor.
+        expect(reportarMock).toHaveBeenCalledTimes(2)
     })
 })
 

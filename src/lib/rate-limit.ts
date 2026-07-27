@@ -36,7 +36,8 @@ import { createHash } from 'node:crypto'
 import { headers } from 'next/headers'
 import { Ratelimit } from '@upstash/ratelimit'
 import { Redis } from '@upstash/redis'
-import { permitirUmaVezPorProcesso } from './observabilidade/emissao'
+import { emitirDepoisDaResposta } from './observabilidade/apos-resposta'
+import { permitirEmissao, permitirUmaVezPorProcesso } from './observabilidade/emissao'
 import {
     reportarFalhaSilenciosa,
     reportarFalhaSilenciosaAguardando,
@@ -345,6 +346,41 @@ function montarChave(partesChave: Array<string | null | undefined>): string | nu
 const TEMPO_ESGOTADO = Symbol('rate-limit:timeout')
 
 /**
+ * Janela mínima entre dois reportes de indisponibilidade do fornecedor, POR
+ * CAMADA e por processo.
+ *
+ * Sem ela, uma queda do Upstash produzia uma Issue por checagem por requisição —
+ * três por tentativa de agendamento. O sinal que o owner precisa é "o Redis está
+ * fora", e ele chega inteiro na primeira; as outras milhares só queimam cota
+ * justamente durante o incidente (CR-03).
+ */
+const INTERVALO_INDISPONIBILIDADE_MS = 60_000
+
+/**
+ * Reporta a indisponibilidade do fornecedor com entrega garantida (`flush`), mas
+ * DEPOIS da resposta e no máximo uma vez por minuto por camada.
+ *
+ * O `emitirDepoisDaResposta` é o que devolve verdade ao `TIMEOUT_MS` declarado no
+ * topo deste arquivo: com o flush aguardado em linha, a espera real numa falha do
+ * fornecedor era 500 ms MAIS até 2000 ms de flush, por camada — pior caso ~5 s
+ * somados a um agendamento legítimo durante uma queda do Redis, que é exatamente
+ * o cenário que o fail-open existe para tornar indolor.
+ */
+function reportarIndisponibilidade(camada: CamadaRateLimit, motivo: 'timeout' | 'erro'): void {
+    if (!permitirEmissao(`ratelimit:redis_unavailable:${camada}`, INTERVALO_INDISPONIBILIDADE_MS)) {
+        return
+    }
+
+    emitirDepoisDaResposta(() =>
+        reportarFalhaSilenciosaAguardando('ratelimit:redis_unavailable', {
+            fluxo: 'rate_limit',
+            camada,
+            motivo,
+        }),
+    )
+}
+
+/**
  * Aplica o teto de `TIMEOUT_MS` a uma promessa do fornecedor.
  *
  * Existe porque `limit()` traz timeout nativo e `getRemaining()` NÃO traz —
@@ -399,11 +435,7 @@ export async function verificarLimite(
         if (resultado.reason === 'timeout') {
             // Redis lento: a lib já LIBEROU a requisição (`success: true`), e o
             // que resta é não deixar a degradação passar despercebida.
-            await reportarFalhaSilenciosaAguardando('ratelimit:redis_unavailable', {
-                fluxo: 'rate_limit',
-                camada,
-                motivo: 'timeout',
-            })
+            reportarIndisponibilidade(camada, 'timeout')
         }
 
         return resultado.success
@@ -413,11 +445,7 @@ export async function verificarLimite(
         // derruba o booking (D-02) — o Core Value do projeto é o agendamento
         // real chegando à agenda, e uma guarda de abuso não pode ser o que o
         // impede.
-        await reportarFalhaSilenciosaAguardando('ratelimit:redis_unavailable', {
-            fluxo: 'rate_limit',
-            camada,
-            motivo: 'erro',
-        })
+        reportarIndisponibilidade(camada, 'erro')
         return true
     }
 }
@@ -456,21 +484,13 @@ export async function verificarLimiteSemConsumir(
         const resultado = await comTeto(limiter.getRemaining(chave))
 
         if (resultado === TEMPO_ESGOTADO) {
-            await reportarFalhaSilenciosaAguardando('ratelimit:redis_unavailable', {
-                fluxo: 'rate_limit',
-                camada,
-                motivo: 'timeout',
-            })
+            reportarIndisponibilidade(camada, 'timeout')
             return true
         }
 
         return resultado.remaining > 0
     } catch {
-        await reportarFalhaSilenciosaAguardando('ratelimit:redis_unavailable', {
-            fluxo: 'rate_limit',
-            camada,
-            motivo: 'erro',
-        })
+        reportarIndisponibilidade(camada, 'erro')
         return true
     }
 }

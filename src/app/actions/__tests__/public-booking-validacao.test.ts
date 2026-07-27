@@ -132,6 +132,16 @@ const { obterSlotsDisponiveisMock } = vi.hoisted(() => ({ obterSlotsDisponiveisM
 
 vi.mock('@/lib/booking-engine', () => ({ obterSlotsDisponiveis: obterSlotsDisponiveisMock }))
 
+// `after()` do Next mockado para RODAR o callback. A telemetria de rejeição
+// passou a ser emitida depois da resposta (CR-03), e sem este mock a suíte não
+// veria emissão nenhuma — o que se prova aqui continua sendo O QUE a action
+// manda, não quando o runtime entrega.
+vi.mock('next/server', () => ({
+    after: (callback: () => unknown) => {
+        void callback()
+    },
+}))
+
 import {
     criarAgendamentoPublico,
     obterDadosBookingPublico,
@@ -141,6 +151,11 @@ import {
 // precisam provar é que o valor enviado ao Sentry é o hash — e comparar contra o
 // hash de verdade é a única forma de a asserção não passar com qualquer string.
 import { hashTenantId } from '@/lib/observabilidade/hash'
+// Real, não mockado: o throttle de emissão (CR-03) é estado de MÓDULO, e sem
+// zerá-lo entre casos o segundo teste de cada balde veria silêncio — falso
+// vermelho de teste, e pior, um falso verde se algum dia a asserção virar
+// negativa.
+import { reiniciarEmissoes } from '@/lib/observabilidade/emissao'
 
 /** Consulta encadeável que resolve sempre vazia — nenhuma linha, nenhum erro. */
 function consultaVazia() {
@@ -273,6 +288,7 @@ const PARAMS_VALIDOS = {
 } as const
 
 beforeEach(() => {
+    reiniciarEmissoes()
     createAdminClientMock.mockReset()
     createAdminClientMock.mockReturnValue(adminFake)
     // Default de TODOS os casos: rate limit liberando. Só o caso do bloqueio
@@ -458,6 +474,21 @@ describe('criarAgendamentoPublico — telemetria do bloqueio de IP (ABU-03, D-11
         expect(reportarFalhaSilenciosaMock).not.toHaveBeenCalled()
     })
 
+    it('sob flood, o Sentry Log é THROTTLADO e a taxa do PostHog não (CR-03)', async () => {
+        for (let i = 0; i < 20; i++) {
+            await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+        }
+
+        // Quantas requisições existem é escolha do ATACANTE: um evento por
+        // requisição bloqueada faz a cota do Sentry acabar exatamente durante o
+        // ataque que ela deveria estar sinalizando.
+        expect(logAguardandoMock.warn).toHaveBeenCalledTimes(1)
+        // A taxa agregada NÃO é amostrada: é ela que responde "quanto está sendo
+        // barrado" e diz se 10/10 min está apertado demais para CGNAT. Detector
+        // amostrado não detecta.
+        expect(capturarEventoServidorMock).toHaveBeenCalledTimes(20)
+    })
+
     it('falha da telemetria NÃO muda o retorno do visitante (padrão 23P01)', async () => {
         logAguardandoMock.warn.mockRejectedValue(new Error('Sentry fora do ar'))
         capturarEventoServidorMock.mockImplementation(() => {
@@ -601,6 +632,20 @@ describe('criarAgendamentoPublico — camadas de telefone e tenant (ABU-01, D-08
         // INSERT, que é onde mora o custo real.
         expect(tabelasConsultadas).toContain('perfis_empresas')
         expect(tabelasConsultadas).not.toContain('servicos')
+    })
+
+    it('a Issue do teto por tenant é THROTTLADA sob ataque sustentado (CR-03)', async () => {
+        respostaPorCamada({ teto_tenant: false })
+
+        for (let i = 0; i < 10; i++) {
+            await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+        }
+
+        // O alarme do D-12 precisa alcançar um humano UMA vez, não trinta — e o
+        // ramo que o emite só acontece sob ataque, que é justamente quando dois
+        // `Sentry.flush(2000)` por requisição são mais caros.
+        expect(reportarFalhaSilenciosaAguardandoMock).toHaveBeenCalledTimes(1)
+        expect(capturarEventoTenantMock).toHaveBeenCalledTimes(10)
     })
 
     it('tentativa bloqueada pelo TELEFONE não queima o token do tenant (WR-02)', async () => {

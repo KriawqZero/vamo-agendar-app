@@ -16,7 +16,10 @@ import {
     verificarLimite,
     verificarLimiteSemConsumir,
 } from '@/lib/rate-limit'
+import type { AtributosLogOperacional } from '@/lib/observabilidade/log'
 import { logOperacionalAguardando } from '@/lib/observabilidade/log'
+import { emitirDepoisDaResposta } from '@/lib/observabilidade/apos-resposta'
+import { permitirEmissao } from '@/lib/observabilidade/emissao'
 import {
     reportarExcecao,
     reportarFalhaSilenciosa,
@@ -72,6 +75,35 @@ const DURACAO_MAXIMA_MINUTOS = 24 * 60
  * regex, e que a Fricção Zero não justifica): o objetivo aqui é barrar lixo
  * óbvio e limitar tamanho, não recusar endereços exóticos porém válidos.
  */
+/**
+ * Janela mínima entre dois Sentry LOGS de ROTINA do endpoint público (bloqueio
+ * de rate limit, captura de honeypot), por causa e por processo.
+ *
+ * ⚠️ O throttle é a metade do CR-03 que o `after()` sozinho não resolve. Sem
+ * ele, cada requisição barrada emite um evento — e quantas requisições existem é
+ * escolha do ATACANTE. A cota do Sentry vira alvo, e ela acaba exatamente durante
+ * o ataque que deveria estar sinalizando. O caminho do honeypot era o pior: nunca
+ * passa por `verificarLimite`, então é literalmente um endpoint sem teto.
+ *
+ * O que se perde é pequeno e conhecido: sob flood, o log caso-a-caso vira uma
+ * amostra por minuto por camada em vez de uma linha por requisição — e as linhas
+ * descartadas seriam todas iguais. O VOLUME continua medido com fidelidade total
+ * pelo PostHog, que é quem responde "quanto está sendo barrado" e por isso não é
+ * amostrado. Fora de ataque, bloqueio é raro e nada é descartado.
+ */
+const INTERVALO_LOG_ROTINA_MS = 60_000
+
+/**
+ * Janela mínima entre duas Issues do teto por tenant, POR TENANT.
+ *
+ * Mais larga que a de rotina porque o alarme do D-12 precisa alcançar um humano
+ * UMA vez, não trinta. A chave inclui o `tenantHash` para que o ataque a um
+ * tenant não silencie o alarme de outro; o `Map` cresce com o número de tenants
+ * reais (o `tenant_id` vem do perfil resolvido no banco, nunca do visitante),
+ * então não é vetor de crescimento sem teto.
+ */
+const INTERVALO_ISSUE_TETO_TENANT_MS = 15 * 60_000
+
 const NOME_MAXIMO_CARACTERES = 120
 const EMAIL_MAXIMO_CARACTERES = 254
 const FORMATO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -89,6 +121,27 @@ const FORMATO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
  * qual instante ela representa — a interpretação no fuso do tenant continua sendo
  * assunto exclusivo de `src/lib/timezone.ts`.
  */
+/**
+ * Emite o Sentry Log de rotina do endpoint público sem segurar a resposta e sem
+ * deixar o atacante escolher o volume (CR-03).
+ *
+ * Duas travas, cada uma para um defeito diferente: `permitirEmissao` corta a
+ * repetição, e `emitirDepoisDaResposta` tira o `Sentry.flush(2000)` da frente do
+ * visitante mantendo a entrega garantida (`after()` do Next — o runtime segura a
+ * invocação até o callback terminar). A variante AGUARDADA continua sendo a usada
+ * lá dentro: o incidente 260724 perdeu evento por fire-and-forget puro, e isso
+ * não volta.
+ */
+function logarRotinaDepoisDaResposta(
+    chaveDoThrottle: string,
+    codigo: string,
+    atributos: AtributosLogOperacional,
+): void {
+    if (!permitirEmissao(chaveDoThrottle, INTERVALO_LOG_ROTINA_MS)) return
+
+    emitirDepoisDaResposta(() => logOperacionalAguardando.warn(codigo, atributos))
+}
+
 function ehDataDeCalendario(dateStr: string): boolean {
     const instante = new Date(`${dateStr}T00:00:00Z`)
     return !isNaN(instante.getTime()) && instante.toISOString().slice(0, 10) === dateStr
@@ -411,10 +464,19 @@ export async function criarAgendamentoPublico({
         // invisível: ninguém reclama de um agendamento que a tela confirmou.
         //
         // `booking_completed` NÃO sai daqui: o funil do owner não pode contar
-        // bot como cliente. E a variante do log é a AGUARDADA porque o `return`
-        // encerra a Server Action na linha seguinte (incidente 260724).
+        // bot como cliente.
+        //
+        // O log vai pelo caminho THROTTLADO e DIFERIDO (CR-03), e este era o
+        // ponto mais grave dos cinco: a captura nunca passa por
+        // `verificarLimite`, então um `Sentry.flush(2000)` aguardado aqui fazia
+        // de um endpoint SEM TETO um amplificador — cada requisição de bot
+        // segurava um slot do servidor esperando uma ida de rede a terceiro. A
+        // entrega continua garantida (o `flush` só saiu da frente da resposta).
+        //
+        // O evento do PostHog NÃO é throttlado, de propósito: é ele o detector
+        // de falso-positivo de autofill, e detector amostrado não detecta.
         try {
-            await logOperacionalAguardando.warn('honeypot.captura', {
+            logarRotinaDepoisDaResposta('honeypot.captura', 'honeypot.captura', {
                 fluxo: 'booking_publico',
             })
             // Sem propriedades: o slug é dado do VISITANTE, não do tenant
@@ -514,13 +576,13 @@ export async function criarAgendamentoPublico({
         // owner para de olhar a ferramenta — a Issue fica reservada ao teto por
         // tenant e à falha do Redis, que exigem ação humana.
         //
-        // O log é AGUARDADO porque o `return` encerra a Server Action na linha
-        // seguinte: a variante fire-and-forget perde o evento quando o runtime
-        // congela junto com a resposta (incidente 260724). E o `chaveHash` é o
-        // MESMO hash usado na chave do contador — correlaciona log e Redis sem
+        // O log continua com ENTREGA GARANTIDA (`Sentry.flush`), mas emitido
+        // depois da resposta e com throttle (CR-03): aguardá-lo em linha fazia
+        // rejeitar custar mais que aceitar, exatamente sob flood. O `chaveHash` é
+        // o MESMO hash usado na chave do contador — correlaciona log e Redis sem
         // que o IP exista em nenhum dos dois.
         try {
-            await logOperacionalAguardando.warn('ratelimit.bloqueio', {
+            logarRotinaDepoisDaResposta('ratelimit.bloqueio:escrita_ip', 'ratelimit.bloqueio', {
                 fluxo: 'booking_publico',
                 camada: 'escrita_ip',
                 // IP indeterminável devolve `null` e a camada vira PASSE
@@ -605,12 +667,16 @@ export async function criarAgendamentoPublico({
         // camada de IP é a variante do PostHog: aqui o tenant já existe, e a
         // taxa POR TENANT é o que responde "esta agenda está sendo atacada?".
         try {
-            await logOperacionalAguardando.warn('ratelimit.bloqueio', {
-                fluxo: 'booking_publico',
-                camada: 'escrita_telefone',
-                chaveHash: hashChaveRateLimit(telefoneLimpo),
-                tenantHash: hashTenantId(tenantId),
-            })
+            logarRotinaDepoisDaResposta(
+                'ratelimit.bloqueio:escrita_telefone',
+                'ratelimit.bloqueio',
+                {
+                    fluxo: 'booking_publico',
+                    camada: 'escrita_telefone',
+                    chaveHash: hashChaveRateLimit(telefoneLimpo),
+                    tenantHash: hashTenantId(tenantId),
+                },
+            )
             capturarEventoTenant('booking_rate_limited', tenantId, {
                 camada: 'escrita_telefone',
             })
@@ -639,8 +705,15 @@ export async function criarAgendamentoPublico({
         // hash — os três contratos de mensageria do CLAUDE.md, pelos três
         // motivos: agrupamento que não estilhaça sob ataque, evento que não se
         // perde quando o runtime congela no `return`, e invariante nunca-PII.
+        //
+        // O que mudou com o CR-03: as duas emissões saem DEPOIS da resposta e a
+        // Issue é throttlada por tenant. Este era o pior caso de latência da
+        // fase — dois `Sentry.flush(2000)` aguardados em série no mesmo ramo, e
+        // um ramo que só acontece sob ataque, ou seja, exatamente quando segurar
+        // slots do servidor é mais caro.
+        const chaveIssueDoTenant = `ratelimit:teto_tenant_atingido:${hashTenantId(tenantId)}`
         try {
-            await logOperacionalAguardando.warn('ratelimit.bloqueio', {
+            logarRotinaDepoisDaResposta('ratelimit.bloqueio:teto_tenant', 'ratelimit.bloqueio', {
                 fluxo: 'booking_publico',
                 camada: 'teto_tenant',
                 tenantHash: hashTenantId(tenantId),
@@ -648,11 +721,15 @@ export async function criarAgendamentoPublico({
             capturarEventoTenant('booking_rate_limited', tenantId, { camada: 'teto_tenant' })
             // ACRÉSCIMO à telemetria de rotina, nunca substituição: o alarme
             // sozinho chegaria sem o histórico que permite dimensionar o ataque.
-            await reportarFalhaSilenciosaAguardando('ratelimit:teto_tenant_atingido', {
-                fluxo: 'booking_publico',
-                camada: 'teto_tenant',
-                tenantHash: hashTenantId(tenantId),
-            })
+            if (permitirEmissao(chaveIssueDoTenant, INTERVALO_ISSUE_TETO_TENANT_MS)) {
+                emitirDepoisDaResposta(() =>
+                    reportarFalhaSilenciosaAguardando('ratelimit:teto_tenant_atingido', {
+                        fluxo: 'booking_publico',
+                        camada: 'teto_tenant',
+                        tenantHash: hashTenantId(tenantId),
+                    }),
+                )
+            }
         } catch (telemetriaErr) {
             console.error(
                 '[rate-limit] telemetria do teto por tenant não emitida (ignorada):',
@@ -1026,7 +1103,7 @@ export async function obterSlotsPublicos(
         // importa. Variante SERVIDOR do PostHog porque o slug ainda não foi
         // resolvido — não existe tenant a quem atribuir o evento.
         try {
-            await logOperacionalAguardando.warn('ratelimit.bloqueio', {
+            logarRotinaDepoisDaResposta('ratelimit.bloqueio:leitura_ip', 'ratelimit.bloqueio', {
                 fluxo: 'booking_publico',
                 camada: 'leitura_ip',
                 // Mesma razão do bloqueio de escrita: sem IP a camada libera
