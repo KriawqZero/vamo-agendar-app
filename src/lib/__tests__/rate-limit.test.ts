@@ -23,6 +23,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// Import de TIPO apenas (apagado na compilação): não carrega o módulo real e
+// por isso não quebra a recarga por caso feita com `import()` dinâmico.
+import type { CamadaRateLimit } from '@/lib/rate-limit'
+
 const { limitMock, reportarMock, headersMock, configsCriadas } = vi.hoisted(() => ({
     limitMock: vi.fn(),
     reportarMock: vi.fn(async () => {}),
@@ -112,12 +116,17 @@ describe('verificarLimite — no-op sem credenciais do Upstash (D-04)', () => {
         expect(limitMock).not.toHaveBeenCalled()
     })
 
-    it('devolve PASSE para as camadas ainda sem limiter próprio', async () => {
+    it('devolve PASSE para camada declarada sem limiter próprio', async () => {
         const { verificarLimite } = await carregarModulo(true)
 
-        // Camada declarada no tipo mas sem instância ainda: PASSE, nunca
-        // bloqueio acidental. `leitura_ip` é a última que falta — entra no 03-04.
-        await expect(verificarLimite('leitura_ip', [IP_FIXTURE])).resolves.toBe(true)
+        // As QUATRO camadas do desenho já têm limiter (a de leitura entrou no
+        // 03-04), então a garantia "camada sem instância é PASSE, nunca bloqueio
+        // acidental" só continua verificável com um nome fora do mapa. Ela é o
+        // que protege um plano futuro que declare uma camada em
+        // `CamadaRateLimit` antes de instanciá-la.
+        await expect(
+            verificarLimite('camada_futura' as CamadaRateLimit, [IP_FIXTURE]),
+        ).resolves.toBe(true)
         expect(limitMock).not.toHaveBeenCalled()
     })
 
@@ -326,6 +335,63 @@ describe('camada teto_tenant — desacelerador do ataque distribuído (D-09)', (
             camada: 'teto_tenant',
             motivo: 'timeout',
         })
+    })
+})
+
+describe('camada leitura_ip — teto folgado da grade de slots (D-06/D-10)', () => {
+    it('usa slidingWindow de 60 leituras por minuto no prefixo rl:leitura:ip', async () => {
+        await carregarModulo(true)
+
+        const config = configsCriadas.find((c) => c.prefix === 'rl:leitura:ip')
+        expect(config).toBeDefined()
+        // O número é BEM folgado de propósito e a folga é o requisito, não o
+        // efeito colateral: um cliente legítimo navegando o calendário dispara
+        // dezenas de chamadas de slots em poucos minutos, e CGNAT de operadora
+        // móvel soma clientes distintos no mesmo IP. Errar para o folgado só
+        // reduz proteção; errar para o apertado adiciona fricção, que a regra de
+        // ouro do produto proíbe (ABU-02).
+        expect(config?.limiter).toEqual({ algoritmo: 'slidingWindow', tokens: 60, janela: '1 m' })
+        expect(config?.timeout).toBe(500)
+    })
+
+    it('consulta o limiter de leitura com o IP hasheado, nunca cru', async () => {
+        const { verificarLimite, hashChaveRateLimit } = await carregarModulo(true)
+        limitMock.mockResolvedValue({ success: true, remaining: 59 })
+
+        await expect(verificarLimite('leitura_ip', [IP_FIXTURE])).resolves.toBe(true)
+
+        expect(limitMock).toHaveBeenCalledWith(hashChaveRateLimit(IP_FIXTURE), 'rl:leitura:ip')
+        const chaveEnviada = String(limitMock.mock.calls[0]?.[0] ?? '')
+        expect(chaveEnviada).not.toContain(IP_FIXTURE)
+    })
+
+    it('BLOQUEIA quando a janela de leitura estourou, sem abrir Issue', async () => {
+        const { verificarLimite } = await carregarModulo(true)
+        limitMock.mockResolvedValue({ success: false, remaining: 0 })
+
+        await expect(verificarLimite('leitura_ip', [IP_FIXTURE])).resolves.toBe(false)
+        // Mesma natureza dos outros bloqueios de rotina: o alarme do Sentry
+        // continua reservado ao teto por tenant e à falha do fornecedor.
+        expect(reportarMock).not.toHaveBeenCalled()
+    })
+
+    it('PASSA com Issue sintética quando o fornecedor REJEITA (fail-open, D-02)', async () => {
+        const { verificarLimite } = await carregarModulo(true)
+        limitMock.mockRejectedValue(new Error('fetch failed'))
+
+        await expect(verificarLimite('leitura_ip', [IP_FIXTURE])).resolves.toBe(true)
+        expect(reportarMock).toHaveBeenCalledWith('ratelimit:redis_unavailable', {
+            fluxo: 'rate_limit',
+            camada: 'leitura_ip',
+            motivo: 'erro',
+        })
+    })
+
+    it('devolve PASSE sem credenciais do Upstash (no-op, D-04)', async () => {
+        const { verificarLimite } = await carregarModulo(false)
+
+        await expect(verificarLimite('leitura_ip', [IP_FIXTURE])).resolves.toBe(true)
+        expect(limitMock).not.toHaveBeenCalled()
     })
 })
 

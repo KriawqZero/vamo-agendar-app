@@ -102,7 +102,11 @@ vi.mock('@/lib/observabilidade/reportar', () => ({
     reportarFalhaSilenciosaAguardando: reportarFalhaSilenciosaAguardandoMock,
 }))
 
-import { criarAgendamentoPublico } from '@/app/actions/public-booking'
+import {
+    criarAgendamentoPublico,
+    obterDadosBookingPublico,
+    obterSlotsPublicos,
+} from '@/app/actions/public-booking'
 // `hashTenantId` entra REAL, não mockado: o que os casos do teto por tenant
 // precisam provar é que o valor enviado ao Sentry é o hash — e comparar contra o
 // hash de verdade é a única forma de a asserção não passar com qualquer string.
@@ -532,5 +536,122 @@ describe('criarAgendamentoPublico — camadas de telefone e tenant (ABU-01, D-08
         expect(resultado.ok).toBe(false)
         if (!resultado.ok) expect(resultado.motivo).toBe('servico_invalido')
         expect(reportarFalhaSilenciosaAguardandoMock).not.toHaveBeenCalled()
+    })
+})
+
+/**
+ * Camada 4 (03-04): teto de LEITURA por IP em `obterSlotsPublicos`.
+ *
+ * A grade de slots é a função que um script martelaria para varrer a agenda, e
+ * é a única superfície de leitura com canal de erro discriminado — o que permite
+ * bloquear sem inventar caminho novo de 404. `obterDadosBookingPublico` fica de
+ * fora por decisão registrada, e o último caso deste bloco é a trava disso.
+ */
+describe('obterSlotsPublicos — teto de leitura por IP (ABU-01, D-06/D-10)', () => {
+    /** Argumentos 100% válidos: qualquer recusa só pode vir do rate limit. */
+    const SLUG = 'barbearia-teste'
+    const DATA_VALIDA = '2099-01-15'
+    const DURACAO_VALIDA = 30
+
+    it('recusa com `muitas_tentativas` SEM tocar o banco quando a janela estourou', async () => {
+        respostaPorCamada({ leitura_ip: false })
+
+        const resultado = await obterSlotsPublicos(SLUG, DATA_VALIDA, DURACAO_VALIDA)
+
+        expect(resultado.ok).toBe(false)
+        if (!resultado.ok) expect(resultado.motivo).toBe('muitas_tentativas')
+        // A guarda roda ANTES da resolução do slug: o cliente privilegiado nunca
+        // foi instanciado, então o martelo não empurra carga para o Supabase.
+        expect(createAdminClientMock).not.toHaveBeenCalled()
+        // Asserção NEGATIVA do padrão 01-18 — se `slug_invalido` aparecesse, o
+        // bloqueio teria acontecido depois da resolução, e a caixa de erro
+        // mentiria sobre a causa.
+        expect(JSON.stringify(resultado)).not.toContain('slug_invalido')
+    })
+
+    it('consulta a camada `leitura_ip` com o IP do visitante', async () => {
+        await obterSlotsPublicos(SLUG, DATA_VALIDA, DURACAO_VALIDA)
+
+        expect(ipDoVisitanteMock).toHaveBeenCalled()
+        expect(verificarLimiteMock).toHaveBeenCalledWith('leitura_ip', ['203.0.113.7'])
+    })
+
+    it('emite log pseudonimizado + evento agregado, e NENHUMA Issue', async () => {
+        respostaPorCamada({ leitura_ip: false })
+
+        await obterSlotsPublicos(SLUG, DATA_VALIDA, DURACAO_VALIDA)
+
+        expect(logAguardandoMock.warn).toHaveBeenCalledWith('ratelimit.bloqueio', {
+            fluxo: 'booking_publico',
+            camada: 'leitura_ip',
+            chaveHash: 'hash-do-ip-fixture',
+        })
+        // Variante SERVIDOR: a leitura é barrada antes de o slug resolver, então
+        // não existe tenant a quem atribuir o evento — mesma razão da camada de
+        // escrita por IP.
+        expect(capturarEventoServidorMock).toHaveBeenCalledWith('booking_rate_limited', {
+            camada: 'leitura_ip',
+        })
+        expect(capturarEventoTenantMock).not.toHaveBeenCalled()
+        // Bloqueio de leitura é rotina de endpoint público: Issue aqui inundaria
+        // o Sentry justamente durante o ataque que ela deveria sinalizar.
+        expect(reportarFalhaSilenciosaAguardandoMock).not.toHaveBeenCalled()
+        expect(reportarExcecaoMock).not.toHaveBeenCalled()
+
+        const argumentos = JSON.stringify(logAguardandoMock.warn.mock.calls)
+        expect(argumentos).not.toContain('203.0.113.7')
+    })
+
+    it('falha da telemetria NÃO muda o retorno do visitante', async () => {
+        respostaPorCamada({ leitura_ip: false })
+        logAguardandoMock.warn.mockRejectedValue(new Error('Sentry fora do ar'))
+        capturarEventoServidorMock.mockImplementation(() => {
+            throw new Error('PostHog fora do ar')
+        })
+
+        const resultado = await obterSlotsPublicos(SLUG, DATA_VALIDA, DURACAO_VALIDA)
+
+        expect(resultado.ok).toBe(false)
+        if (!resultado.ok) expect(resultado.motivo).toBe('muitas_tentativas')
+    })
+
+    it('entrada malformada é recusada ANTES de gastar comando no Redis', async () => {
+        // Não-regressão do padrão 01-18 e economia de cota (Pitfall 8): data e
+        // duração hostis são recusadas de graça, sem consultar o fornecedor.
+        const porData = await obterSlotsPublicos(SLUG, '2099-13-45', DURACAO_VALIDA)
+        expect(porData.ok).toBe(false)
+        if (!porData.ok) expect(porData.motivo).toBe('data_invalida')
+
+        const porDuracao = await obterSlotsPublicos(SLUG, DATA_VALIDA, -5_000_000)
+        expect(porDuracao.ok).toBe(false)
+        if (!porDuracao.ok) expect(porDuracao.motivo).toBe('servico_invalido')
+
+        expect(verificarLimiteMock).not.toHaveBeenCalled()
+        expect(createAdminClientMock).not.toHaveBeenCalled()
+    })
+
+    it('com a camada liberando, a leitura segue idêntica ao baseline', async () => {
+        respostaPorCamada({})
+
+        const resultado = await obterSlotsPublicos(SLUG, DATA_VALIDA, DURACAO_VALIDA)
+
+        // Passa da guarda e para adiante, na resolução do slug (fixture vazia).
+        expect(createAdminClientMock).toHaveBeenCalled()
+        expect(resultado.ok).toBe(false)
+        if (!resultado.ok) expect(resultado.motivo).not.toBe('muitas_tentativas')
+    })
+
+    it('obterDadosBookingPublico NÃO passa pelo rate limit — bloqueio nunca vira 404', async () => {
+        // Trava da decisão do plano 03-04 (desvio do D-06 ratificado pelo owner):
+        // o contrato desta função é `null` → `notFound()` em `page.tsx`. Um teto
+        // aqui converteria bloqueio de leitura em "estabelecimento não existe"
+        // para um visitante legítimo sob CGNAT — o pior desfecho possível, e
+        // indistinguível de link quebrado.
+        respostaPorCamada({ leitura_ip: false })
+
+        await obterDadosBookingPublico(SLUG)
+
+        expect(verificarLimiteMock).not.toHaveBeenCalled()
+        expect(createAdminClientMock).toHaveBeenCalled()
     })
 })
