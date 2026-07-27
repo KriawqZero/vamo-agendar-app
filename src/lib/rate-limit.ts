@@ -32,12 +32,12 @@
  * (reversibilidade "costly" do D-01) localizada num arquivo só.
  */
 
-import { createHash } from 'node:crypto'
 import { headers } from 'next/headers'
 import { Ratelimit } from '@upstash/ratelimit'
 import { Redis } from '@upstash/redis'
 import { emitirDepoisDaResposta } from './observabilidade/apos-resposta'
 import { permitirEmissao, permitirUmaVezPorProcesso } from './observabilidade/emissao'
+import { hashComSal } from './observabilidade/hash'
 import {
     reportarFalhaSilenciosa,
     reportarFalhaSilenciosaAguardando,
@@ -195,17 +195,27 @@ const LIMITERS: Partial<Record<CamadaRateLimit, Ratelimit>> = redis
     : {}
 
 /**
+ * Domínio de hash deste módulo. Ver `hashComSal`: é o que impede a chave do
+ * contador no Redis de coincidir com o `tenantHash` publicado na telemetria.
+ */
+const DOMINIO_HASH = 'ratelimit'
+
+/**
  * Pseudonimiza uma parte de chave antes de ela virar chave no store de um
  * fornecedor terceiro.
  *
- * Mesma forma EXATA de `hashAgendamentoId` (sha256 + `ANALYTICS_TENANT_SALT` +
- * hex truncado a 16) — hash artesanal diferente por módulo é como o invariante
- * nunca-PII se perde. Custa microssegundos e não muda o comportamento do limite:
- * o hash é determinístico, então o mesmo IP cai sempre no mesmo balde.
+ * Delega ao helper único de `observabilidade/hash.ts` — hash artesanal diferente
+ * por módulo é como o invariante nunca-PII se perde, e três cópias literais da
+ * mesma expressão foram o que produziu o WR-01. Custa microssegundos e não muda
+ * o comportamento do limite: o hash é determinístico, então o mesmo IP cai
+ * sempre no mesmo balde.
+ *
+ * ⚠️ `hashChaveRateLimit(tenantId) !== hashTenantId(tenantId)`, e a diferença é
+ * o ponto: antes eram o MESMO valor, e quem via um evento de telemetria
+ * conseguia apontar o balde correspondente no Redis da Upstash.
  */
 export function hashChaveRateLimit(valor: string): string {
-    const salt = process.env.ANALYTICS_TENANT_SALT ?? ''
-    return createHash('sha256').update(`${salt}${valor}`).digest('hex').slice(0, 16)
+    return hashComSal(DOMINIO_HASH, valor)
 }
 
 /** IPv4 pontuado, sem validar a faixa de cada octeto (isso é o `.every` abaixo). */
