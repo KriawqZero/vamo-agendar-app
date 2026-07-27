@@ -72,6 +72,11 @@ fase fecha é encher **slots distintos** em massa e martelar leitura por volume.
   por teto de IP **bem folgado** — um cliente legítimo navegando o calendário gera
   dezenas de chamadas de `obterSlotsPublicos` em minutos e **nunca** pode esbarrar no
   limite (SC2). — **Reversibility:** reversible.
+  - *Ratificação de desvio (owner, 2026-07-27, durante o plan-phase):* nesta fase apenas
+    `obterSlotsPublicos` ganha o teto de leitura; `obterDadosBookingPublico` fica fora
+    porque seu contrato `null→notFound()` transformaria bloqueio em 404 para visitante
+    legítimo (violação de ABU-02 pior que o risco coberto). Reavaliação em fase futura se
+    necessário. A decisão original acima permanece como escrita.
 - **D-07:** escrita barrada devolve **erro honesto**: discriminante novo
   `muitas_tentativas` no padrão de retorno discriminado existente + copy amigável em
   `src/app/book/[slug]/mensagens.ts` (tom: "Muitas tentativas seguidas. Aguarde um

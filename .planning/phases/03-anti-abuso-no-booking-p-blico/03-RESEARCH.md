@@ -614,7 +614,10 @@ type RatelimitResponse = {
 | A5 | Upstash Free tem cota diária de comandos que um ataque sustentado esgota | Pitfall 8 | Se a cota for outra, muda só a urgência do detector — o fail-open+Issue já cobre |
 | A6 | Números de calibração sugeridos (IP escrita ~10/10min; leitura ~60/min por IP; telefone ~5 tentativas/h como implementação do "~3 agendamentos/h") | Patterns / Pitfall 4 | São constantes de calibração declaradas reversíveis (D-08/D-09); errar para o folgado só reduz proteção, nunca adiciona fricção |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+Todas as 5 questões foram resolvidas durante o planning (2026-07-27) — a resolução de
+cada uma vive em conteúdo executável dos planos, anotada abaixo.
 
 1. **Onde exatamente rodam as camadas de telefone e tenant?**
    - What we know: o CONTEXT manda a checagem para a fronteira (padrão 01-18), mas a chave
@@ -623,22 +626,35 @@ type RatelimitResponse = {
      chave exata.
    - Recommendation: IP na fronteira; telefone+tenant pós-resolução (Pitfall 1). Registrar
      a escolha no plano com o racional.
+   - ✅ **Resolvida no plano 03-03**: IP na fronteira; checagem composta telefone+tenant
+     pós-resolução do slug (Task 2, com o racional do Pitfall 1 registrado no plano).
 2. **Bloqueio de leitura cobre `obterDadosBookingPublico`?**
    - What we know: `null → notFound()` faria bloqueio virar 404 (Pitfall 7); o vetor real
      de varredura é `obterSlotsPublicos`, que tem canal de erro discriminado.
    - Recommendation: teto de leitura só em `obterSlotsPublicos`; deixar o page load fora
      nesta fase (uma requisição por visita, custo baixo, e a Vercel/Railway não têm CDN
      configurado na frente para confundir a contagem).
+   - ✅ **Resolvida no plano 03-04** (teto só em `obterSlotsPublicos`;
+     `obterDadosBookingPublico` fora) — **desvio do D-06 ratificado pelo owner em
+     2026-07-27 durante o plan-phase**; ratificação anotada no 03-CONTEXT.md (D-06) e no
+     próprio plano 03-04.
 3. **Onde documentar a alternativa RPC/Postgres não escolhida (exigência do D-01/ROADMAP)?**
    - Recommendation: seção curta num doc de domínio (ex.: acrescentar a `docs/01` ou doc
      próprio da fase) + nota em `docs/PENDENCIAS.md` se algo ficar adiado (Definition of
      Done §6). Decisão de forma é do planner.
+   - ✅ **Resolvida no plano 03-06**: documentação da alternativa não escolhida com o
+     racional do D-01 + itens de `docs/PENDENCIAS.md`.
 4. **Entrega do Sentry Log de bloqueio (Pitfall 3): variante aguardada de `logOperacional`
    ou `after()` com flush?**
    - Recommendation: variante aguardada espelhando `reportar.ts` — mecanismo já provado
      no baseline 260724 e testável do mesmo jeito.
+   - ✅ **Resolvida no plano 03-02**: `logOperacionalAguardando` (variante aguardada com
+     `Sentry.flush`), consumida nos pontos de bloqueio dos planos seguintes.
 5. **Confirmação do plano Upstash sobre segundo database (D-05):** ação do owner no
    provisionamento; se pago, dev fica em no-op (a própria decisão já prevê o desvio).
+   - ✅ **Resolvida**: provisionamento registrado como ação do owner no `user_setup` do
+     plano 03-01 + gate de deploy e desvio previsto (no-op em dev) registrados em
+     PENDENCIAS no plano 03-06.
 
 ## Environment Availability
 
