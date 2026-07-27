@@ -81,6 +81,19 @@ export const COPY_SERVICO_INVALIDO = 'Serviço inválido ou indisponível.'
 export const COPY_EMAIL_INVALIDO = 'E-mail inválido. Confira o endereço ou deixe o campo em branco.'
 
 /**
+ * Rate limit da fase de anti-abuso estourado — condição ESPERADA, não erro.
+ *
+ * Redação contratada no D-07 e a razão de ela existir: quem é barrado pode ser
+ * um script, mas pode ser uma pessoa real atrás do mesmo IP de operadora móvel
+ * (CGNAT) que outro cliente acabou de usar. Por isso a resposta é erro honesto
+ * com saída clara ("aguarde e tente de novo") em vez do sucesso falso, que fica
+ * reservado ao honeypot — lá a certeza de bot é alta; aqui não é, e fazer uma
+ * pessoa achar que agendou sem ter agendado é o pior desfecho possível.
+ */
+export const COPY_MUITAS_TENTATIVAS =
+    'Muitas tentativas seguidas. Aguarde um instante e tente de novo.'
+
+/**
  * Falha de infraestrutura na etapa de contato (leitura ou escrita em `clientes`).
  *
  * ⚠️ Constante PINADA, hoje sem mapeamento próprio: o discriminante colapsa as
@@ -118,6 +131,12 @@ const COPIA_DA_CAIXA_DE_HORARIOS: Record<MotivoPublico, string> = {
     // `email_invalido` só existe no caminho de ESCRITA; nunca chega à caixa de
     // horários. O membro existe aqui apenas para manter o Record exaustivo.
     email_invalido: COPY_ERRO_SLOTS,
+    // `muitas_tentativas` PODE chegar aqui quando o teto de LEITURA por IP
+    // entrar (plano 03-04), e a decisão já está tomada (D-10): reusa a cópia
+    // existente, zero texto novo na leitura. Quem é barrado numa grade de
+    // horários é script, e script não lê tela — inventar cópia própria só
+    // acrescentaria uma string para manter.
+    muitas_tentativas: COPY_ERRO_SLOTS,
 }
 
 /**
@@ -143,6 +162,7 @@ const COPIA_DO_ENVIO: Record<MotivoPublico, string> = {
     slot_indisponivel: COPY_SLOT_INDISPONIVEL,
     erro_interno: COPY_ERRO_CONFIRMACAO,
     email_invalido: COPY_EMAIL_INVALIDO,
+    muitas_tentativas: COPY_MUITAS_TENTATIVAS,
 }
 
 /**

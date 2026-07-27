@@ -10,6 +10,7 @@ import type { PlanoId } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 import { ehHexValida } from '@/lib/cores'
 import { capturarEventoTenant } from '@/lib/analytics/server'
+import { ipDoVisitante, verificarLimite } from '@/lib/rate-limit'
 import { reportarExcecao, reportarFalhaSilenciosa } from '@/lib/observabilidade/reportar'
 import { erroSinteticoSupabase } from '@/lib/observabilidade/erro-supabase'
 
@@ -100,6 +101,10 @@ function ehDataDeCalendario(dateStr: string): boolean {
  * digita (campo opcional), então merece cópia honesta própria em vez de ser
  * colapsado em `campos_obrigatorios` — só ele exigiu literal novo, porque o teto
  * de nome reusa `campos_obrigatorios` (nome gigante é ataque, não UX).
+ * `muitas_tentativas` é o nono, da Phase 3: rate limit estourado devolve erro
+ * HONESTO, nunca sucesso falso (D-07) — CGNAT de operadora faz clientes reais
+ * dividirem IP, e "ela acha que agendou e não agendou" é o pior desfecho
+ * possível para a confiança no produto.
  */
 export type MotivoPublico =
     | 'campos_obrigatorios'
@@ -110,6 +115,7 @@ export type MotivoPublico =
     | 'slot_indisponivel'
     | 'erro_interno'
     | 'email_invalido'
+    | 'muitas_tentativas'
 
 /** Falhas que a resolução de perfil sabe produzir. */
 type MotivoLeituraPublica = Extract<MotivoPublico, 'slug_invalido' | 'erro_interno'>
@@ -376,6 +382,30 @@ export async function criarAgendamentoPublico({
     const dataLocal = new Date(dataHora)
     if (isNaN(dataLocal.getTime())) {
         return { ok: false, motivo: 'data_invalida' }
+    }
+
+    // ⚠️ RATE LIMIT POR IP — a posição é o desenho, e ela tem DOIS lados.
+    //
+    // Vem DEPOIS das validações acima porque todas elas são síncronas e de
+    // graça: payload lixo não merece gastar um comando no Redis. E vem ANTES de
+    // `createAdminClient()` pelo mesmo motivo do comentário-manifesto de
+    // `obterSlotsPublicos` (padrão 01-18): a diferença entre recusar de graça e
+    // recusar depois de já ter pago duas consultas ao banco. Um script que
+    // repete a requisição não deve conseguir empurrar carga para o Supabase.
+    //
+    // A camada de IP é a mais FOLGADA das três da fase (10/10 min): CGNAT de
+    // operadora móvel faz clientes distintos dividirem o mesmo IP, e um salão
+    // que acabou de divulgar o link recebe rajada legítima. As camadas que
+    // apertam de verdade (telefone e teto do tenant) entram depois da resolução
+    // do slug, porque o `tenant_id` só nasce lá — plano 03-03.
+    //
+    // `verificarLimite` NUNCA lança e devolve PASSE quando o fornecedor falha
+    // (fail-open, D-02): Redis fora do ar não pode ser o que impede um
+    // agendamento real de chegar à agenda. O bloqueio é valor discriminado, como
+    // toda falha esperada deste arquivo — nunca `throw`.
+    const ipDoCliente = await ipDoVisitante()
+    if (!(await verificarLimite('escrita_ip', [ipDoCliente]))) {
+        return { ok: false, motivo: 'muitas_tentativas' }
     }
 
     // Todo o caminho público (leituras e escritas) usa o cliente PRIVILEGIADO:

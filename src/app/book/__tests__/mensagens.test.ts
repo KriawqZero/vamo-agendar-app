@@ -30,6 +30,7 @@ import {
     COPY_ERRO_SLOTS_FALLBACK,
     COPY_ESTABELECIMENTO_INVALIDO,
     COPY_FALLBACK_ENVIO,
+    COPY_MUITAS_TENTATIVAS,
     COPY_SERVICO_INVALIDO,
     COPY_SLOT_INDISPONIVEL,
     COPY_TELEFONE_INVALIDO,
@@ -51,6 +52,7 @@ const TODOS_OS_MOTIVOS = [
     'slot_indisponivel',
     'erro_interno',
     'email_invalido',
+    'muitas_tentativas',
 ] as const satisfies readonly MotivoPublico[]
 
 /**
@@ -110,6 +112,26 @@ describe('cópias públicas do booking', () => {
         expect(COPY_DATA_INVALIDA).toBe('Data e horário inválidos.')
         expect(COPY_ESTABELECIMENTO_INVALIDO).toBe('Estabelecimento inválido ou indisponível.')
         expect(COPY_SERVICO_INVALIDO).toBe('Serviço inválido ou indisponível.')
+    })
+
+    // -----------------------------------------------------------------------
+    // Cópia do bloqueio por rate limit (Phase 3, D-07/D-10).
+    // -----------------------------------------------------------------------
+
+    it('mantém a cópia de rate limit byte a byte', () => {
+        // Redação contratada no D-07. Um byte diferente aqui é mudança de
+        // contrato de produto, não refatoração.
+        expect(COPY_MUITAS_TENTATIVAS).toBe(
+            'Muitas tentativas seguidas. Aguarde um instante e tente de novo.',
+        )
+    })
+
+    it('roteia `muitas_tentativas` para copias diferentes nas duas superficies', () => {
+        // No ENVIO o visitante recebe o erro honesto com a saída explícita...
+        expect(mensagemDeEnvio('muitas_tentativas')).toBe(COPY_MUITAS_TENTATIVAS)
+        // ...e na caixa de horários reusa a cópia existente (D-10): zero texto
+        // novo na leitura, porque quem é barrado ali é script e script não lê tela.
+        expect(mensagemDeMotivo('muitas_tentativas')).toBe(COPY_ERRO_SLOTS)
     })
 
     it('traduz `slot_indisponivel` do envio para o aviso âmbar contratado', () => {

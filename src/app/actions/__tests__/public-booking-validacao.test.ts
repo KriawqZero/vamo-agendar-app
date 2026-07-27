@@ -29,6 +29,21 @@ const { createAdminClientMock } = vi.hoisted(() => ({ createAdminClientMock: vi.
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: createAdminClientMock }))
 
+// O módulo de rate limit é mockado INTEIRO, e não só a decisão: o de verdade
+// importa `next/headers`, que não existe fora de um contexto de requisição do
+// Next. A suíte precisa continuar hermética. O contrato do módulo real (no-op,
+// fail-open, chave pseudonimizada) é provado em `src/lib/__tests__/rate-limit.test.ts`;
+// aqui o que se prova é o que a AÇÃO faz com a resposta dele.
+const { verificarLimiteMock, ipDoVisitanteMock } = vi.hoisted(() => ({
+    verificarLimiteMock: vi.fn(),
+    ipDoVisitanteMock: vi.fn(),
+}))
+
+vi.mock('@/lib/rate-limit', () => ({
+    verificarLimite: verificarLimiteMock,
+    ipDoVisitante: ipDoVisitanteMock,
+}))
+
 import { criarAgendamentoPublico } from '@/app/actions/public-booking'
 
 /** Consulta encadeável que resolve sempre vazia — nenhuma linha, nenhum erro. */
@@ -61,6 +76,12 @@ const PARAMS_VALIDOS = {
 beforeEach(() => {
     createAdminClientMock.mockReset()
     createAdminClientMock.mockReturnValue(adminFake)
+    // Default de TODOS os casos: rate limit liberando. Só o caso do bloqueio
+    // troca isto — assim nenhum outro caso passa por acidente de mock.
+    verificarLimiteMock.mockReset()
+    verificarLimiteMock.mockResolvedValue(true)
+    ipDoVisitanteMock.mockReset()
+    ipDoVisitanteMock.mockResolvedValue('203.0.113.7')
 })
 
 describe('criarAgendamentoPublico — teto e formato dos campos de contato (CR-02)', () => {
@@ -137,5 +158,44 @@ describe('criarAgendamentoPublico — teto e formato dos campos de contato (CR-0
 
         expect(createAdminClientMock).toHaveBeenCalled()
         if (!resultado.ok) expect(resultado.motivo).not.toBe('email_invalido')
+    })
+})
+
+describe('criarAgendamentoPublico — camada de IP do rate limit (ABU-01, D-06/D-07)', () => {
+    it('recusa com `muitas_tentativas` SEM tocar o banco quando a janela estourou', async () => {
+        verificarLimiteMock.mockResolvedValue(false)
+
+        // Entrada 100% VÁLIDA de propósito: a recusa só pode ser atribuída ao
+        // rate limit, nunca a um campo malformado.
+        const resultado = await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        expect(resultado.ok).toBe(false)
+        // Erro HONESTO, nunca sucesso falso (D-07): sucesso falso é exclusivo do
+        // honeypot, onde a certeza de bot é alta.
+        if (!resultado.ok) expect(resultado.motivo).toBe('muitas_tentativas')
+        // A prova de que recusou de graça: o cliente privilegiado nunca foi
+        // instanciado, então nenhuma consulta ao Supabase foi paga por um flood.
+        expect(createAdminClientMock).not.toHaveBeenCalled()
+    })
+
+    it('consulta a camada `escrita_ip` com o IP do visitante', async () => {
+        await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        expect(ipDoVisitanteMock).toHaveBeenCalled()
+        expect(verificarLimiteMock).toHaveBeenCalledWith('escrita_ip', ['203.0.113.7'])
+    })
+
+    it('não altera o fluxo quando a camada libera (fail-open e caminho feliz)', async () => {
+        verificarLimiteMock.mockResolvedValue(true)
+
+        const resultado = await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        // Segue exatamente como o baseline: passa da validação, toca o banco e
+        // para na resolução de slug (mock vazio). `muitas_tentativas` não pode
+        // aparecer quando a camada liberou — é o que garante que o fail-open do
+        // módulo (Redis fora do ar) nunca vira bloqueio.
+        expect(createAdminClientMock).toHaveBeenCalled()
+        expect(resultado.ok).toBe(false)
+        if (!resultado.ok) expect(resultado.motivo).not.toBe('muitas_tentativas')
     })
 })
