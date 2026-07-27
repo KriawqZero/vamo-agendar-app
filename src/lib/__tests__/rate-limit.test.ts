@@ -23,10 +23,21 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { limitMock, reportarMock, headersMock } = vi.hoisted(() => ({
+const { limitMock, reportarMock, headersMock, configsCriadas } = vi.hoisted(() => ({
     limitMock: vi.fn(),
     reportarMock: vi.fn(async () => {}),
     headersMock: vi.fn(),
+    /**
+     * Configuração de CADA limiter instanciado no load do módulo. É o que torna
+     * as constantes de calibração (janela, tokens, prefixo, timeout) verificáveis
+     * sem exportar os limiters — número de calibração que ninguém consegue ler de
+     * fora é número que muda sozinho na próxima edição.
+     */
+    configsCriadas: [] as Array<{
+        prefix: string
+        timeout: number
+        limiter: { algoritmo: string; tokens: number; janela: string }
+    }>,
 }))
 
 vi.mock('@upstash/ratelimit', () => ({
@@ -34,11 +45,16 @@ vi.mock('@upstash/ratelimit', () => ({
         static slidingWindow(tokens: number, janela: string) {
             return { algoritmo: 'slidingWindow', tokens, janela }
         }
-        config: unknown
-        constructor(config: unknown) {
+        config: { prefix: string }
+        constructor(config: { prefix: string }) {
             this.config = config
+            configsCriadas.push(config as unknown as (typeof configsCriadas)[number])
         }
-        limit = limitMock
+        // O prefixo viaja como SEGUNDO argumento para que a suíte prove qual
+        // limiter atendeu a chamada — com um mock só compartilhado entre as
+        // camadas, sem isto "consultou o Redis" e "consultou a camada certa"
+        // seriam indistinguíveis.
+        limit = (chave: string) => limitMock(chave, this.config.prefix)
     },
 }))
 
@@ -59,6 +75,9 @@ vi.mock('@/lib/observabilidade/reportar', () => ({
 
 /** IP de fixture — nunca pode aparecer cru no argumento enviado ao Redis. */
 const IP_FIXTURE = '203.0.113.7'
+/** Telefone e tenant de fixture — mesma exigência de ausência do IP. */
+const TELEFONE_FIXTURE = '5567999998888'
+const TENANT_FIXTURE = 'org_teste_123'
 
 /**
  * Recarrega o módulo com ou sem as credenciais do Upstash. String vazia é
@@ -67,6 +86,7 @@ const IP_FIXTURE = '203.0.113.7'
  */
 async function carregarModulo(comCredenciais: boolean) {
     vi.resetModules()
+    configsCriadas.length = 0
     vi.stubEnv('UPSTASH_REDIS_REST_URL', comCredenciais ? 'https://redis-de-teste.local' : '')
     vi.stubEnv('UPSTASH_REDIS_REST_TOKEN', comCredenciais ? 'token-de-teste' : '')
     return import('@/lib/rate-limit')
@@ -95,9 +115,21 @@ describe('verificarLimite — no-op sem credenciais do Upstash (D-04)', () => {
     it('devolve PASSE para as camadas ainda sem limiter próprio', async () => {
         const { verificarLimite } = await carregarModulo(true)
 
-        // Camada declarada no tipo mas sem instância neste plano: PASSE, nunca
-        // bloqueio acidental. Os planos 03-03/03-04 preenchem as instâncias.
-        await expect(verificarLimite('teto_tenant', ['org_123'])).resolves.toBe(true)
+        // Camada declarada no tipo mas sem instância ainda: PASSE, nunca
+        // bloqueio acidental. `leitura_ip` é a última que falta — entra no 03-04.
+        await expect(verificarLimite('leitura_ip', [IP_FIXTURE])).resolves.toBe(true)
+        expect(limitMock).not.toHaveBeenCalled()
+    })
+
+    it('devolve PASSE nas camadas de telefone e tenant sem credenciais', async () => {
+        const { verificarLimite } = await carregarModulo(false)
+
+        // No-op vale para as TRÊS camadas de escrita, não só para a primeira:
+        // dev sem Upstash não pode ter o booking barrado por camada nova.
+        await expect(
+            verificarLimite('escrita_telefone', [TELEFONE_FIXTURE, TENANT_FIXTURE]),
+        ).resolves.toBe(true)
+        await expect(verificarLimite('teto_tenant', [TENANT_FIXTURE])).resolves.toBe(true)
         expect(limitMock).not.toHaveBeenCalled()
     })
 })
@@ -175,16 +207,125 @@ describe('verificarLimite — invariante nunca-PII na chave (D-11)', () => {
         const { verificarLimite, hashChaveRateLimit } = await carregarModulo(true)
         limitMock.mockResolvedValue({ success: true, remaining: 9 })
 
-        await verificarLimite('escrita_telefone', ['5567999998888', 'org_123'])
-        // Camada sem limiter neste plano: a chave nem chega a ser enviada. A
-        // forma do hash é provada pela função exportada, que é o contrato que
-        // as camadas seguintes herdam.
-        const composta = [hashChaveRateLimit('5567999998888'), hashChaveRateLimit('org_123')].join(
-            ':',
-        )
-        expect(composta).not.toContain('5567999998888')
-        expect(composta).not.toContain('org_123')
+        await verificarLimite('escrita_telefone', [TELEFONE_FIXTURE, TENANT_FIXTURE])
+
+        const composta = [
+            hashChaveRateLimit(TELEFONE_FIXTURE),
+            hashChaveRateLimit(TENANT_FIXTURE),
+        ].join(':')
+        // A chave composta é o que de fato viaja ao fornecedor, e nenhuma das
+        // duas partes cruas sobrevive nela. Telefone é PII de cliente final que
+        // nunca fez cadastro — é o pior valor possível para deixar num store de
+        // terceiro.
+        expect(limitMock).toHaveBeenCalledWith(composta, 'rl:escrita:tel')
+        expect(composta).not.toContain(TELEFONE_FIXTURE)
+        expect(composta).not.toContain(TENANT_FIXTURE)
         expect(composta.split(':')).toHaveLength(2)
+    })
+})
+
+describe('camada escrita_telefone — anti ench-agenda com número único (D-08)', () => {
+    it('usa slidingWindow de 5 tentativas por hora no prefixo rl:escrita:tel', async () => {
+        await carregarModulo(true)
+
+        const config = configsCriadas.find((c) => c.prefix === 'rl:escrita:tel')
+        expect(config).toBeDefined()
+        // 5, e não 3: `limit()` consome o token na TENTATIVA (check-then-consume,
+        // sem refund), então a família que perde uma corrida de double-booking e
+        // re-tenta já gastou 4. É a implementação do "~3 agendamentos/h" do D-08
+        // com a margem que o "~" autoriza (Pitfall 4 do RESEARCH).
+        expect(config?.limiter).toEqual({ algoritmo: 'slidingWindow', tokens: 5, janela: '1 h' })
+        expect(config?.timeout).toBe(500)
+    })
+
+    it('consulta o limiter de telefone com a chave composta telefone+tenant', async () => {
+        const { verificarLimite, hashChaveRateLimit } = await carregarModulo(true)
+        limitMock.mockResolvedValue({ success: true, remaining: 4 })
+
+        await verificarLimite('escrita_telefone', [TELEFONE_FIXTURE, TENANT_FIXTURE])
+
+        // O tenant entra na chave de propósito: o mesmo telefone agendando em
+        // DOIS estabelecimentos diferentes são dois baldes, senão a cliente fiel
+        // de dois salões seria barrada por usar o produto como esperado.
+        expect(limitMock).toHaveBeenCalledWith(
+            `${hashChaveRateLimit(TELEFONE_FIXTURE)}:${hashChaveRateLimit(TENANT_FIXTURE)}`,
+            'rl:escrita:tel',
+        )
+    })
+
+    it('BLOQUEIA quando a janela do telefone estourou, sem abrir Issue', async () => {
+        const { verificarLimite } = await carregarModulo(true)
+        limitMock.mockResolvedValue({ success: false, remaining: 0 })
+
+        await expect(
+            verificarLimite('escrita_telefone', [TELEFONE_FIXTURE, TENANT_FIXTURE]),
+        ).resolves.toBe(false)
+        expect(reportarMock).not.toHaveBeenCalled()
+    })
+
+    it('PASSA com Issue sintética quando o fornecedor REJEITA (fail-open, D-02)', async () => {
+        const { verificarLimite } = await carregarModulo(true)
+        limitMock.mockRejectedValue(new Error('fetch failed'))
+
+        await expect(
+            verificarLimite('escrita_telefone', [TELEFONE_FIXTURE, TENANT_FIXTURE]),
+        ).resolves.toBe(true)
+        expect(reportarMock).toHaveBeenCalledWith('ratelimit:redis_unavailable', {
+            fluxo: 'rate_limit',
+            camada: 'escrita_telefone',
+            motivo: 'erro',
+        })
+    })
+})
+
+describe('camada teto_tenant — desacelerador do ataque distribuído (D-09)', () => {
+    it('usa slidingWindow de 30 criações por hora no prefixo rl:escrita:tenant', async () => {
+        await carregarModulo(true)
+
+        const config = configsCriadas.find((c) => c.prefix === 'rl:escrita:tenant')
+        expect(config).toBeDefined()
+        // O teto NÃO impede o enchimento total do horizonte — desacelera o
+        // ataque o bastante para a Issue do D-12 dar tempo de reação humana.
+        expect(config?.limiter).toEqual({ algoritmo: 'slidingWindow', tokens: 30, janela: '1 h' })
+        expect(config?.timeout).toBe(500)
+    })
+
+    it('consulta o limiter de tenant com a chave de UM elemento', async () => {
+        const { verificarLimite, hashChaveRateLimit } = await carregarModulo(true)
+        limitMock.mockResolvedValue({ success: true, remaining: 29 })
+
+        await verificarLimite('teto_tenant', [TENANT_FIXTURE])
+
+        expect(limitMock).toHaveBeenCalledWith(
+            hashChaveRateLimit(TENANT_FIXTURE),
+            'rl:escrita:tenant',
+        )
+        const chaveEnviada = String(limitMock.mock.calls[0]?.[0] ?? '')
+        expect(chaveEnviada).not.toContain(TENANT_FIXTURE)
+    })
+
+    it('BLOQUEIA quando o teto do tenant estourou', async () => {
+        const { verificarLimite } = await carregarModulo(true)
+        limitMock.mockResolvedValue({ success: false, remaining: 0 })
+
+        await expect(verificarLimite('teto_tenant', [TENANT_FIXTURE])).resolves.toBe(false)
+        // A Issue do teto (D-12) é responsabilidade da AÇÃO, não do módulo: aqui
+        // o bloqueio é decisão pura, e o módulo só abre Issue quando o
+        // FORNECEDOR falha. Misturar os dois papéis faria a Issue de ataque
+        // aparecer também no caminho de leitura, onde ela não significa nada.
+        expect(reportarMock).not.toHaveBeenCalled()
+    })
+
+    it('PASSA com Issue sintética quando a lib libera por TIMEOUT (fail-open, D-03)', async () => {
+        const { verificarLimite } = await carregarModulo(true)
+        limitMock.mockResolvedValue({ success: true, reason: 'timeout', remaining: 0 })
+
+        await expect(verificarLimite('teto_tenant', [TENANT_FIXTURE])).resolves.toBe(true)
+        expect(reportarMock).toHaveBeenCalledWith('ratelimit:redis_unavailable', {
+            fluxo: 'rate_limit',
+            camada: 'teto_tenant',
+            motivo: 'timeout',
+        })
     })
 })
 
