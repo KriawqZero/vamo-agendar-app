@@ -126,12 +126,20 @@ describe('cópias públicas do booking', () => {
         )
     })
 
-    it('roteia `muitas_tentativas` para copias diferentes nas duas superficies', () => {
-        // No ENVIO o visitante recebe o erro honesto com a saída explícita...
+    it('roteia `muitas_tentativas` para a copia HONESTA nas DUAS superficies', () => {
         expect(mensagemDeEnvio('muitas_tentativas')).toBe(COPY_MUITAS_TENTATIVAS)
-        // ...e na caixa de horários reusa a cópia existente (D-10): zero texto
-        // novo na leitura, porque quem é barrado ali é script e script não lê tela.
-        expect(mensagemDeMotivo('muitas_tentativas')).toBe(COPY_ERRO_SLOTS)
+        // ⚠️ Asserção INVERTIDA em relação ao 03-04, e a inversão é o conserto
+        // (WR-03): a caixa de horários reusava `COPY_ERRO_SLOTS` ("Não foi
+        // possível carregar os horários"), que é informação FALSA sobre a causa
+        // para o cliente REAL que caiu no teto por dividir IP de operadora
+        // (CGNAT) — e vinha embaixo de um botão convidando a insistir, o que
+        // consome outro token. O D-10 assumiu que só script é barrado ali; a
+        // fase inteira argumenta o contrário em todo o resto.
+        expect(mensagemDeMotivo('muitas_tentativas')).toBe(COPY_MUITAS_TENTATIVAS)
+        // E o resto da caixa de horários fica INTACTO: mudou um discriminante,
+        // não a cópia contratada dos outros oito.
+        expect(mensagemDeMotivo('slug_invalido')).toBe(COPY_ERRO_SLOTS)
+        expect(mensagemDeMotivo('erro_interno')).toBe(COPY_ERRO_SLOTS)
     })
 
     it('traduz `slot_indisponivel` do envio para o aviso âmbar contratado', () => {

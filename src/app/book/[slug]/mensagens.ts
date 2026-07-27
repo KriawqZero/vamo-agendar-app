@@ -131,12 +131,16 @@ const COPIA_DA_CAIXA_DE_HORARIOS: Record<MotivoPublico, string> = {
     // `email_invalido` só existe no caminho de ESCRITA; nunca chega à caixa de
     // horários. O membro existe aqui apenas para manter o Record exaustivo.
     email_invalido: COPY_ERRO_SLOTS,
-    // `muitas_tentativas` PODE chegar aqui quando o teto de LEITURA por IP
-    // entrar (plano 03-04), e a decisão já está tomada (D-10): reusa a cópia
-    // existente, zero texto novo na leitura. Quem é barrado numa grade de
-    // horários é script, e script não lê tela — inventar cópia própria só
-    // acrescentaria uma string para manter.
-    muitas_tentativas: COPY_ERRO_SLOTS,
+    // ⚠️ `muitas_tentativas` é o ÚNICO que não aponta para `COPY_ERRO_SLOTS`, e
+    // a exceção corrige o WR-03. O D-10 raciocinou que "quem é barrado numa
+    // grade é script, e script não lê tela" — mas a fase inteira argumenta o
+    // contrário em todo lugar: CGNAT de operadora faz CLIENTE REAL dividir IP,
+    // e foi por isso que o caminho de escrita ganhou cópia honesta própria.
+    // Reusar aqui a cópia de falha de CARREGAMENTO dava ao leitor barrado uma
+    // informação falsa sobre a causa, embaixo de um botão que o convidava a
+    // insistir — e insistir consome outro token. A cópia já existia; a
+    // assimetria entre as duas superfícies não tinha justificativa de produto.
+    muitas_tentativas: COPY_MUITAS_TENTATIVAS,
 }
 
 /**

@@ -58,6 +58,17 @@ export interface DataDisponivel {
 
 export type EtapaBooking = 'servico' | 'data_hora' | 'contato' | 'sucesso'
 
+/**
+ * Espera imposta ao botão "Tentar de novo" depois de um bloqueio por rate limit
+ * (WR-03).
+ *
+ * Curta de propósito: a janela de leitura é de 60 por minuto, então dez segundos
+ * bastam para o visitante legítimo (sob CGNAT, dividindo IP com outro cliente)
+ * sair do teto sem sentir que o produto travou. Fricção Zero continua valendo —
+ * isto não aparece para quem não foi barrado.
+ */
+const SEGUNDOS_DE_ESPERA_APOS_BLOQUEIO = 10
+
 interface BookingAppProps {
     /** Slug da URL — identificador do estabelecimento nas actions públicas. */
     slug: string
@@ -96,6 +107,11 @@ export default function BookingApp({
     const [carregandoSlots, setCarregandoSlots] = useState(false)
     const [erroSlots, setErroSlots] = useState<string | null>(null)
     const [tentativaSlots, setTentativaSlots] = useState(0)
+    // Segundos restantes de espera imposta ao "Tentar de novo" (WR-03). Só sai
+    // de zero depois de um bloqueio por rate limit: insistir na hora consome
+    // outro token e alonga a janela deslizante que já barrou o visitante. Zero
+    // no resto do tempo — o botão continua imediato para qualquer outra falha.
+    const [esperaRetry, setEsperaRetry] = useState(0)
 
     const [agendamentoCriado, setAgendamentoCriado] = useState<{
         id: string
@@ -167,6 +183,12 @@ export default function BookingApp({
                     // opaco), e este `catch` recebia texto de framework em
                     // inglês para renderizar verbatim ao cliente final.
                     setErroSlots(mensagemDeMotivo(res.motivo))
+                    // Bloqueado pelo teto de leitura: a cópia já diz "aguarde
+                    // um instante", e o botão passa a dizer a mesma coisa em vez
+                    // de contradizê-la (WR-03).
+                    if (res.motivo === 'muitas_tentativas') {
+                        setEsperaRetry(SEGUNDOS_DE_ESPERA_APOS_BLOQUEIO)
+                    }
                 }
             } catch {
                 // Só o INESPERADO de verdade chega aqui agora: a rede caiu no
@@ -183,6 +205,16 @@ export default function BookingApp({
             isMounted = false
         }
     }, [servicoSelecionado, dataSelecionada, slug, tentativaSlots])
+
+    // Contagem regressiva da espera pós-bloqueio. Um `setTimeout` por segundo em
+    // vez de um `setInterval`: o cleanup de cada tick é trivial e não sobra
+    // temporizador vivo se o cliente sair da etapa no meio da contagem.
+    useEffect(() => {
+        if (esperaRetry <= 0) return
+
+        const temporizador = setTimeout(() => setEsperaRetry((s) => s - 1), 1000)
+        return () => clearTimeout(temporizador)
+    }, [esperaRetry])
 
     const mudarEtapa = (nova: EtapaBooking) => {
         setJaNavegou(true)
@@ -401,6 +433,7 @@ export default function BookingApp({
                                     carregando={carregandoSlots}
                                     erro={erroSlots}
                                     onTentarDeNovo={() => setTentativaSlots((t) => t + 1)}
+                                    esperaRetrySegundos={esperaRetry}
                                     aviso={avisoDataHora}
                                     slotSelecionado={slotSelecionado}
                                     onSelecionarSlot={selecionarSlot}
