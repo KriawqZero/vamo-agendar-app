@@ -34,14 +34,72 @@ vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: createAdminClientMoc
 // Next. A suíte precisa continuar hermética. O contrato do módulo real (no-op,
 // fail-open, chave pseudonimizada) é provado em `src/lib/__tests__/rate-limit.test.ts`;
 // aqui o que se prova é o que a AÇÃO faz com a resposta dele.
-const { verificarLimiteMock, ipDoVisitanteMock } = vi.hoisted(() => ({
+const { verificarLimiteMock, ipDoVisitanteMock, hashChaveRateLimitMock } = vi.hoisted(() => ({
     verificarLimiteMock: vi.fn(),
     ipDoVisitanteMock: vi.fn(),
+    hashChaveRateLimitMock: vi.fn(),
 }))
 
 vi.mock('@/lib/rate-limit', () => ({
     verificarLimite: verificarLimiteMock,
     ipDoVisitante: ipDoVisitanteMock,
+    hashChaveRateLimit: hashChaveRateLimitMock,
+}))
+
+// Telemetria do bloqueio (03-02, D-11): os dois destinos são espionados porque
+// o que se prova aqui é O QUE a action manda — a decisão dela —, nunca o que o
+// fornecedor faz com isso. `logOperacional` entra no mock por necessidade
+// estrutural: módulos do grafo de `public-booking` (notificações, whatsapp-helper)
+// importam a variante fire-and-forget do mesmo arquivo.
+const { logAguardandoMock, logOperacionalMock } = vi.hoisted(() => ({
+    logAguardandoMock: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        fatal: vi.fn(),
+    },
+    logOperacionalMock: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        fatal: vi.fn(),
+    },
+}))
+
+vi.mock('@/lib/observabilidade/log', () => ({
+    logOperacional: logOperacionalMock,
+    logOperacionalAguardando: logAguardandoMock,
+}))
+
+const { capturarEventoServidorMock, capturarEventoTenantMock } = vi.hoisted(() => ({
+    capturarEventoServidorMock: vi.fn(),
+    capturarEventoTenantMock: vi.fn(),
+}))
+
+vi.mock('@/lib/analytics/server', () => ({
+    capturarEventoServidor: capturarEventoServidorMock,
+    capturarEventoTenant: capturarEventoTenantMock,
+}))
+
+// A Issue do Sentry é o que NÃO pode acontecer no bloqueio de IP: bloqueio é
+// condição esperada, e Issue de rotina é como o owner para de olhar a ferramenta.
+const {
+    reportarExcecaoMock,
+    reportarFalhaSilenciosaMock,
+    reportarExcecaoAguardandoMock,
+    reportarFalhaSilenciosaAguardandoMock,
+} = vi.hoisted(() => ({
+    reportarExcecaoMock: vi.fn(),
+    reportarFalhaSilenciosaMock: vi.fn(),
+    reportarExcecaoAguardandoMock: vi.fn(),
+    reportarFalhaSilenciosaAguardandoMock: vi.fn(),
+}))
+
+vi.mock('@/lib/observabilidade/reportar', () => ({
+    reportarExcecao: reportarExcecaoMock,
+    reportarFalhaSilenciosa: reportarFalhaSilenciosaMock,
+    reportarExcecaoAguardando: reportarExcecaoAguardandoMock,
+    reportarFalhaSilenciosaAguardando: reportarFalhaSilenciosaAguardandoMock,
 }))
 
 import { criarAgendamentoPublico } from '@/app/actions/public-booking'
@@ -82,6 +140,14 @@ beforeEach(() => {
     verificarLimiteMock.mockResolvedValue(true)
     ipDoVisitanteMock.mockReset()
     ipDoVisitanteMock.mockResolvedValue('203.0.113.7')
+    hashChaveRateLimitMock.mockReset()
+    hashChaveRateLimitMock.mockReturnValue('hash-do-ip-fixture')
+
+    logAguardandoMock.warn.mockReset()
+    logAguardandoMock.warn.mockResolvedValue(undefined)
+    capturarEventoServidorMock.mockReset()
+    reportarExcecaoMock.mockReset()
+    reportarFalhaSilenciosaMock.mockReset()
 })
 
 describe('criarAgendamentoPublico — teto e formato dos campos de contato (CR-02)', () => {
@@ -197,5 +263,61 @@ describe('criarAgendamentoPublico — camada de IP do rate limit (ABU-01, D-06/D
         expect(createAdminClientMock).toHaveBeenCalled()
         expect(resultado.ok).toBe(false)
         if (!resultado.ok) expect(resultado.motivo).not.toBe('muitas_tentativas')
+    })
+})
+
+describe('criarAgendamentoPublico — telemetria do bloqueio de IP (ABU-03, D-11)', () => {
+    beforeEach(() => {
+        // Todo caso deste bloco parte do bloqueio: é ele que emite telemetria.
+        verificarLimiteMock.mockResolvedValue(false)
+    })
+
+    it('emite Sentry Log com código estático e chave PSEUDONIMIZADA — nunca o IP cru', async () => {
+        await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        expect(logAguardandoMock.warn).toHaveBeenCalledWith('ratelimit.bloqueio', {
+            fluxo: 'booking_publico',
+            camada: 'escrita_ip',
+            chaveHash: 'hash-do-ip-fixture',
+        })
+
+        // Prova NEGATIVA de PII: o valor cru da fixture não pode aparecer em
+        // NENHUM argumento enviado ao fornecedor terceiro.
+        const argumentos = JSON.stringify(logAguardandoMock.warn.mock.calls)
+        expect(argumentos).not.toContain('203.0.113.7')
+        // E o hash é o MESMO da chave do contador — é o que permite correlacionar
+        // log ↔ Redis sem que o IP exista em lugar nenhum.
+        expect(hashChaveRateLimitMock).toHaveBeenCalledWith('203.0.113.7')
+    })
+
+    it('emite o evento agregado `booking_rate_limited` no PostHog', async () => {
+        await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        expect(capturarEventoServidorMock).toHaveBeenCalledWith('booking_rate_limited', {
+            camada: 'escrita_ip',
+        })
+        // Variante SERVIDOR, e não Tenant: o bloqueio acontece antes de o slug
+        // ser resolvido, então não existe tenant para atribuir o evento.
+        expect(capturarEventoTenantMock).not.toHaveBeenCalled()
+    })
+
+    it('NÃO abre Sentry Issue — bloqueio é rotina esperada, não incidente', async () => {
+        await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        expect(reportarExcecaoMock).not.toHaveBeenCalled()
+        expect(reportarFalhaSilenciosaMock).not.toHaveBeenCalled()
+    })
+
+    it('falha da telemetria NÃO muda o retorno do visitante (padrão 23P01)', async () => {
+        logAguardandoMock.warn.mockRejectedValue(new Error('Sentry fora do ar'))
+        capturarEventoServidorMock.mockImplementation(() => {
+            throw new Error('PostHog fora do ar')
+        })
+
+        const resultado = await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        expect(resultado.ok).toBe(false)
+        if (!resultado.ok) expect(resultado.motivo).toBe('muitas_tentativas')
+        expect(createAdminClientMock).not.toHaveBeenCalled()
     })
 })
