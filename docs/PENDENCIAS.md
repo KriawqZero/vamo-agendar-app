@@ -917,7 +917,7 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
 >
 > A análise acima descreve o mundo **antes** da Phase 03 e fica registrada porque é o que
 > justifica o desenho. O que passou a existir, provado por suíte hermética
-> (`pnpm test` 22 arquivos / 353 testes, `lint`/`build`/`tsc` exit 0 sobre o HEAD da fase):
+> (`pnpm test` 23 arquivos / 381 testes, `lint`/`build`/`tsc` exit 0 sobre o HEAD da fase):
 >
 > - **Quatro camadas de `slidingWindow`** em `src/lib/rate-limit.ts`, consumidas nas Server
 >   Actions públicas: escrita por IP (10/10 min), por telefone dentro do tenant (5/1 h),
@@ -1010,7 +1010,7 @@ verde não fecha observabilidade") e o histórico da Phase 01 mandam nascer aber
 foi aprovado; nada aqui deve ser assumido como aprovado.
 
 **Código fechado em 2026-07-27** sobre o HEAD final da fase, com saída real observada:
-`pnpm lint` exit 0 · `pnpm test` **353 testes em 22 arquivos** (baseline pré-fase: 280 em
+`pnpm lint` exit 0 · `pnpm test` **381 testes em 23 arquivos** (baseline pré-fase: 280 em
 20 — a fase só acrescentou, zero regressão) · `pnpm build` exit 0 com 14 rotas, rodado
 **sem** as variáveis do Upstash no ambiente (prova viva do no-op do D-04) · `npx tsc
 --noEmit` exit 0. **Restam exclusivamente os itens manuais abaixo** — nenhum deles é

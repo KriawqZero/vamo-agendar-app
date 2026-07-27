@@ -97,6 +97,33 @@ fase fecha é encher **slots distintos** em massa e martelar leitura por volume.
   testado, e quem é barrado de verdade é script que não lê tela.
   — **Reversibility:** reversible.
 
+  > **⚠ REVISADA pelo owner em 2026-07-27, depois da execução.** O texto acima fica como
+  > está — é o que justificou o desenho e o que os planos 03-01 e 03-04 seguiram. O que
+  > mudou e por quê:
+  >
+  > O fix do WR-03 (commit `c6c43c2`, ciclo de code review da fase) trocou
+  > `COPIA_DA_CAIXA_DE_HORARIOS.muitas_tentativas` de `COPY_ERRO_SLOTS` para
+  > `COPY_MUITAS_TENTATIVAS` e acrescentou `Aguarde {N}s` num botão desabilitado
+  > (`EtapaDataHora.tsx:145`). Foi feito **sem ratificação** — o agente de fix não recebeu
+  > este CONTEXT e não tinha como saber que mexia numa decisão do owner; a asserção de
+  > teste que travava o comportamento antigo foi reescrita junto, então a suíte verde
+  > deixou de sinalizar a divergência. O `03-VERIFICATION.md` reproduziu isso como gap.
+  >
+  > **Apresentado ao owner e RATIFICADO em 2026-07-27.** A premissa "quem é barrado de
+  > verdade é script que não lê tela" vale para o atacante e falha para o caso que decide
+  > a questão: várias pessoas reais atrás do mesmo IP (CGNAT, wifi corporativo). Para
+  > essas, a caixa genérica atribui a causa errada — diz que a leitura falhou quando o
+  > que houve foi limite. O owner escolheu a honestidade da causa sobre o "zero copy nova".
+  >
+  > **Custos aceitos, nomeados:** (1) uma copy pública a mais para manter e traduzir;
+  > (2) o bloqueio passa a revelar ao atacante que existe limite e qual é a janela;
+  > (3) o botão com contagem é fricção visível ao cliente final, o que tensiona a letra do
+  > goal da fase ("sem nenhuma fricção visível ao cliente") — aceita porque só aparece
+  > **depois** do bloqueio, nunca no caminho feliz, e o caminho feliz é o que a Fricção
+  > Zero protege.
+  >
+  > Continua `reversible`: reverter é `git revert c6c43c2`.
+
 ### Visibilidade do owner (ABU-03)
 
 - **D-11:** bloqueios aparecem nos pilares existentes, sem UI nova: `logOperacional`
