@@ -102,6 +102,19 @@ vi.mock('@/lib/observabilidade/reportar', () => ({
     reportarFalhaSilenciosaAguardando: reportarFalhaSilenciosaAguardandoMock,
 }))
 
+// Mensageria mockada para PROVAR O NEGATIVO do honeypot: a captura não pode
+// disparar confirmação de WhatsApp nem agendar lembrete no QStash. Sem este
+// mock, "não foi chamada" seria uma asserção que ninguém consegue escrever — e
+// a prova ficaria só no "createAdminClient não foi chamado", que é mais fraca
+// (mensageria com efeito externo não depende do cliente do banco).
+const { dispararNotificacoesAgendamentoMock } = vi.hoisted(() => ({
+    dispararNotificacoesAgendamentoMock: vi.fn(),
+}))
+
+vi.mock('@/lib/notificacoes-agendamento', () => ({
+    dispararNotificacoesAgendamento: dispararNotificacoesAgendamentoMock,
+}))
+
 import {
     criarAgendamentoPublico,
     obterDadosBookingPublico,
@@ -224,6 +237,8 @@ beforeEach(() => {
     reportarFalhaSilenciosaMock.mockReset()
     reportarFalhaSilenciosaAguardandoMock.mockReset()
     reportarFalhaSilenciosaAguardandoMock.mockResolvedValue(undefined)
+    dispararNotificacoesAgendamentoMock.mockReset()
+    dispararNotificacoesAgendamentoMock.mockResolvedValue(undefined)
 })
 
 describe('criarAgendamentoPublico — teto e formato dos campos de contato (CR-02)', () => {
@@ -653,5 +668,159 @@ describe('obterSlotsPublicos — teto de leitura por IP (ABU-01, D-06/D-10)', ()
 
         expect(verificarLimiteMock).not.toHaveBeenCalled()
         expect(createAdminClientMock).toHaveBeenCalled()
+    })
+})
+
+/**
+ * Honeypot (03-05): a defesa COMPLEMENTAR ao rate limit.
+ *
+ * Cobrem eixos diferentes e nenhuma sozinha fecha o SC1: o honeypot pega o bot
+ * que preenche FORMULÁRIO (crawler/spam genérico); o script que chama a Server
+ * Action direto não preenche o campo e cai nas quatro camadas de rate limit.
+ *
+ * A resposta aqui é a única do arquivo inteiro que MENTE, e a mentira é o
+ * desenho (D-07): bot que recebe erro tenta de novo, bot que recebe sucesso vai
+ * embora. No rate limit a certeza de bot é menor — CGNAT faz clientes reais
+ * dividirem IP — e por isso lá o erro é honesto.
+ */
+describe('criarAgendamentoPublico — honeypot com sucesso falso (ABU-01/ABU-02, D-07)', () => {
+    const PARAMS_COM_ARMADILHA = { ...PARAMS_VALIDOS, infoAdicional: 'qualquer coisa' }
+
+    it('devolve sucesso com a forma exata de AgendamentoCriado, sem tocar em NADA', async () => {
+        const resultado = await criarAgendamentoPublico(PARAMS_COM_ARMADILHA)
+
+        expect(resultado.ok).toBe(true)
+        if (resultado.ok) {
+            // Forma plausível: o bot precisa acreditar que agendou. UUID de
+            // verdade (não uma string qualquer), status igual ao do INSERT real
+            // e a data que ele mesmo pediu de volta.
+            expect(resultado.agendamento.id).toMatch(
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+            )
+            expect(resultado.agendamento.status).toBe('confirmado')
+            expect(typeof resultado.agendamento.data_hora).toBe('string')
+            expect(resultado.agendamento.data_hora).toBe(PARAMS_VALIDOS.dataHora)
+        }
+
+        // As três provas do NEGATIVO — é aqui que "sucesso falso" se distingue
+        // de "sucesso": nenhum banco, nenhum comando no Redis, nenhuma
+        // mensageria. Um agendamento fantasma na agenda do profissional seria
+        // pior que o spam que a armadilha existe para barrar.
+        expect(createAdminClientMock).not.toHaveBeenCalled()
+        expect(verificarLimiteMock).not.toHaveBeenCalled()
+        expect(dispararNotificacoesAgendamentoMock).not.toHaveBeenCalled()
+    })
+
+    it('emite log + evento próprio, sem Issue e sem inflar o funil', async () => {
+        await criarAgendamentoPublico(PARAMS_COM_ARMADILHA)
+
+        // Código já cadastrado em MENSAGENS_LOG desde o 03-02; a variante é a
+        // AGUARDADA porque o `return` encerra a Server Action na linha seguinte.
+        expect(logAguardandoMock.warn).toHaveBeenCalledWith('honeypot.captura', {
+            fluxo: 'booking_publico',
+        })
+
+        // Evento PRÓPRIO, e é ele o detector de falso-positivo de autofill
+        // (Pitfall 6): taxa incompatível com tráfego de bot = pessoa real caindo
+        // na armadilha, e aí o campo é que precisa mudar.
+        expect(capturarEventoServidorMock).toHaveBeenCalledWith('booking_honeypot')
+
+        // Variante SERVIDOR: a captura acontece antes de o slug ser resolvido,
+        // então não existe tenant a quem atribuir — e `booking_completed` NÃO
+        // pode sair, senão o funil do owner passa a contar bot como cliente.
+        expect(capturarEventoTenantMock).not.toHaveBeenCalled()
+
+        // Captura é ROTINA de endpoint público, igual ao bloqueio de rate limit
+        // (D-11): Issue de rotina é como o owner para de olhar o Sentry.
+        expect(reportarExcecaoMock).not.toHaveBeenCalled()
+        expect(reportarFalhaSilenciosaMock).not.toHaveBeenCalled()
+        expect(reportarFalhaSilenciosaAguardandoMock).not.toHaveBeenCalled()
+    })
+
+    it('não manda nome nem telefone do payload para fornecedor terceiro', async () => {
+        await criarAgendamentoPublico(PARAMS_COM_ARMADILHA)
+
+        const enviado = JSON.stringify([
+            logAguardandoMock.warn.mock.calls,
+            capturarEventoServidorMock.mock.calls,
+        ])
+        expect(enviado).not.toContain('Maria Silva')
+        expect(enviado).not.toContain('11999998888')
+        expect(enviado).not.toContain('maria@exemplo.com')
+        // O slug também não: é dado do visitante, não do tenant resolvido.
+        expect(enviado).not.toContain('barbearia-teste')
+    })
+
+    it('falha da telemetria NÃO muda a resposta que o bot recebe', async () => {
+        logAguardandoMock.warn.mockRejectedValue(new Error('Sentry fora do ar'))
+        capturarEventoServidorMock.mockImplementation(() => {
+            throw new Error('PostHog fora do ar')
+        })
+
+        const resultado = await criarAgendamentoPublico(PARAMS_COM_ARMADILHA)
+
+        // Observabilidade quebrada não pode transformar a armadilha em erro —
+        // erro é exatamente o que faz o bot tentar de novo.
+        expect(resultado.ok).toBe(true)
+        expect(createAdminClientMock).not.toHaveBeenCalled()
+    })
+
+    it('devolve sucesso plausível mesmo com payload LIXO, sem lançar', async () => {
+        // O bot não preenche formulário direito: a checagem é a PRIMEIRA da
+        // action justamente para não depender de o resto do payload ser válido.
+        const resultado = await criarAgendamentoPublico({
+            ...PARAMS_COM_ARMADILHA,
+            dataHora: undefined as unknown as string,
+            clienteNome: '',
+            clienteTelefone: '',
+            servicoId: '',
+        })
+
+        expect(resultado.ok).toBe(true)
+        if (resultado.ok) {
+            // `data_hora` cai no fallback (instante atual) em vez de estourar —
+            // e continua sendo uma string ISO plausível.
+            expect(typeof resultado.agendamento.data_hora).toBe('string')
+            expect(new Date(resultado.agendamento.data_hora).getTime()).not.toBeNaN()
+        }
+        expect(createAdminClientMock).not.toHaveBeenCalled()
+    })
+
+    // -----------------------------------------------------------------------
+    // CONTROLE POSITIVO (ABU-02) — cliente legítimo não pode ser capturado.
+    // -----------------------------------------------------------------------
+
+    it('campo AUSENTE segue o fluxo normal, inalterado', async () => {
+        const resultado = await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        // Baseline exato dos casos anteriores: passa da validação, consulta o
+        // rate limit e toca o banco, parando na resolução de slug (mock vazio).
+        expect(createAdminClientMock).toHaveBeenCalled()
+        expect(verificarLimiteMock).toHaveBeenCalled()
+        expect(resultado.ok).toBe(false)
+        expect(logAguardandoMock.warn).not.toHaveBeenCalledWith(
+            'honeypot.captura',
+            expect.anything(),
+        )
+    })
+
+    it('campo VAZIO ou só com espaços segue o fluxo normal', async () => {
+        // Navegador envia string vazia para input não preenchido — é o caso de
+        // TODO cliente real. Se `''` capturasse, a armadilha derrubaria o
+        // produto inteiro em vez de bot nenhum.
+        for (const valor of ['', '   ', '\n\t']) {
+            createAdminClientMock.mockClear()
+            const resultado = await criarAgendamentoPublico({
+                ...PARAMS_VALIDOS,
+                infoAdicional: valor,
+            })
+
+            expect(
+                createAdminClientMock,
+                `capturou indevidamente: ${JSON.stringify(valor)}`,
+            ).toHaveBeenCalled()
+            expect(resultado.ok).toBe(false)
+        }
+        expect(capturarEventoServidorMock).not.toHaveBeenCalledWith('booking_honeypot')
     })
 })
