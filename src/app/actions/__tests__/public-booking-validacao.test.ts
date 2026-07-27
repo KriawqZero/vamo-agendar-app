@@ -103,12 +103,17 @@ vi.mock('@/lib/observabilidade/reportar', () => ({
 }))
 
 import { criarAgendamentoPublico } from '@/app/actions/public-booking'
+// `hashTenantId` entra REAL, não mockado: o que os casos do teto por tenant
+// precisam provar é que o valor enviado ao Sentry é o hash — e comparar contra o
+// hash de verdade é a única forma de a asserção não passar com qualquer string.
+import { hashTenantId } from '@/lib/observabilidade/hash'
 
 /** Consulta encadeável que resolve sempre vazia — nenhuma linha, nenhum erro. */
 function consultaVazia() {
     const consulta = {
         select: () => consulta,
         eq: () => consulta,
+        in: () => consulta,
         order: () => consulta,
         maybeSingle: async () => ({ data: null, error: null }),
         single: async () => ({ data: null, error: null }),
@@ -117,6 +122,70 @@ function consultaVazia() {
 }
 
 const adminFake = { from: () => consultaVazia() }
+
+/** Tenant resolvido a partir do slug — nunca vem do navegador. */
+const TENANT_FIXTURE = 'org_teste_123'
+
+/**
+ * Perfil devolvido pela resolução do slug. Os dois slugs são iguais (tenant que
+ * nunca personalizou o link), então `obterSlugEfetivo` resolve para qualquer
+ * plano e a fixture não fica refém da leitura de assinatura.
+ */
+const PERFIL_FIXTURE = {
+    tenant_id: TENANT_FIXTURE,
+    slug: 'barbearia-teste',
+    slug_gratuito: 'barbearia-teste',
+    nome_estabelecimento: 'Barbearia Teste',
+    descricao: null,
+    instagram: null,
+    endereco: null,
+    timezone: 'America/Campo_Grande',
+    antecedencia_minima_minutos: 15,
+    horizonte_maximo_dias: 14,
+    cor_marca: null,
+    logo_url: null,
+    capa_url: null,
+}
+
+/**
+ * Admin fake que RESOLVE o slug — necessário porque as camadas de telefone e
+ * tenant rodam DEPOIS da resolução (a chave exata de tenant só existe lá). O
+ * `adminFake` vazio dos casos anteriores para antes disso, em `slug_invalido`.
+ *
+ * Devolve a lista de tabelas consultadas para que os casos possam provar o que
+ * NÃO foi consultado: se `servicos` aparecer, o bloqueio veio tarde demais.
+ */
+function adminQueResolveTenant() {
+    const tabelasConsultadas: string[] = []
+
+    return {
+        tabelasConsultadas,
+        admin: {
+            from(tabela: string) {
+                tabelasConsultadas.push(tabela)
+                const dados = tabela === 'perfis_empresas' ? PERFIL_FIXTURE : null
+                const consulta = {
+                    select: () => consulta,
+                    eq: () => consulta,
+                    in: () => consulta,
+                    order: () => consulta,
+                    maybeSingle: async () => ({ data: dados, error: null }),
+                    single: async () => ({ data: dados, error: null }),
+                }
+                return consulta
+            },
+        },
+    }
+}
+
+/**
+ * Configura a resposta de CADA camada por nome. Sem isto, um `mockResolvedValue`
+ * único faria "telefone bloqueou" e "tenant bloqueou" serem o mesmo cenário — e
+ * os dois têm destinos de telemetria diferentes, que é justamente o que se prova.
+ */
+function respostaPorCamada(mapa: Partial<Record<string, boolean>>) {
+    verificarLimiteMock.mockImplementation(async (camada: string) => mapa[camada] ?? true)
+}
 
 /**
  * Entrada 100% válida. Cada caso de recusa parte daqui e estraga UM campo, para
@@ -146,8 +215,11 @@ beforeEach(() => {
     logAguardandoMock.warn.mockReset()
     logAguardandoMock.warn.mockResolvedValue(undefined)
     capturarEventoServidorMock.mockReset()
+    capturarEventoTenantMock.mockReset()
     reportarExcecaoMock.mockReset()
     reportarFalhaSilenciosaMock.mockReset()
+    reportarFalhaSilenciosaAguardandoMock.mockReset()
+    reportarFalhaSilenciosaAguardandoMock.mockResolvedValue(undefined)
 })
 
 describe('criarAgendamentoPublico — teto e formato dos campos de contato (CR-02)', () => {
@@ -319,5 +391,139 @@ describe('criarAgendamentoPublico — telemetria do bloqueio de IP (ABU-03, D-11
         expect(resultado.ok).toBe(false)
         if (!resultado.ok) expect(resultado.motivo).toBe('muitas_tentativas')
         expect(createAdminClientMock).not.toHaveBeenCalled()
+    })
+})
+
+/**
+ * Camadas 2 e 3 (03-03): telefone e teto por tenant.
+ *
+ * Rodam PÓS-RESOLUÇÃO do slug, e a posição é o desenho: a chave exata de tenant
+ * só nasce ali (usar o slug dobraria o orçamento do tenant, porque `slug` e
+ * `slug_gratuito` são dois textos para a mesma agenda). Por isso todo caso deste
+ * bloco troca o admin fake por um que RESOLVE o perfil.
+ */
+describe('criarAgendamentoPublico — camadas de telefone e tenant (ABU-01, D-08/D-09)', () => {
+    let tabelasConsultadas: string[]
+
+    beforeEach(() => {
+        const fake = adminQueResolveTenant()
+        tabelasConsultadas = fake.tabelasConsultadas
+        createAdminClientMock.mockReturnValue(fake.admin)
+        // Hash previsível e DISTINTO por valor: com um retorno fixo, "hasheou o
+        // telefone" e "hasheou o IP" seriam a mesma asserção.
+        hashChaveRateLimitMock.mockImplementation((valor: string) => `hash:${valor}`)
+    })
+
+    it('consulta as duas camadas com as chaves exatas, depois da resolução', async () => {
+        await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        // Telefone JÁ NORMALIZADO (só dígitos) — o balde não pode depender de o
+        // visitante ter digitado com ou sem parênteses.
+        expect(verificarLimiteMock).toHaveBeenCalledWith('escrita_telefone', [
+            '11999998888',
+            TENANT_FIXTURE,
+        ])
+        expect(verificarLimiteMock).toHaveBeenCalledWith('teto_tenant', [TENANT_FIXTURE])
+        expect(tabelasConsultadas).toContain('perfis_empresas')
+    })
+
+    it('bloqueio por TELEFONE devolve muitas_tentativas e fica em log + PostHog (D-11)', async () => {
+        respostaPorCamada({ escrita_telefone: false })
+
+        const resultado = await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        expect(resultado.ok).toBe(false)
+        if (!resultado.ok) expect(resultado.motivo).toBe('muitas_tentativas')
+
+        expect(logAguardandoMock.warn).toHaveBeenCalledWith('ratelimit.bloqueio', {
+            fluxo: 'booking_publico',
+            camada: 'escrita_telefone',
+            chaveHash: 'hash:11999998888',
+            tenantHash: hashTenantId(TENANT_FIXTURE),
+        })
+        // Variante TENANT, e não Servidor: aqui o slug já foi resolvido, então
+        // existe tenant para atribuir o evento — e a taxa por tenant é o que
+        // responde "esta agenda está sendo atacada?".
+        expect(capturarEventoTenantMock).toHaveBeenCalledWith(
+            'booking_rate_limited',
+            TENANT_FIXTURE,
+            { camada: 'escrita_telefone' },
+        )
+        // Bloqueio de telefone é ROTINA (D-11): nada de Issue. A Issue é
+        // exclusiva do teto por tenant e da falha do Redis.
+        expect(reportarFalhaSilenciosaAguardandoMock).not.toHaveBeenCalled()
+        expect(reportarExcecaoMock).not.toHaveBeenCalled()
+
+        // Prova NEGATIVA de PII: o telefone cru do cliente final não pode
+        // aparecer em nenhum argumento enviado a fornecedor terceiro.
+        const enviado = JSON.stringify([
+            logAguardandoMock.warn.mock.calls,
+            capturarEventoTenantMock.mock.calls,
+        ])
+        expect(enviado).not.toContain('11999998888')
+    })
+
+    it('estouro do TETO por tenant escala Issue sintética estática com tenantHash (D-12)', async () => {
+        respostaPorCamada({ teto_tenant: false })
+
+        const resultado = await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        expect(resultado.ok).toBe(false)
+        if (!resultado.ok) expect(resultado.motivo).toBe('muitas_tentativas')
+
+        // Mensagem SINTÉTICA e ESTÁTICA (nada interpolado): é o que mantém o
+        // agrupamento do Sentry inteiro sob ataque — o erro que a quick task
+        // 260724 pagou para não repetir. Variante AGUARDADA porque o `return`
+        // encerra a Server Action na linha seguinte.
+        expect(reportarFalhaSilenciosaAguardandoMock).toHaveBeenCalledWith(
+            'ratelimit:teto_tenant_atingido',
+            {
+                fluxo: 'booking_publico',
+                camada: 'teto_tenant',
+                tenantHash: hashTenantId(TENANT_FIXTURE),
+            },
+        )
+
+        // O `org_...` do Clerk nunca vai cru para o Sentry.
+        const enviadoAoSentry = JSON.stringify(reportarFalhaSilenciosaAguardandoMock.mock.calls)
+        expect(enviadoAoSentry).not.toContain(TENANT_FIXTURE)
+
+        // A telemetria de rotina continua saindo — a Issue é ACRÉSCIMO, não
+        // substituição: sem o log e a taxa, o alarme chegaria sem contexto.
+        expect(logAguardandoMock.warn).toHaveBeenCalledWith('ratelimit.bloqueio', {
+            fluxo: 'booking_publico',
+            camada: 'teto_tenant',
+            tenantHash: hashTenantId(TENANT_FIXTURE),
+        })
+        expect(capturarEventoTenantMock).toHaveBeenCalledWith(
+            'booking_rate_limited',
+            TENANT_FIXTURE,
+            { camada: 'teto_tenant' },
+        )
+    })
+
+    it('bloqueio acontece ANTES da consulta de serviço (não paga o resto do caminho)', async () => {
+        respostaPorCamada({ escrita_telefone: false })
+
+        await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        // A resolução já foi paga por qualquer requisição válida; o que o
+        // bloqueio economiza é tudo o que vem DEPOIS — serviço, engine, RPC e
+        // INSERT, que é onde mora o custo real.
+        expect(tabelasConsultadas).toContain('perfis_empresas')
+        expect(tabelasConsultadas).not.toContain('servicos')
+    })
+
+    it('com as três camadas liberando, o fluxo segue idêntico ao baseline', async () => {
+        respostaPorCamada({})
+
+        const resultado = await criarAgendamentoPublico({ ...PARAMS_VALIDOS })
+
+        // Segue além das camadas e para adiante, na consulta de serviço (fixture
+        // sem serviço). Nenhuma das camadas novas pode virar bloqueio acidental.
+        expect(tabelasConsultadas).toContain('servicos')
+        expect(resultado.ok).toBe(false)
+        if (!resultado.ok) expect(resultado.motivo).toBe('servico_invalido')
+        expect(reportarFalhaSilenciosaAguardandoMock).not.toHaveBeenCalled()
     })
 })
