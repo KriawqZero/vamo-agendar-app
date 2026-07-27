@@ -285,7 +285,7 @@ Plans:
   2. O cliente legítimo agenda sem nenhuma etapa nova: nenhum CAPTCHA, nenhum campo visível a mais, nenhum atraso perceptível
   3. O owner consegue ver quantas requisições foram barradas e por qual chave (IP, telefone ou tenant), o suficiente para saber se o limite está pegando gente de verdade
 
-**Plans**: 4/6 plans executed
+**Plans**: 5/6 plans executed
 
 Plans:
 
@@ -297,7 +297,7 @@ faria a prova medir a árvore errada — mesmo racional das Phases 1 e 2.
 - [x] 03-02-PLAN.md — Observabilidade do bloqueio: `logOperacionalAguardando`, códigos/atributos na allowlist e telemetria da camada de IP (D-11) (wave 2)
 - [x] 03-03-PLAN.md — Camadas telefone (~5 tentativas/h, D-08) + teto por tenant (30/h, D-09) + Issue `ratelimit:teto_tenant_atingido` (D-12) (wave 3)
 - [x] 03-04-PLAN.md — Teto de leitura folgado em `obterSlotsPublicos` (D-06/D-10, page load fora — Pitfall 7) + env vars do Redis obrigatórias em produção (D-04) (wave 4)
-- [ ] 03-05-PLAN.md — Honeypot com sucesso falso: campo invisível, decisão na action antes de qualquer I/O, telemetria própria (wave 5)
+- [x] 03-05-PLAN.md — Honeypot com sucesso falso: campo invisível, decisão na action antes de qualquer I/O, telemetria própria (wave 5)
 - [ ] 03-06-PLAN.md — Documentação da alternativa não escolhida (D-01), PENDENCIAS (provisionamento do owner D-05, risco da cota) e gate da fase (wave 6)
 
 **Notas de execução:**
@@ -549,7 +549,7 @@ faria a prova medir a árvore errada — mesmo racional das Phases 1 e 2.
 | Etapa preparatória. Fundação operacional | 1/1 | Código fechado — 2 gates do owner abertos | 2026-07-21 |
 | 1. Hardening da superfície pública | 19/19 | Complete (7 UAT de tela abertos) | 2026-07-23 |
 | 2. Integridade da agenda | 6/6 | Complete (2 UAT de tela abertos) | 2026-07-23 |
-| 3. Anti-abuso no booking público | 4/6 | In Progress|  |
+| 3. Anti-abuso no booking público | 5/6 | In Progress|  |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |
 | 5. Contato flexível no booking | 0/TBD | Not started | - |
 | 6. Diferencial visível — agenda densa | 0/TBD | Not started | - |

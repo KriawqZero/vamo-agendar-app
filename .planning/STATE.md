@@ -5,14 +5,14 @@ milestone_name: Lançamento público
 current_phase: 03
 current_phase_name: anti-abuso-no-booking-p-blico
 status: complete
-stopped_at: Completed 03-04-PLAN.md
-last_updated: "2026-07-27T19:08:38.955Z"
+stopped_at: Completed 03-05-PLAN.md
+last_updated: "2026-07-27T19:19:54.625Z"
 last_activity: 2026-07-27
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 31
-  completed_plans: 29
+  completed_plans: 30
 last_activity_desc: "Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 — 6/6 planos, veredito do verificador human_needed com 5/5 must-haves verificados e 2 itens de UAT de TELA abertos (aviso âmbar público e detalhe do walk-in); AGE-01..05 marcados em REQUIREMENTS. Depois dela veio a quick task 260724-observabilidade-mensageria (fora do roadmap, disparada por incidente do owner: agendamento testado, confirmação e lembrete não entregues e NADA em PostHog, Sentry Issues, Sentry Logs ou log do Railway). Ela está mergeada no master (PR #11, merge a9d071a; commits a03cc39 → cd63aa3) e é BASELINE — não reimplementar. Baseline reconferida nesta sessão: pnpm test 280/280 em 20 arquivos. O que ela deixou aberto é só verificação de painel (não fecha por teste), listada em docs/PENDENCIAS.md. Próximo passo do roadmap: /gsd-discuss-phase 03 (Anti-abuso no booking público) — mas ele tem uma DECISÃO DO OWNER como pré-requisito: Upstash Redis vs. RPC atômica no Postgres para o rate limit."
 ---
 
@@ -27,17 +27,32 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 03 (anti-abuso-no-booking-p-blico) — EXECUTING (4/6 planos)
+Phase: 03 (anti-abuso-no-booking-p-blico) — EXECUTING (5/6 planos)
 Branch: `gsd/phase-03-anti-abuso-no-booking-p-blico`
-Concluídos: **03-01** (camada de IP do rate limit), **03-02** (telemetria do bloqueio — Sentry Log aguardado + PostHog), **03-03** (camadas de telefone 5/1h e teto por tenant 30/1h + Issue `ratelimit:teto_tenant_atingido`) e **03-04** (teto de leitura 60/1min em `obterSlotsPublicos` + as duas vars do Upstash na lista de obrigatórias de produção)
-Próximo: **03-05** (honeypot)
+Concluídos: **03-01** (camada de IP do rate limit), **03-02** (telemetria do bloqueio — Sentry Log aguardado + PostHog), **03-03** (camadas de telefone 5/1h e teto por tenant 30/1h + Issue `ratelimit:teto_tenant_atingido`), **03-04** (teto de leitura 60/1min em `obterSlotsPublicos` + as duas vars do Upstash na lista de obrigatórias de produção) e **03-05** (honeypot com sucesso falso)
+Próximo: **03-06** (fechamento da fase)
 
-⚠️ Nenhuma proteção está ATIVA ainda: `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`
-seguem não provisionadas (`user_setup` aberto desde o 03-01), então o rate limit inteiro
-está em no-op — e, por consequência, nenhuma telemetria de bloqueio é emitida em execução
-real. As **quatro camadas** existem e estão provadas (escrita: IP 10/10min, telefone 5/1h
-por tenant, teto de tenant 30/1h; leitura: IP 60/1min na grade de slots); o que falta para
-elas protegerem alguma coisa é exclusivamente o provisionamento das duas variáveis.
+✅ **As DUAS defesas da fase existem.** O 03-05 fechou o segundo eixo: campo armadilha
+`info_adicional` no `EtapaContato` (invisível por posicionamento off-screen, `tabIndex={-1}`,
+`aria-hidden`, `autoComplete="off"`, nome fora do vocabulário de autofill) e sucesso falso
+como PRIMEIRA instrução de `criarAgendamentoPublico` — forma exata de `AgendamentoCriado`
+com zero I/O: nada de banco, Redis, engine, cliente, WhatsApp ou lembrete. Telemetria em
+`honeypot.captura` (Log aguardado, o stub sem emissor do 03-02) + evento `booking_honeypot`,
+sem Issue e **sem `booking_completed`** (funil não conta bot como cliente).
+
+Os dois eixos são complementares e nenhum fecha o SC1 sozinho: o honeypot pega bot que
+preenche FORMULÁRIO; script que chama a Server Action direto não preenche o campo e cai no
+rate limit. Único item que a suíte não sabe responder e virou olho humano: campo em
+navegador real (layout, tabulação, autofill) + acompanhar a taxa de `booking_honeypot`, que
+é o detector de autofill capturando pessoa real (Pitfall 6).
+
+⚠️ O rate limit continua não ATIVO: `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`
+seguem não provisionadas (`user_setup` aberto desde o 03-01), então as quatro camadas estão
+em no-op — e, por consequência, nenhuma telemetria de bloqueio é emitida em execução real.
+Elas existem e estão provadas (escrita: IP 10/10min, telefone 5/1h por tenant, teto de
+tenant 30/1h; leitura: IP 60/1min na grade de slots); o que falta para elas protegerem
+alguma coisa é exclusivamente o provisionamento das duas variáveis. **O honeypot NÃO depende
+disso** — não consulta Redis e já funciona.
 
 🚨 **O 03-04 mudou a natureza dessa pendência.** As duas vars entraram em
 `OBRIGATORIAS_EM_PRODUCAO` (D-04): a partir deste commit, deploy de produção sem elas
@@ -139,7 +154,7 @@ Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
 Last activity: 2026-07-27
 
-Progress: [█████████░] 94% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
+Progress: [██████████] 97% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
 
 ### Resultado da 4ª passagem de verificação (2026-07-22, HEAD `7937aed`)
 
@@ -212,6 +227,7 @@ Primeira verificação das quatro com acesso DDL ao banco de dev — os cinco Su
 | Phase 03 P02 | ~12min | 2 tasks | 4 files |
 | Phase 03 P03 | ~20min | 2 tasks | 4 files |
 | Phase 03 P04 | ~18min | 2 tasks | 6 files |
+| Phase 03 P05 | ~12min | 2 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -329,6 +345,12 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: [Phase 03]: 03-04: teto de rate limit sobre LEITURA só é viável onde existe canal de erro discriminado — obterDadosBookingPublico fica FORA (contrato null→notFound() converteria bloqueio em 404 para visitante legítimo sob CGNAT); desvio do D-06 ratificado pelo owner e travado por teste
 - [Phase ?]: [Phase 03]: 03-04: erro de calibração é assimétrico e está escrito assim no código — folgado demais só reduz proteção (reversível), apertado demais adiciona fricção a cliente real (irreversível); por isso leitura_ip é 60/min, o mais folgado dos quatro
 - [Phase ?]: [Phase 03]: 03-04: UPSTASH_REDIS_REST_URL/_TOKEN são o caso mais puro do critério (a) da lista de obrigatórias — a ausência não FALHA, ela LIBERA tudo em silêncio; com as duas na lista, produção não sobe sem rate limit ativo (D-04)
+- [Phase ?]: [Phase 03]: 03-05: honeypot oculto por POSICIONAMENTO off-screen, nunca por display:none ou hidden — campo suprimido é pulado por parte dos bots e a armadilha para de pegar sem nenhum sintoma (a taxa cai a zero, indistinguível de 'não estamos sendo atacados'); a proibição virou asserção negativa de fonte
+- [Phase ?]: [Phase 03]: 03-05: sucesso falso é EXCLUSIVO do honeypot (D-07) — bot que recebe erro tenta de novo, bot que recebe sucesso vai embora; no rate limit a certeza de bot é menor (CGNAT) e por isso lá o erro é honesto
+- [Phase ?]: [Phase 03]: 03-05: o nome do campo é escolhido contra DUAS ameaças que puxam para lados diferentes — longe do vocabulário de autofill (website/url/address/phone2) e sem denunciar a armadilha no bundle; info_adicional satisfaz as duas e o teste trava os dois lados
+- [Phase ?]: [Phase 03]: 03-05: requisito que é a FORMA de um atributo de UI se trava por asserção de FONTE — render em jsdom passaria igual depois de trocar a ocultação, renomear o campo ou apagar o tabIndex, que são justamente os refactors que quebram a defesa
+- [Phase ?]: [Phase 03]: 03-05: string vazia e só-espaços NÃO capturam (trim().length > 0, não truthiness) — todo navegador envia '' para input não preenchido, e se '' capturasse 100% dos clientes reais receberiam sucesso falso
+- [Phase ?]: [Phase 03]: 03-05: a captura não emite booking_completed — funil que conta bot como cliente infla exatamente o número que serve para decidir se o produto funciona, e o dano é silencioso porque funil que sobe parece boa notícia
 
 ### Pending Todos
 
@@ -392,8 +414,8 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-27T19:08:38.940Z
-Stopped at: Completed 03-04-PLAN.md
+Last session: 2026-07-27T19:19:40.767Z
+Stopped at: Completed 03-05-PLAN.md
 Resume file: None
 
 **Como retomar (ordem):**
