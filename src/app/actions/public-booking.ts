@@ -518,7 +518,11 @@ export async function criarAgendamentoPublico({
             await logOperacionalAguardando.warn('ratelimit.bloqueio', {
                 fluxo: 'booking_publico',
                 camada: 'escrita_ip',
-                chaveHash: hashChaveRateLimit(ipDoCliente),
+                // IP indeterminável devolve `null` e a camada vira PASSE
+                // (CR-04), então na prática este ramo sempre tem IP — o `?:`
+                // existe para que o tipo não obrigue a inventar um placeholder
+                // que viraria um `chaveHash` mentiroso no Sentry.
+                chaveHash: ipDoCliente ? hashChaveRateLimit(ipDoCliente) : undefined,
             })
             // Variante Servidor, e não Tenant: aqui o slug ainda não foi
             // resolvido, então não existe `tenant_id` para atribuir o evento.
@@ -998,7 +1002,9 @@ export async function obterSlotsPublicos(
             await logOperacionalAguardando.warn('ratelimit.bloqueio', {
                 fluxo: 'booking_publico',
                 camada: 'leitura_ip',
-                chaveHash: hashChaveRateLimit(ipDoLeitor),
+                // Mesma razão do bloqueio de escrita: sem IP a camada libera
+                // (CR-04), então aqui o IP existe.
+                chaveHash: ipDoLeitor ? hashChaveRateLimit(ipDoLeitor) : undefined,
             })
             capturarEventoServidor('booking_rate_limited', { camada: 'leitura_ip' })
         } catch (telemetriaErr) {

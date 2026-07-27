@@ -36,7 +36,11 @@ import { createHash } from 'node:crypto'
 import { headers } from 'next/headers'
 import { Ratelimit } from '@upstash/ratelimit'
 import { Redis } from '@upstash/redis'
-import { reportarFalhaSilenciosaAguardando } from './observabilidade/reportar'
+import { permitirUmaVezPorProcesso } from './observabilidade/emissao'
+import {
+    reportarFalhaSilenciosa,
+    reportarFalhaSilenciosaAguardando,
+} from './observabilidade/reportar'
 
 /**
  * As quatro camadas do desenho da fase — todas com limiter real desde o 03-04
@@ -260,10 +264,21 @@ function normalizarIp(bruto: string | null | undefined): string | null {
  * 3. Toda candidata passa por `normalizarIp`: string que não tem forma de IP
  *    nunca vira balde.
  *
- * IP indeterminável vira balde PRÓPRIO (`'desconhecido'`), nunca exceção — ver
- * CR-04 para o tratamento desse balde. `headers()` é assíncrona no Next 16.
+ * ⚠️ IP indeterminável devolve `null`, NUNCA um balde compartilhado (CR-04). O
+ * balde `'desconhecido'` anterior tinha um modo de falha que ninguém mediu: se o
+ * header sumisse por qualquer razão de infraestrutura — `next start` sem proxy
+ * na frente, health check interno, troca de plataforma —, TODOS os visitantes de
+ * TODOS os tenants passavam a dividir 10 escritas por 10 min e 60 leituras por
+ * min. Um problema de infra virava queda total do booking público, sem nenhum
+ * sinal, que é o oposto exato do contrato 5 deste módulo.
+ *
+ * `null` significa "não sei", e `verificarLimite` responde PASSE a uma chave que
+ * não sabe formar. Esconder o IP não compra nada extra, porque quem já tinha IP
+ * continua contado e as camadas de telefone e tenant seguem valendo no caminho
+ * de escrita. O que se perde é proteção; o que se ganha é não derrubar o produto
+ * por causa de um header. `headers()` é assíncrona no Next 16.
  */
-export async function ipDoVisitante(): Promise<string> {
+export async function ipDoVisitante(): Promise<string | null> {
     try {
         const cabecalhos = await headers()
 
@@ -274,11 +289,31 @@ export async function ipDoVisitante(): Promise<string> {
         const anexadoPeloProxy = normalizarIp(partes.at(-1))
         if (anexadoPeloProxy) return anexadoPeloProxy
 
-        return 'desconhecido'
+        avisarIpIndeterminavel()
+        return null
     } catch {
-        // Contrato 1: fora de contexto de requisição, o balde comum resolve.
-        return 'desconhecido'
+        // Contrato 1: fora de contexto de requisição (job, teste), não há IP e
+        // não há incidente — nada a reportar.
+        return null
     }
+}
+
+/**
+ * O detector que faltava (CR-04): sem ele, "a infra parou de mandar o header" é
+ * indistinguível de "ninguém acessou", e a camada de IP fica desligada em
+ * silêncio.
+ *
+ * Uma vez por processo e nunca mais: é um sinal de ESTADO, não um evento por
+ * requisição — repetir só transformaria o próprio detector no vetor de inundação
+ * que o CR-03 descreve.
+ */
+function avisarIpIndeterminavel(): void {
+    if (!permitirUmaVezPorProcesso('ratelimit:ip_indeterminavel')) return
+
+    console.warn(
+        '[rate-limit] IP do visitante indeterminável (x-real-ip e x-forwarded-for ausentes ou malformados): as camadas por IP estão em PASSE.',
+    )
+    reportarFalhaSilenciosa('ratelimit:ip_indeterminavel', { fluxo: 'rate_limit' })
 }
 
 /**
@@ -291,15 +326,25 @@ export async function ipDoVisitante(): Promise<string> {
  * `partesChave` recebe os valores CRUS (IP, telefone, tenant) e a
  * pseudonimização acontece aqui dentro — assim nenhum chamador consegue esquecer
  * de hashear, que é a única forma de o contrato 3 ser violado.
+ *
+ * ⚠️ Parte AUSENTE (`null`, `undefined`, vazia ou só espaços) devolve PASSE, e
+ * a lista vazia também (CR-04/WR-09). Sem esta guarda, `[]` e `['']` produziam
+ * uma chave que TODOS os chamadores daquela camada dividiam: um `tenant_id`
+ * vazio numa linha bastaria para o `teto_tenant` de todos os tenants colapsar
+ * num contador só, e um IP indeterminável faria o mesmo com o booking inteiro.
+ * "Não sei formar a chave" é caso de fail-open, igual a "o fornecedor não
+ * respondeu" — nunca de bloqueio.
  */
 export async function verificarLimite(
     camada: CamadaRateLimit,
-    partesChave: string[],
+    partesChave: Array<string | null | undefined>,
 ): Promise<boolean> {
     const limiter = LIMITERS[camada]
     if (!limiter) return true
 
-    const chave = partesChave.map(hashChaveRateLimit).join(':')
+    if (partesChave.length === 0 || partesChave.some((parte) => !parte?.trim())) return true
+
+    const chave = partesChave.map((parte) => hashChaveRateLimit(parte as string)).join(':')
 
     try {
         const resultado = await limiter.limit(chave)

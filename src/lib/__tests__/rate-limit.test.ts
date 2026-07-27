@@ -27,22 +27,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 // por isso não quebra a recarga por caso feita com `import()` dinâmico.
 import type { CamadaRateLimit } from '@/lib/rate-limit'
 
-const { limitMock, reportarMock, headersMock, configsCriadas } = vi.hoisted(() => ({
-    limitMock: vi.fn(),
-    reportarMock: vi.fn(async () => {}),
-    headersMock: vi.fn(),
-    /**
-     * Configuração de CADA limiter instanciado no load do módulo. É o que torna
-     * as constantes de calibração (janela, tokens, prefixo, timeout) verificáveis
-     * sem exportar os limiters — número de calibração que ninguém consegue ler de
-     * fora é número que muda sozinho na próxima edição.
-     */
-    configsCriadas: [] as Array<{
-        prefix: string
-        timeout: number
-        limiter: { algoritmo: string; tokens: number; janela: string }
-    }>,
-}))
+const { limitMock, reportarMock, reportarSincronoMock, headersMock, configsCriadas } = vi.hoisted(
+    () => ({
+        limitMock: vi.fn(),
+        reportarMock: vi.fn(async () => {}),
+        reportarSincronoMock: vi.fn(),
+        headersMock: vi.fn(),
+        /**
+         * Configuração de CADA limiter instanciado no load do módulo. É o que
+         * torna as constantes de calibração (janela, tokens, prefixo, timeout)
+         * verificáveis sem exportar os limiters — número de calibração que
+         * ninguém consegue ler de fora é número que muda sozinho na próxima
+         * edição.
+         */
+        configsCriadas: [] as Array<{
+            prefix: string
+            timeout: number
+            limiter: { algoritmo: string; tokens: number; janela: string }
+        }>,
+    }),
+)
 
 vi.mock('@upstash/ratelimit', () => ({
     Ratelimit: class RatelimitFake {
@@ -75,6 +79,10 @@ vi.mock('next/headers', () => ({ headers: headersMock }))
 
 vi.mock('@/lib/observabilidade/reportar', () => ({
     reportarFalhaSilenciosaAguardando: reportarMock,
+    // Variante SÍNCRONA: é a do detector de IP indeterminável (CR-04), que é
+    // sinal de estado emitido uma vez por processo — nunca vale segurar a
+    // resposta do visitante por ele.
+    reportarFalhaSilenciosa: reportarSincronoMock,
 }))
 
 /** IP de fixture — nunca pode aparecer cru no argumento enviado ao Redis. */
@@ -99,6 +107,7 @@ async function carregarModulo(comCredenciais: boolean) {
 beforeEach(() => {
     limitMock.mockReset()
     reportarMock.mockReset()
+    reportarSincronoMock.mockReset()
     headersMock.mockReset()
 })
 
@@ -444,7 +453,7 @@ describe('ipDoVisitante', () => {
             cabecalhos({ 'x-real-ip': 'nao-sou-um-ip', 'x-forwarded-for': '999.999.999.999' }),
         )
 
-        await expect(ipDoVisitante()).resolves.toBe('desconhecido')
+        await expect(ipDoVisitante()).resolves.toBeNull()
     })
 
     it('não cai para a penúltima entrada do XFF quando a última é lixo', async () => {
@@ -455,20 +464,66 @@ describe('ipDoVisitante', () => {
             cabecalhos({ 'x-forwarded-for': `${IP_FIXTURE}, lixo-forjado` }),
         )
 
-        await expect(ipDoVisitante()).resolves.toBe('desconhecido')
+        await expect(ipDoVisitante()).resolves.toBeNull()
     })
 
-    it('devolve o balde comum quando o header não existe — nunca lança', async () => {
+    it('devolve null quando o header não existe — nunca lança, nunca balde comum (CR-04)', async () => {
         const { ipDoVisitante } = await carregarModulo(true)
         headersMock.mockResolvedValue({ get: () => null })
 
-        await expect(ipDoVisitante()).resolves.toBe('desconhecido')
+        // O balde `'desconhecido'` anterior somava TODOS os visitantes de TODOS
+        // os tenants num contador só: header ausente por qualquer razão de infra
+        // derrubava o booking público inteiro, sem sinal nenhum.
+        await expect(ipDoVisitante()).resolves.toBeNull()
     })
 
-    it('devolve o balde comum quando headers() lança (fora de requisição)', async () => {
+    it('abre Issue sintética UMA vez por processo quando o IP é indeterminável (CR-04)', async () => {
+        const { ipDoVisitante } = await carregarModulo(true)
+        headersMock.mockResolvedValue({ get: () => null })
+
+        await ipDoVisitante()
+        await ipDoVisitante()
+        await ipDoVisitante()
+
+        // O detector é obrigatório (sem ele, "a infra parou de mandar o header"
+        // é indistinguível de "ninguém acessou") mas não pode virar o próprio
+        // vetor de inundação — daí uma emissão por processo, e só.
+        expect(reportarSincronoMock).toHaveBeenCalledTimes(1)
+        expect(reportarSincronoMock).toHaveBeenCalledWith('ratelimit:ip_indeterminavel', {
+            fluxo: 'rate_limit',
+        })
+    })
+
+    it('devolve null quando headers() lança (fora de requisição), sem reportar', async () => {
         const { ipDoVisitante } = await carregarModulo(true)
         headersMock.mockRejectedValue(new Error('fora de contexto de requisição'))
 
-        await expect(ipDoVisitante()).resolves.toBe('desconhecido')
+        await expect(ipDoVisitante()).resolves.toBeNull()
+        // Job interno ou teste rodando fora de requisição não é incidente.
+        expect(reportarSincronoMock).not.toHaveBeenCalled()
+    })
+})
+
+describe('verificarLimite — chave que não se consegue formar é PASSE (CR-04/WR-09)', () => {
+    it('devolve PASSE sem consultar o fornecedor quando o IP é null', async () => {
+        const { verificarLimite } = await carregarModulo(true)
+
+        await expect(verificarLimite('escrita_ip', [null])).resolves.toBe(true)
+        expect(limitMock).not.toHaveBeenCalled()
+    })
+
+    it('devolve PASSE para lista VAZIA e para parte em branco', async () => {
+        const { verificarLimite } = await carregarModulo(true)
+
+        // `[]` e `['']` formavam uma chave que TODOS os chamadores da camada
+        // dividiam — um `tenant_id` vazio numa linha bastava para o teto de
+        // todos os tenants colapsar num contador só.
+        await expect(verificarLimite('teto_tenant', [])).resolves.toBe(true)
+        await expect(verificarLimite('teto_tenant', [''])).resolves.toBe(true)
+        await expect(verificarLimite('teto_tenant', ['   '])).resolves.toBe(true)
+        await expect(
+            verificarLimite('escrita_telefone', [TELEFONE_FIXTURE, undefined]),
+        ).resolves.toBe(true)
+        expect(limitMock).not.toHaveBeenCalled()
     })
 })
