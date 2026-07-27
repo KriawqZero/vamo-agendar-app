@@ -5,14 +5,14 @@ milestone_name: Lançamento público
 current_phase: 03
 current_phase_name: anti-abuso-no-booking-p-blico
 status: complete
-stopped_at: Completed 03-02-PLAN.md
-last_updated: "2026-07-27T18:44:25.129Z"
+stopped_at: Completed 03-03-PLAN.md
+last_updated: "2026-07-27T18:57:06.772Z"
 last_activity: 2026-07-27
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 31
-  completed_plans: 27
+  completed_plans: 28
 last_activity_desc: "Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 — 6/6 planos, veredito do verificador human_needed com 5/5 must-haves verificados e 2 itens de UAT de TELA abertos (aviso âmbar público e detalhe do walk-in); AGE-01..05 marcados em REQUIREMENTS. Depois dela veio a quick task 260724-observabilidade-mensageria (fora do roadmap, disparada por incidente do owner: agendamento testado, confirmação e lembrete não entregues e NADA em PostHog, Sentry Issues, Sentry Logs ou log do Railway). Ela está mergeada no master (PR #11, merge a9d071a; commits a03cc39 → cd63aa3) e é BASELINE — não reimplementar. Baseline reconferida nesta sessão: pnpm test 280/280 em 20 arquivos. O que ela deixou aberto é só verificação de painel (não fecha por teste), listada em docs/PENDENCIAS.md. Próximo passo do roadmap: /gsd-discuss-phase 03 (Anti-abuso no booking público) — mas ele tem uma DECISÃO DO OWNER como pré-requisito: Upstash Redis vs. RPC atômica no Postgres para o rate limit."
 ---
 
@@ -27,15 +27,17 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 03 (anti-abuso-no-booking-p-blico) — EXECUTING (2/6 planos)
+Phase: 03 (anti-abuso-no-booking-p-blico) — EXECUTING (3/6 planos)
 Branch: `gsd/phase-03-anti-abuso-no-booking-p-blico`
-Concluídos: **03-01** (camada de IP do rate limit) e **03-02** (telemetria do bloqueio — Sentry Log aguardado + PostHog)
-Próximo: **03-03** (camadas de telefone e teto por tenant)
+Concluídos: **03-01** (camada de IP do rate limit), **03-02** (telemetria do bloqueio — Sentry Log aguardado + PostHog) e **03-03** (camadas de telefone 5/1h e teto por tenant 30/1h + Issue `ratelimit:teto_tenant_atingido`)
+Próximo: **03-04** (teto da leitura pública + env vars obrigatórias)
 
 ⚠️ Nenhuma proteção está ATIVA ainda: `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`
 seguem não provisionadas (`user_setup` aberto desde o 03-01), então o rate limit inteiro
 está em no-op — e, por consequência, nenhuma telemetria de bloqueio é emitida em execução
-real.
+real. As **três camadas de escrita** já existem e estão provadas (IP 10/10min, telefone
+5/1h por tenant, teto de tenant 30/1h); o que falta para elas protegerem alguma coisa é
+exclusivamente o provisionamento das duas variáveis.
 
 ### ⛳ Quick task 260724-observabilidade-mensageria — BASELINE, não reimplementar
 
@@ -131,7 +133,7 @@ Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
 Last activity: 2026-07-27
 
-Progress: [█████████░] 87% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
+Progress: [█████████░] 90% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
 
 ### Resultado da 4ª passagem de verificação (2026-07-22, HEAD `7937aed`)
 
@@ -202,6 +204,7 @@ Primeira verificação das quatro com acesso DDL ao banco de dev — os cinco Su
 | Phase 02 P06 | ~10min | 3 tasks | 2 files |
 | Phase 03 P01 | ~35min | 2 tasks | 8 files |
 | Phase 03 P02 | ~12min | 2 tasks | 4 files |
+| Phase 03 P03 | ~20min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -313,6 +316,9 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: [Phase 03]: 03-01: CamadaRateLimit declara as quatro camadas com Partial<Record> de limiters — camada sem instância devolve PASSE, nunca bloqueio acidental, e há teste que prova a ausência em vez de deixá-la implícita
 - [Phase ?]: 03-02: bloqueio de rate limit NÃO abre Sentry Issue — é condição esperada de endpoint público (mesmo racional do ramo 23P01); Issue fica reservada ao teto por tenant e à falha do Redis
 - [Phase ?]: 03-02: log.ts ganhou o par fire-and-forget / AGUARDADA (logOperacionalAguardando com Sentry.flush), espelhando reportar.ts — obrigatório em emissão imediatamente anterior a return de Server Action
+- [Phase ?]: [Phase 03]: 03-03: Rate limit por telefone: 5 tentativas/h implementa o '~3 agendamentos/h' do D-08 — limit() consome token na tentativa (check-then-consume sem refund) e o retry de double-booking já gasta 4
+- [Phase ?]: [Phase 03]: 03-03: Camadas de telefone e teto por tenant rodam PÓS-resolução do slug: a chave exata só nasce ali, e usar o slug dobraria o orçamento pelos dois namespaces (slug e slug_gratuito abrem a mesma agenda)
+- [Phase ?]: [Phase 03]: 03-03: A Issue ratelimit:teto_tenant_atingido mora na ACTION, não no módulo de rate limit: o módulo abre Issue por falha do fornecedor, a action por significado de negócio
 
 ### Pending Todos
 
@@ -376,8 +382,8 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-27T18:44:24.927Z
-Stopped at: Completed 03-02-PLAN.md
+Last session: 2026-07-27T18:57:06.757Z
+Stopped at: Completed 03-03-PLAN.md
 Resume file: None
 
 **Como retomar (ordem):**
