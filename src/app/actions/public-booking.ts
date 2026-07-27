@@ -140,9 +140,15 @@ type MotivoLeituraPublica = Extract<MotivoPublico, 'slug_invalido' | 'erro_inter
  * `mensagemDeMotivo` os aceita sem edição e os dois `Record` exaustivos de
  * `src/app/book/[slug]/mensagens.ts` seguem compilando intactos — nenhuma cópia
  * nova precisa ser escrita, porque as duas já estavam contratadas lá.
+ *
+ * `muitas_tentativas` entrou aqui na Phase 3 pela MESMA razão, e só aqui: quem
+ * produz o bloqueio é a guarda de leitura desta função. Alargar
+ * `MotivoLeituraPublica` para acomodá-lo tornaria aquele tipo mentiroso — a
+ * resolução de perfil não sabe produzir estouro de rate limit.
  */
 type MotivoSlotsPublicos =
-    MotivoLeituraPublica | Extract<MotivoPublico, 'data_invalida' | 'servico_invalido'>
+    | MotivoLeituraPublica
+    | Extract<MotivoPublico, 'data_invalida' | 'servico_invalido' | 'muitas_tentativas'>
 
 /**
  * Linha de `perfis_empresas` projetada por `COLUNAS_PERFIL_PUBLICO`. O tipo é
@@ -740,6 +746,21 @@ export async function criarAgendamentoPublico({
  * funcionar imediatamente após um downgrade (e volta num re-upgrade).
  */
 export async function obterDadosBookingPublico(slug: string) {
+    // ⚠️ SEM RATE LIMIT, e a ausência é decisão registrada — não esquecimento.
+    //
+    // O contrato desta função é `null` → `notFound()` em `page.tsx`. Um teto
+    // aqui não teria como devolver "muitas tentativas": o bloqueio viraria
+    // 404, e um visitante legítimo atrás de CGNAT veria "estabelecimento não
+    // existe" — indistinguível de link quebrado, e o pior desfecho possível
+    // para a confiança no produto. A função de LEITURA que ganhou teto é
+    // `obterSlotsPublicos`, que tem canal de erro discriminado.
+    //
+    // O custo de deixá-la aberta é baixo e conhecido: uma requisição por
+    // VISITA (o page load), contra dezenas de consultas de grade na mesma
+    // sessão. O vetor real de varredura é a grade, não a capa da página.
+    // Desvio do D-06 ratificado pelo owner em 2026-07-27; reavaliação em fase
+    // futura se o page load virar alvo medido.
+    //
     // Leitura pública inteira no cliente PRIVILEGIADO (a role anon perdeu a
     // Data API nesta fase). Com o RLS fora do caminho, o filtro por tenant e a
     // lista de colunas passam a ser a defesa — ambos ficam no helper e nas
@@ -867,6 +888,48 @@ export async function obterSlotsPublicos(
         duracaoMinutos > DURACAO_MAXIMA_MINUTOS
     ) {
         return { ok: false, motivo: 'servico_invalido' }
+    }
+
+    // ⚠️ TETO DE LEITURA POR IP — a quarta e última camada da fase.
+    //
+    // Esta é a função que um script martelaria: varrer a grade de um horizonte
+    // inteiro para mapear a agenda (ou só para custar consultas ao Supabase)
+    // significa repetir ESTA chamada, não o page load. Por isso é aqui que o
+    // teto de leitura mora, e não em `obterDadosBookingPublico` — cujo contrato
+    // `null` → `notFound()` transformaria bloqueio em 404 (ver o comentário
+    // no topo daquela função).
+    //
+    // A posição repete o padrão 01-18 pelas duas razões de sempre: DEPOIS das
+    // validações síncronas acima, porque payload lixo não merece gastar um
+    // comando na cota do Redis; e ANTES de `createAdminClient()`, porque o que
+    // o bloqueio precisa economizar é justamente a consulta ao banco que o
+    // martelo estava buscando provocar.
+    //
+    // 60/min é BEM folgado de propósito (D-06/D-10): sessão legítima nunca
+    // alcança, e a UI reusa a caixa de erro que já existe desde o 03-01 —
+    // nenhuma copy nova, nenhuma fricção nova.
+    const ipDoLeitor = await ipDoVisitante()
+    if (!(await verificarLimite('leitura_ip', [ipDoLeitor]))) {
+        // Mesmos dois destinos do bloqueio de escrita por IP, e nenhuma Issue:
+        // barrar leitura num endpoint público é rotina, e Issue de rotina é
+        // como o owner para de olhar a ferramenta bem na hora em que ela
+        // importa. Variante SERVIDOR do PostHog porque o slug ainda não foi
+        // resolvido — não existe tenant a quem atribuir o evento.
+        try {
+            await logOperacionalAguardando.warn('ratelimit.bloqueio', {
+                fluxo: 'booking_publico',
+                camada: 'leitura_ip',
+                chaveHash: hashChaveRateLimit(ipDoLeitor),
+            })
+            capturarEventoServidor('booking_rate_limited', { camada: 'leitura_ip' })
+        } catch (telemetriaErr) {
+            console.error(
+                '[rate-limit] telemetria de bloqueio de leitura não emitida (ignorada):',
+                telemetriaErr,
+            )
+        }
+
+        return { ok: false, motivo: 'muitas_tentativas' }
     }
 
     const admin = createAdminClient()

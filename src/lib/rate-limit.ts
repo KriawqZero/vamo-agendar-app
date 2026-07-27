@@ -39,11 +39,13 @@ import { Redis } from '@upstash/redis'
 import { reportarFalhaSilenciosaAguardando } from './observabilidade/reportar'
 
 /**
- * As quatro camadas do desenho da fase, declaradas de uma vez.
+ * As quatro camadas do desenho da fase — todas com limiter real desde o 03-04
+ * (`escrita_ip` no 03-01, `escrita_telefone` e `teto_tenant` no 03-03,
+ * `leitura_ip` aqui).
  *
- * As TRÊS de escrita já têm limiter real (`escrita_ip` no 03-01, `escrita_telefone`
- * e `teto_tenant` aqui); `leitura_ip` devolve passe até o plano 03-04 instanciá-la.
- * Camada sem instância é PASSE — nunca bloqueio acidental.
+ * A regra que continua valendo para quem acrescentar a quinta: camada declarada
+ * neste tipo mas SEM entrada em `LIMITERS` devolve PASSE, nunca bloqueio
+ * acidental.
  */
 export type CamadaRateLimit = 'escrita_ip' | 'escrita_telefone' | 'teto_tenant' | 'leitura_ip'
 
@@ -81,14 +83,15 @@ if (!redis && process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 
 
 /**
  * Limiters por camada. `Partial` de propósito: camada sem entrada aqui devolve
- * PASSE em `verificarLimite`, que é o estado correto tanto no no-op de dev
- * quanto na camada de leitura, ainda não implementada.
+ * PASSE em `verificarLimite`, que é o estado correto no no-op de dev e o padrão
+ * seguro para qualquer camada declarada antes de existir.
  *
  * As três camadas de escrita têm papéis DIFERENTES e é por isso que existem
  * três, e não uma calibrada no meio: IP é o filtro folgado que barra o script
  * ingênuo sem punir CGNAT; telefone é o filtro apertado que impede encher a
  * agenda com um número só; o teto de tenant é o desacelerador do ataque que já
- * derrotou os outros dois rotacionando IP e telefone.
+ * derrotou os outros dois rotacionando IP e telefone. A quarta protege o outro
+ * eixo: LEITURA, onde o abuso não lota a agenda, martela o banco.
  */
 const LIMITERS: Partial<Record<CamadaRateLimit, Ratelimit>> = redis
     ? {
@@ -150,6 +153,30 @@ const LIMITERS: Partial<Record<CamadaRateLimit, Ratelimit>> = redis
               redis,
               limiter: Ratelimit.slidingWindow(30, '1 h'),
               prefix: 'rl:escrita:tenant',
+              timeout: TIMEOUT_MS,
+          }),
+
+          // Teto de LEITURA por IP — 60 consultas de grade por minuto. É o mais
+          // folgado de todos os quatro, e a folga é o REQUISITO, não uma
+          // concessão: um cliente legítimo escolhendo horário navega dias no
+          // calendário e cada troca de data dispara uma consulta de slots; um
+          // CGNAT de operadora móvel soma clientes distintos no mesmo IP; e a
+          // regra de ouro do produto (Fricção Zero, ABU-02) proíbe que a defesa
+          // seja sentida por quem só queria agendar.
+          //
+          // Por isso o erro assimétrico está escolhido de propósito: calibrar
+          // folgado demais só REDUZ proteção contra o script; calibrar apertado
+          // demais ADICIONA fricção a cliente real, que é o dano irreversível.
+          // Quem 60/min barra de verdade é quem não lê tela — o script que
+          // varre a grade inteira do horizonte para mapear a agenda (D-10).
+          //
+          // Constante de CALIBRAÇÃO (A6), reversível: mexer aqui não muda
+          // contrato nenhum. O número certo só se conhece com tráfego real, e
+          // essa verificação está registrada como backstop do plano.
+          leitura_ip: new Ratelimit({
+              redis,
+              limiter: Ratelimit.slidingWindow(60, '1 m'),
+              prefix: 'rl:leitura:ip',
               timeout: TIMEOUT_MS,
           }),
       }
