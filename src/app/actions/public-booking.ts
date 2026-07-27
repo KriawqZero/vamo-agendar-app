@@ -1,5 +1,6 @@
 'use server'
 
+import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { obterSlotsDisponiveis } from '@/lib/booking-engine'
@@ -495,10 +496,19 @@ export async function criarAgendamentoPublico({
         // agendou. O fallback de data cobre payload malformado sem lançar: `new
         // Date()` aqui não é preguiça, é o que impede a armadilha de virar 500
         // (e 500 é erro, e erro faz o bot voltar).
+        //
+        // ⚠️ `randomUUID` IMPORTADO de `node:crypto`, nunca o global (WR-05): o
+        // global existe a partir do Node 19 e o repositório passou a pinar
+        // `engines: node >= 20` justamente por não ter como garantir isso antes.
+        // Num runtime mais antigo, o global seria `ReferenceError` → 500 — e 500
+        // é exatamente a resposta que faz o bot voltar, ou seja, a falha
+        // inverteria o objetivo da armadilha no seu ponto mais sensível. O
+        // comentário acima mostra que o risco foi pensado para a data e não para
+        // o UUID.
         return {
             ok: true,
             agendamento: {
-                id: crypto.randomUUID(),
+                id: randomUUID(),
                 data_hora:
                     typeof dataHora === 'string' && dataHora ? dataHora : new Date().toISOString(),
                 status: 'confirmado',
