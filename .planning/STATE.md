@@ -5,15 +5,15 @@ milestone_name: Lançamento público
 current_phase: 03
 current_phase_name: anti-abuso-no-booking-p-blico
 status: complete
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-07-27T19:19:54.625Z"
+stopped_at: Completed 03-06-PLAN.md — Phase 03 encerrada em código
+last_updated: "2026-07-27T19:30:29.997Z"
 last_activity: 2026-07-27
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 31
-  completed_plans: 30
-last_activity_desc: "Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 — 6/6 planos, veredito do verificador human_needed com 5/5 must-haves verificados e 2 itens de UAT de TELA abertos (aviso âmbar público e detalhe do walk-in); AGE-01..05 marcados em REQUIREMENTS. Depois dela veio a quick task 260724-observabilidade-mensageria (fora do roadmap, disparada por incidente do owner: agendamento testado, confirmação e lembrete não entregues e NADA em PostHog, Sentry Issues, Sentry Logs ou log do Railway). Ela está mergeada no master (PR #11, merge a9d071a; commits a03cc39 → cd63aa3) e é BASELINE — não reimplementar. Baseline reconferida nesta sessão: pnpm test 280/280 em 20 arquivos. O que ela deixou aberto é só verificação de painel (não fecha por teste), listada em docs/PENDENCIAS.md. Próximo passo do roadmap: /gsd-discuss-phase 03 (Anti-abuso no booking público) — mas ele tem uma DECISÃO DO OWNER como pré-requisito: Upstash Redis vs. RPC atômica no Postgres para o rate limit."
+  completed_plans: 31
+last_activity_desc: "Phase 03 (anti-abuso-no-booking-p-blico) encerrada em CÓDIGO em 2026-07-27 — 6/6 planos, gate final verde (lint 0, 353 testes em 22 arquivos, build 0 com 14 rotas SEM env do Upstash, tsc 0). ABU-01/02/03 seguem ABERTOS de propósito: sem UPSTASH_REDIS_REST_URL/_TOKEN as quatro camadas rodam em no-op e nada é barrado em execução real; o honeypot é a exceção e já funciona. O provisionamento é ação do OWNER e gate de DEPLOY (o 03-04 pôs as duas em OBRIGATORIAS_EM_PRODUCAO — deploy antes disso não sobe), registrado com dono, gatilho e detector em docs/PENDENCIAS.md junto do risco aceito da cota do Free e das verificações manuais da fase. Contexto anterior: Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 — 6/6 planos, veredito do verificador human_needed com 5/5 must-haves verificados e 2 itens de UAT de TELA abertos (aviso âmbar público e detalhe do walk-in); AGE-01..05 marcados em REQUIREMENTS. Depois dela veio a quick task 260724-observabilidade-mensageria (fora do roadmap, disparada por incidente do owner: agendamento testado, confirmação e lembrete não entregues e NADA em PostHog, Sentry Issues, Sentry Logs ou log do Railway). Ela está mergeada no master (PR #11, merge a9d071a; commits a03cc39 → cd63aa3) e é BASELINE — não reimplementar. Baseline reconferida nesta sessão: pnpm test 280/280 em 20 arquivos. O que ela deixou aberto é só verificação de painel (não fecha por teste), listada em docs/PENDENCIAS.md. Próximo passo do roadmap: /gsd-discuss-phase 03 (Anti-abuso no booking público) — mas ele tem uma DECISÃO DO OWNER como pré-requisito: Upstash Redis vs. RPC atômica no Postgres para o rate limit."
 ---
 
 # Project State
@@ -27,10 +27,26 @@ See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 ## Current Position
 
-Phase: 03 (anti-abuso-no-booking-p-blico) — EXECUTING (5/6 planos)
+Phase: 03 (anti-abuso-no-booking-p-blico) — **6/6 planos executados; fase encerrada em CÓDIGO, não em EFEITO**
 Branch: `gsd/phase-03-anti-abuso-no-booking-p-blico`
-Concluídos: **03-01** (camada de IP do rate limit), **03-02** (telemetria do bloqueio — Sentry Log aguardado + PostHog), **03-03** (camadas de telefone 5/1h e teto por tenant 30/1h + Issue `ratelimit:teto_tenant_atingido`), **03-04** (teto de leitura 60/1min em `obterSlotsPublicos` + as duas vars do Upstash na lista de obrigatórias de produção) e **03-05** (honeypot com sucesso falso)
-Próximo: **03-06** (fechamento da fase)
+Concluídos: **03-01** (camada de IP do rate limit), **03-02** (telemetria do bloqueio — Sentry Log aguardado + PostHog), **03-03** (camadas de telefone 5/1h e teto por tenant 30/1h + Issue `ratelimit:teto_tenant_atingido`), **03-04** (teto de leitura 60/1min em `obterSlotsPublicos` + as duas vars do Upstash na lista de obrigatórias de produção), **03-05** (honeypot com sucesso falso) e **03-06** (fechamento: decisão D-01 documentada, PENDENCIAS e gate da fase)
+Próximo: verificação da fase — mas ver a ressalva abaixo antes de medir qualquer Success Criterion
+
+🚩 **ABU-01, ABU-02 e ABU-03 seguem ABERTOS, por decisão do 03-06.** A fase entrega o
+código inteiro e provado (gate sobre o HEAD final: `pnpm lint` exit 0, `pnpm test` **353
+testes em 22 arquivos** — baseline pré-fase 280/20 —, `pnpm build` exit 0 com 14 rotas
+**sem** as env do Upstash no ambiente, `npx tsc --noEmit` exit 0). O que ela **não**
+entrega é proteção ativa: sem as credenciais do Upstash as quatro camadas rodam em no-op.
+Marcar qualquer um dos três seria afirmar comportamento de execução que ninguém mediu —
+o falso-verde que a Phase 01 reprovou quatro vezes. A razão de cada um está escrita na
+própria linha do requisito em `.planning/REQUIREMENTS.md` (precedente do SEG-05).
+
+⚠️ **Nenhum dos três Success Criteria da Phase 3 é verificável por comando neste estado:**
+o SC1 exige Redis real, o SC2 exige tráfego real para exercer o falso positivo e o SC3
+exige olho no painel. Verificáveis por comando são as *decisões sobre* esses
+comportamentos, e essas estão verdes. Checklist dos itens humanos (script do SC1,
+painéis, campo do honeypot em navegador real, calibração dos quatro números) em
+`docs/PENDENCIAS.md` §"Verificações manuais da Phase 03" — todos nascidos abertos.
 
 ✅ **As DUAS defesas da fase existem.** O 03-05 fechou o segundo eixo: campo armadilha
 `info_adicional` no `EtapaContato` (invisível por posicionamento off-screen, `tabIndex={-1}`,
@@ -154,7 +170,7 @@ Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
 Last activity: 2026-07-27
 
-Progress: [██████████] 97% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
+Progress: [██████████] 100% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
 
 ### Resultado da 4ª passagem de verificação (2026-07-22, HEAD `7937aed`)
 
@@ -228,6 +244,7 @@ Primeira verificação das quatro com acesso DDL ao banco de dev — os cinco Su
 | Phase 03 P03 | ~20min | 2 tasks | 4 files |
 | Phase 03 P04 | ~18min | 2 tasks | 6 files |
 | Phase 03 P05 | ~12min | 2 tasks | 5 files |
+| Phase 03 P06 | ~18min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -351,6 +368,10 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Phase ?]: [Phase 03]: 03-05: requisito que é a FORMA de um atributo de UI se trava por asserção de FONTE — render em jsdom passaria igual depois de trocar a ocultação, renomear o campo ou apagar o tabIndex, que são justamente os refactors que quebram a defesa
 - [Phase ?]: [Phase 03]: 03-05: string vazia e só-espaços NÃO capturam (trim().length > 0, não truthiness) — todo navegador envia '' para input não preenchido, e se '' capturasse 100% dos clientes reais receberiam sucesso falso
 - [Phase ?]: [Phase 03]: 03-05: a captura não emite booking_completed — funil que conta bot como cliente infla exatamente o número que serve para decidir se o produto funciona, e o dano é silencioso porque funil que sobe parece boa notícia
+- [Phase ?]: [Phase 03]: 03-06: a fase fecha em CÓDIGO e não em EFEITO — ABU-01/02/03 seguem abertos porque o rate limit roda em no-op sem as credenciais do Upstash; marcar seria afirmar comportamento de execução que ninguém mediu
+- [Phase ?]: [Phase 03]: 03-06: ABU-02 é o mais próximo de fechável e mesmo assim fica aberto — a fricção que ele proíbe é a do FALSO POSITIVO (limite mal calibrado sob CGNAT, autofill no honeypot), e os dois modos falham em silêncio
+- [Phase ?]: [Phase 03]: 03-06: a razão de um requisito NÃO marcado mora na própria linha do requisito em REQUIREMENTS.md (precedente SEG-05) — SUMMARY não é onde alguém olha para saber se um requisito fechou, e checkbox vazia sem anotação lê como esquecimento
+- [Phase ?]: [Phase 03]: 03-06: alternativa recusada documentada com o que se PERDE ao recusá-la (RPC/Postgres: zero fornecedor novo), não só com o racional da escolha — registro sem custo declarado envelhece mal
 
 ### Pending Todos
 
@@ -386,7 +407,7 @@ Nenhum ainda.
 
 - **Ponto de atenção do 01-14 (não é bloqueador, é aviso para revisão futura de privilégio):** `salvarPerfilEmpresa` passou a usar `createAdminClient()` numa consulta — é a única forma de a checagem cruzada entre tenants não ser decorativa (sob RLS ela voltaria sempre vazia). O escopo é mínimo: projeção de UMA coluna (`tenant_id`), `head: true` e `.neq('tenant_id', orgId)`, e o que sai da função é o veredito. Ainda assim é um ponto a mais onde o cliente privilegiado aparece **fora** do fluxo público, e merece o olho de qualquer revisão de privilégio
 - **Dívida aceita e datada por gatilho no 01-14:** a decisão `add-alongside` (duas colunas + constraint + duas camadas de aplicação) **não** cobre manter mais de um alias vivo (redirecionar link antigo depois de trocar o slug) nem um terceiro identificador público (domínio próprio, alias por campanha). Qualquer um dos dois virar requisito força a **promoção** para uma tabela de identificadores públicos — nunca uma terceira coluna. A Phase 7 (fim do Plus) revisita a relação plano↔slug e é o momento natural de reavaliar
-- 🔑 **AGRAVADO no 03-04 — Env vars do Upstash Redis NÃO provisionadas** (UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN). Enquanto isso, as quatro camadas de rate limit da Phase 3 seguem em NO-OP: o código existe e está provado, mas NENHUMA proteção real está ativa. **O que mudou:** o plano 03-04 acrescentou as duas a `OBRIGATORIAS_EM_PRODUCAO` em `src/lib/env.ts`, como estava previsto — a partir daqui o boot de produção **cai** sem elas (código 1, nomeando ambas), o que amplia a janela de crash-loop já registrada acima. É o comportamento pedido pelo D-04, não um defeito: rate limiter desligado em silêncio em produção é o falso-verde que a fase inteira existe para eliminar. Ação do owner, agora bloqueante para deploy: criar os databases (prod + dev, mesma conta do QStash — D-05) e provisionar as duas no Railway antes do próximo deploy de produção. Dev e `pnpm build` local continuam funcionando sem elas
+- 🔑 **AGRAVADO no 03-04 — Env vars do Upstash Redis NÃO provisionadas** (UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN). Enquanto isso, as quatro camadas de rate limit da Phase 3 seguem em NO-OP: o código existe e está provado, mas NENHUMA proteção real está ativa. **O que mudou:** o plano 03-04 acrescentou as duas a `OBRIGATORIAS_EM_PRODUCAO` em `src/lib/env.ts`, como estava previsto — a partir daqui o boot de produção **cai** sem elas (código 1, nomeando ambas), o que amplia a janela de crash-loop já registrada acima. É o comportamento pedido pelo D-04, não um defeito: rate limiter desligado em silêncio em produção é o falso-verde que a fase inteira existe para eliminar. Ação do owner, agora bloqueante para deploy: criar os databases (prod + dev, mesma conta do QStash — D-05) e provisionar as duas no Railway antes do próximo deploy de produção. Dev e `pnpm build` local continuam funcionando sem elas. **REGISTRADO no 03-06:** o item deixou de viver só em SUMMARY e está em `docs/PENDENCIAS.md` §"🔴 Provisionamento do Upstash Redis — ação do OWNER, gate de DEPLOY", com passo a passo, a regra "nomes de variável, nunca valores" e, ao lado, o risco aceito da cota do Free com detector nomeado (rajada da Issue `ratelimit:redis_unavailable`)
 
 ### Quick Tasks Completed
 
@@ -414,8 +435,8 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-27T19:19:40.767Z
-Stopped at: Completed 03-05-PLAN.md
+Last session: 2026-07-27T19:30:29.983Z
+Stopped at: Completed 03-06-PLAN.md — Phase 03 encerrada em código
 Resume file: None
 
 **Como retomar (ordem):**
