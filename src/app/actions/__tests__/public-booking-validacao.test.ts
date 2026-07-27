@@ -308,6 +308,7 @@ beforeEach(() => {
     capturarEventoTenantMock.mockReset()
     reportarExcecaoMock.mockReset()
     reportarFalhaSilenciosaMock.mockReset()
+    reportarExcecaoAguardandoMock.mockReset()
     reportarFalhaSilenciosaAguardandoMock.mockReset()
     reportarFalhaSilenciosaAguardandoMock.mockResolvedValue(undefined)
     dispararNotificacoesAgendamentoMock.mockReset()
@@ -472,6 +473,13 @@ describe('criarAgendamentoPublico — telemetria do bloqueio de IP (ABU-03, D-11
 
         expect(reportarExcecaoMock).not.toHaveBeenCalled()
         expect(reportarFalhaSilenciosaMock).not.toHaveBeenCalled()
+        // ⚠️ A variante AGUARDADA é a que esta fase de fato usa para abrir Issue
+        // (`ratelimit:teto_tenant_atingido`), e ela faltava aqui (WR-04): sem
+        // esta linha, acrescentar uma Issue ao bloqueio de IP mantinha o teste
+        // verde. Os blocos de telefone e de leitura já faziam a asserção; o de
+        // IP, escrito primeiro, era o único fora do padrão.
+        expect(reportarFalhaSilenciosaAguardandoMock).not.toHaveBeenCalled()
+        expect(reportarExcecaoAguardandoMock).not.toHaveBeenCalled()
     })
 
     it('sob flood, o Sentry Log é THROTTLADO e a taxa do PostHog não (CR-03)', async () => {
