@@ -8,23 +8,24 @@ updated: 2026-07-27T20:30:00Z
 
 ## Current Test
 
-number: 3
-name: SC2 — o cliente legítimo não percebe nada, inclusive nos dois falsos-positivos
+number: 4
+name: SC3 — o owner consegue ver quantas requisições foram barradas e por qual chave
 expected: |
-  Cinco checagens em navegador real, todas sobre a experiência de quem NÃO é atacante:
+  Provocar um bloqueio real e conferir nos TRÊS painéis:
 
-  (a) salvar um endereço no autofill do navegador e conferir que o campo armadilha
-      `info_adicional` continua VAZIO ao autopreencher o formulário;
-  (b) percorrer a etapa de contato só pelo teclado — o foco deve pular direto de
-      WhatsApp para o botão, sem parar no campo invisível;
-  (c) abrir `/book/<slug>` em celular e desktop sem nenhum deslocamento de layout;
-  (d) com Redis real, sentir se o caminho de sucesso ficou perceptivelmente mais lento
-      (são 3 idas ao Redis: escrita_ip, o Promise.all telefone+tenant, e o teto do
-      tenant depois do INSERT);
-  (e) depois de abrir ao público, acompanhar a taxa de `booking_honeypot` no PostHog.
+  - **Sentry Log** — evento `ratelimit.bloqueio` com os atributos `camada` e `chaveHash`,
+    e SEM IP ou telefone crus em lugar nenhum;
+  - **PostHog Activity** — eventos `booking_rate_limited` e `booking_honeypot`;
+  - **Sentry Issue** — `ratelimit:teto_tenant_atingido` carregando só `tenantHash`.
 
-  Os itens (a) e (b) são os que importam mais: se o autofill preencher a armadilha, uma
-  pessoa REAL vê a confirmação de um agendamento que não existe — e nunca reclama.
+  Atalho: `bash scripts/verificar-rate-limit-escrita.sh` já provoca 2 bloqueios reais de
+  `escrita_ip` por execução — mas ele roda em `next start` LOCAL, então só serve se o
+  Sentry/PostHog do ambiente local estiverem apontando para os projetos que você abre.
+
+  Ressalva que vale mais que o resto: **teste verde não fecha observabilidade.** É a
+  lição literal da quick task 260724, cujo incidente de origem era exatamente "nada
+  apareceu em painel nenhum". Sentry Logs é produto separado de Issues — DSN válido não
+  garante log ingerido.
 awaiting: user response
 
 ## Tests
@@ -77,7 +78,16 @@ achado: |
 
 expected: (a) salvar endereço no autofill e conferir que `info_adicional` continua vazio ao autopreencher; (b) percorrer a etapa de contato só pelo teclado — o foco pula direto de WhatsApp para o CTA; (c) abrir `/book/<slug>` em celular e desktop sem deslocamento de layout; (d) com Redis real, medir a latência acrescentada ao caminho de sucesso (são 3 idas ao Redis); (e) depois de abrir ao público, acompanhar a taxa de `booking_honeypot`.
 why_human: A suíte prova a FORMA dos atributos lendo o fonte do disco — nunca o comportamento de um motor de layout nem de uma heurística de autofill proprietária. E os dois falsos-positivos **falham em silêncio**: ninguém reclama de página que barrou, e muito menos de um agendamento que a tela confirmou.
-result: [pending]
+result: pass
+passed_at: 2026-07-27
+medido_por: "owner, em navegador real — NÃO automatizado, e é por isso que conta"
+ressalva: |
+  O item (e) — acompanhar a taxa de `booking_honeypot` no PostHog — é o único dos
+  cinco que **não fecha aqui por construção**: depende de tráfego público, que ainda
+  não existe. Ele é o detector permanente do falso-positivo de autofill, cujo
+  desfecho ruim (pessoa real vendo confirmação de agendamento inexistente) é
+  silencioso: ninguém reclama de tela que confirmou. Continua registrado em
+  `docs/PENDENCIAS.md` como acompanhamento pós-lançamento, não como item fechado.
 
 ### 4. SC3 — o owner consegue ver quantas requisições foram barradas e por qual chave
 
@@ -106,9 +116,9 @@ result: [pending]
 ## Summary
 
 total: 7
-passed: 2
+passed: 3
 issues: 0
-pending: 5
+pending: 4
 skipped: 0
 blocked: 0
 
