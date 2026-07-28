@@ -181,15 +181,33 @@ corpo_sonda() {
         "$SLUG_INEXISTENTE"
 }
 
-# Valores obviamente falsos para as obrigatórias ausentes em dev. Nenhum é
-# credencial. As duas do Upstash NÃO estão aqui de propósito: elas têm de vir do
-# ambiente real, senão o harness mediria o no-op em vez do limite.
-COMPLEMENTO_DEV=(
-    "APP_URL=http://127.0.0.1:$PORTA"
-    'ANALYTICS_TENANT_SALT=harness-sal-de-teste'
-    'NEXT_PUBLIC_SENTRY_DSN=https://harness@localhost.invalid/1'
-    'RESEND_API_KEY=harness-chave-invalida'
-)
+# Complemento para as obrigatórias que faltarem em dev — e SÓ para as que
+# faltarem. Nenhum valor aqui é credencial.
+#
+# O harness modelo (`verificar-travessia-server-action.sh`) injeta as quatro
+# incondicionalmente, porque quando ele foi escrito nenhuma existia no `.env.local`
+# deste projeto. Três passaram a existir desde então, e injetar por cima delas tem
+# um custo que só aparece neste harness: sobrescrever `NEXT_PUBLIC_SENTRY_DSN` com
+# um host inválido faz os bloqueios que o harness provoca NÃO chegarem ao painel,
+# e sobrescrever `ANALYTICS_TENANT_SALT` faz o `chaveHash` sair com sal diferente
+# do de produção. Ou seja: o harness destruiria justamente a evidência de
+# observabilidade que uma execução dele deveria produzir (SC3 / ABU-03).
+#
+# Por isso o complemento é condicional: só entra o que realmente falta no
+# ambiente. Ver nota 1 — nenhum VALOR é impresso, aqui ou em qualquer ramo.
+COMPLEMENTO_DEV=("APP_URL=http://127.0.0.1:$PORTA")
+COMPLEMENTADAS=()
+for NOME_VAR in ANALYTICS_TENANT_SALT NEXT_PUBLIC_SENTRY_DSN RESEND_API_KEY; do
+    if grep -qE "^${NOME_VAR}=." .env.local 2>/dev/null; then
+        continue
+    fi
+    case "$NOME_VAR" in
+        ANALYTICS_TENANT_SALT) COMPLEMENTO_DEV+=('ANALYTICS_TENANT_SALT=harness-sal-de-teste') ;;
+        NEXT_PUBLIC_SENTRY_DSN) COMPLEMENTO_DEV+=('NEXT_PUBLIC_SENTRY_DSN=https://harness@localhost.invalid/1') ;;
+        RESEND_API_KEY) COMPLEMENTO_DEV+=('RESEND_API_KEY=harness-chave-invalida') ;;
+    esac
+    COMPLEMENTADAS+=("$NOME_VAR")
+done
 
 # Ver nota 11. Variável de ambiente vence o `.env.local` no Next. A URL tem forma
 # válida (satisfaz o fail-fast do D-04) e aponta para host inexistente: o cliente
@@ -336,8 +354,14 @@ if [ "${#FALTANDO[@]}" -gt 0 ]; then
     abortar "credenciais do Upstash ausentes em .env.local: ${FALTANDO[*]}. Sem elas o rate limit opera em NO-OP e este harness mediria o nada — abortar é o único desfecho honesto."
 fi
 
+if [ "${#COMPLEMENTADAS[@]}" -eq 0 ]; then
+    NOTA_COMPLEMENTO='nenhuma variável precisou de complemento falso — a telemetria deste run vai para os painéis reais'
+else
+    NOTA_COMPLEMENTO="complementadas com valor falso por ausência em .env.local: ${COMPLEMENTADAS[*]}"
+fi
+
 registrar APROVADO PREPARO \
-    "id de $NOME_ACTION_ESCRITA (prefixo ${ID_ACTION_ESCRITA:0:8}…) derivado de $MANIFESTO; UPSTASH_REDIS_REST_URL e UPSTASH_REDIS_REST_TOKEN presentes"
+    "id de $NOME_ACTION_ESCRITA (prefixo ${ID_ACTION_ESCRITA:0:8}…) derivado de $MANIFESTO; UPSTASH_REDIS_REST_URL e UPSTASH_REDIS_REST_TOKEN presentes; $NOTA_COMPLEMENTO"
 
 # --- Veredito 2: CONTROLE ----------------------------------------------------
 iniciar_servidor ratelimit "${COMPLEMENTO_DEV[@]}"
