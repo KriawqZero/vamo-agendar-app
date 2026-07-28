@@ -11,7 +11,10 @@
  *     aqui só criaria risco de errar o nome e derrubar produção à toa.
  *
  * (b) A Phase 1 (SEG-05) acrescentou `QSTASH_NEXT_SIGNING_KEY` a esta mesma
- *     lista, como previsto: uma linha, nenhum caminho novo. O mecanismo continua
+ *     lista, como previsto: uma linha, nenhum caminho novo. A Phase 3 repetiu o
+ *     precedente com as duas do Upstash (D-04) — e o caso delas é o critério (a)
+ *     na forma mais pura: sem elas o rate limit do booking público não falha,
+ *     ele LIBERA tudo em silêncio, que é pior que quebrar. O mecanismo continua
  *     extensível do mesmo jeito — não inventar um segundo caminho.
  *
  * (c) GATILHO PARA INSTALAR ZOD: quando a primeira variável exigir validação
@@ -22,7 +25,7 @@
  * (d) Variável `NEXT_PUBLIC_*` precisa existir no BUILD para chegar ao bundle
  *     do browser. Esta validação é de RUNTIME e não substitui isso.
  *
- * (e) ⚠️ Quatro das quatorze são `NEXT_PUBLIC_*`, e isso tem modo de falha
+ * (e) ⚠️ Quatro das dezesseis são `NEXT_PUBLIC_*`, e isso tem modo de falha
  *     próprio: o acesso precisa ser DINÂMICO (indexar `process.env` pelo nome
  *     vindo da lista), nunca acesso literal por propriedade. Acesso literal a
  *     `NEXT_PUBLIC_*` é substituído por valor em tempo de build, e a validação
@@ -49,6 +52,10 @@ export const OBRIGATORIAS_EM_PRODUCAO = [
     'NEXT_PUBLIC_POSTHOG_KEY',
     'NEXT_PUBLIC_SENTRY_DSN',
     'RESEND_API_KEY',
+    // Phase 3: sem as duas, o rate limit do booking público entra em NO-OP
+    // silencioso — toda requisição passa e nenhum erro aparece (critério (a)).
+    'UPSTASH_REDIS_REST_URL',
+    'UPSTASH_REDIS_REST_TOKEN',
 ] as const
 
 /**

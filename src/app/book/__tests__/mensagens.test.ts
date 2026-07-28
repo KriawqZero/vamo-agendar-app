@@ -30,6 +30,7 @@ import {
     COPY_ERRO_SLOTS_FALLBACK,
     COPY_ESTABELECIMENTO_INVALIDO,
     COPY_FALLBACK_ENVIO,
+    COPY_MUITAS_TENTATIVAS,
     COPY_SERVICO_INVALIDO,
     COPY_SLOT_INDISPONIVEL,
     COPY_TELEFONE_INVALIDO,
@@ -51,6 +52,7 @@ const TODOS_OS_MOTIVOS = [
     'slot_indisponivel',
     'erro_interno',
     'email_invalido',
+    'muitas_tentativas',
 ] as const satisfies readonly MotivoPublico[]
 
 /**
@@ -110,6 +112,34 @@ describe('cópias públicas do booking', () => {
         expect(COPY_DATA_INVALIDA).toBe('Data e horário inválidos.')
         expect(COPY_ESTABELECIMENTO_INVALIDO).toBe('Estabelecimento inválido ou indisponível.')
         expect(COPY_SERVICO_INVALIDO).toBe('Serviço inválido ou indisponível.')
+    })
+
+    // -----------------------------------------------------------------------
+    // Cópia do bloqueio por rate limit (Phase 3, D-07/D-10).
+    // -----------------------------------------------------------------------
+
+    it('mantém a cópia de rate limit byte a byte', () => {
+        // Redação contratada no D-07. Um byte diferente aqui é mudança de
+        // contrato de produto, não refatoração.
+        expect(COPY_MUITAS_TENTATIVAS).toBe(
+            'Muitas tentativas seguidas. Aguarde um instante e tente de novo.',
+        )
+    })
+
+    it('roteia `muitas_tentativas` para a copia HONESTA nas DUAS superficies', () => {
+        expect(mensagemDeEnvio('muitas_tentativas')).toBe(COPY_MUITAS_TENTATIVAS)
+        // ⚠️ Asserção INVERTIDA em relação ao 03-04, e a inversão é o conserto
+        // (WR-03): a caixa de horários reusava `COPY_ERRO_SLOTS` ("Não foi
+        // possível carregar os horários"), que é informação FALSA sobre a causa
+        // para o cliente REAL que caiu no teto por dividir IP de operadora
+        // (CGNAT) — e vinha embaixo de um botão convidando a insistir, o que
+        // consome outro token. O D-10 assumiu que só script é barrado ali; a
+        // fase inteira argumenta o contrário em todo o resto.
+        expect(mensagemDeMotivo('muitas_tentativas')).toBe(COPY_MUITAS_TENTATIVAS)
+        // E o resto da caixa de horários fica INTACTO: mudou um discriminante,
+        // não a cópia contratada dos outros oito.
+        expect(mensagemDeMotivo('slug_invalido')).toBe(COPY_ERRO_SLOTS)
+        expect(mensagemDeMotivo('erro_interno')).toBe(COPY_ERRO_SLOTS)
     })
 
     it('traduz `slot_indisponivel` do envio para o aviso âmbar contratado', () => {

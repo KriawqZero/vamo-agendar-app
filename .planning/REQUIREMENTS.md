@@ -26,9 +26,20 @@ requisitos que faltam para receber tráfego real com segurança.
 
 ### Anti-abuso
 
-- [ ] **ABU-01**: Script repetindo requisições não consegue lotar a agenda de um profissional
-- [ ] **ABU-02**: Cliente legítimo não percebe nenhuma fricção nova (sem CAPTCHA, sem etapa extra)
-- [ ] **ABU-03**: Owner consegue ver se o limite está barrando gente legítima
+> **Os três seguem ABERTOS depois da Phase 3 (2026-07-27), por decisão registrada no plano
+> 03-06 — e a razão é a mesma para os três: o código está fechado e provado (353 testes em
+> 22 arquivos, `lint`/`build`/`tsc` exit 0), mas `UPSTASH_REDIS_REST_URL` e
+> `UPSTASH_REDIS_REST_TOKEN` não foram provisionadas, então as quatro camadas de rate limit
+> rodam em no-op e toda requisição passa.** Marcar qualquer um deles aqui seria afirmar um
+> comportamento de execução que ninguém mediu — o falso-verde que a Phase 01 reprovou quatro
+> vezes. **Não são fecháveis só por código:** o que falta é ação de painel do owner
+> (provisionamento) mais duas medições que nenhum executor alcança (script real contra Redis
+> real, e evento chegando ao painel). Checklist nomeado em `docs/PENDENCIAS.md`
+> §"Verificações manuais da Phase 03".
+
+- [ ] **ABU-01**: Script repetindo requisições não consegue lotar a agenda de um profissional — *as quatro camadas de `slidingWindow` existem e estão provadas (IP 10/10 min, telefone 5/1 h por tenant, teto de tenant 30/1 h, leitura 60/1 min), mas em no-op sem as credenciais. O honeypot, que **está** ativo, não sustenta o requisito sozinho: script que chama a Server Action direto não preenche formulário. Fecha com o provisionamento + a prova comportamental do SC1*
+- [ ] **ABU-02**: Cliente legítimo não percebe nenhuma fricção nova (sem CAPTCHA, sem etapa extra) — *é o mais próximo de fechável: nenhum CAPTCHA, nenhum campo visível, nenhuma etapa nova, e a decisão de erro honesto (nunca sucesso falso) no rate limit existe justamente para proteger o cliente sob CGNAT. Fica aberto porque a fricção que ele proíbe é a do **falso positivo** — limite mal calibrado barrando gente real e autofill preenchendo o honeypot de uma pessoa real, que então vê a confirmação de um agendamento inexistente. Nenhum dos dois foi exercido contra tráfego real, e **os dois falham em silêncio**: ninguém reclama de página que barrou nem de agendamento que a tela confirmou*
+- [ ] **ABU-03**: Owner consegue ver se o limite está barrando gente legítima — *os quatro pontos de emissão existem (Sentry Log `ratelimit.bloqueio`/`honeypot.captura`, PostHog `booking_rate_limited`/`booking_honeypot`, Issue `ratelimit:teto_tenant_atingido`), mas em no-op nada é emitido, e teste verde **não** fecha observabilidade — é a lição literal da quick task 260724, cujo incidente de origem era "nada apareceu em painel nenhum". Fecha com olho humano no painel*
 
 ### Diferencial visível
 

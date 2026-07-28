@@ -2,18 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lançamento público
-current_phase: 02
-current_phase_name: integridade-da-agenda
-status: complete
-stopped_at: "Quick task 260724-observabilidade-mensageria mergeada no master (PR #11, merge a9d071a)"
-last_updated: "2026-07-24T19:09:06Z"
-last_activity: 2026-07-24
+current_phase: 03
+current_phase_name: anti-abuso-no-booking-p-blico
+status: awaiting_uat
+stopped_at: "Phase 03 executada (6/6), revisada (4 CRITICAL + 9 WARNING corrigidos) e verificada — veredito human_needed, 7 itens em 03-UAT.md. NÃO marcada completa."
+last_updated: "2026-07-27T19:30:29.997Z"
+last_activity: 2026-07-27
 progress:
-  total_phases: 12
-  completed_phases: 2
-  total_plans: 25
-  completed_plans: 25
-last_activity_desc: "Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 — 6/6 planos, veredito do verificador human_needed com 5/5 must-haves verificados e 2 itens de UAT de TELA abertos (aviso âmbar público e detalhe do walk-in); AGE-01..05 marcados em REQUIREMENTS. Depois dela veio a quick task 260724-observabilidade-mensageria (fora do roadmap, disparada por incidente do owner: agendamento testado, confirmação e lembrete não entregues e NADA em PostHog, Sentry Issues, Sentry Logs ou log do Railway). Ela está mergeada no master (PR #11, merge a9d071a; commits a03cc39 → cd63aa3) e é BASELINE — não reimplementar. Baseline reconferida nesta sessão: pnpm test 280/280 em 20 arquivos. O que ela deixou aberto é só verificação de painel (não fecha por teste), listada em docs/PENDENCIAS.md. Próximo passo do roadmap: /gsd-discuss-phase 03 (Anti-abuso no booking público) — mas ele tem uma DECISÃO DO OWNER como pré-requisito: Upstash Redis vs. RPC atômica no Postgres para o rate limit."
+  total_phases: 3
+  completed_phases: 3
+  total_plans: 31
+  completed_plans: 31
+last_activity_desc: "Phase 03 (anti-abuso-no-booking-p-blico) encerrada em CÓDIGO em 2026-07-27 — 6/6 planos, gate final verde (lint 0, 353 testes em 22 arquivos, build 0 com 14 rotas SEM env do Upstash, tsc 0). ABU-01/02/03 seguem ABERTOS de propósito: sem UPSTASH_REDIS_REST_URL/_TOKEN as quatro camadas rodam em no-op e nada é barrado em execução real; o honeypot é a exceção e já funciona. O provisionamento é ação do OWNER e gate de DEPLOY (o 03-04 pôs as duas em OBRIGATORIAS_EM_PRODUCAO — deploy antes disso não sobe), registrado com dono, gatilho e detector em docs/PENDENCIAS.md junto do risco aceito da cota do Free e das verificações manuais da fase. Contexto anterior: Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 — 6/6 planos, veredito do verificador human_needed com 5/5 must-haves verificados e 2 itens de UAT de TELA abertos (aviso âmbar público e detalhe do walk-in); AGE-01..05 marcados em REQUIREMENTS. Depois dela veio a quick task 260724-observabilidade-mensageria (fora do roadmap, disparada por incidente do owner: agendamento testado, confirmação e lembrete não entregues e NADA em PostHog, Sentry Issues, Sentry Logs ou log do Railway). Ela está mergeada no master (PR #11, merge a9d071a; commits a03cc39 → cd63aa3) e é BASELINE — não reimplementar. Baseline reconferida nesta sessão: pnpm test 280/280 em 20 arquivos. O que ela deixou aberto é só verificação de painel (não fecha por teste), listada em docs/PENDENCIAS.md. Próximo passo do roadmap: /gsd-discuss-phase 03 (Anti-abuso no booking público) — mas ele tem uma DECISÃO DO OWNER como pré-requisito: Upstash Redis vs. RPC atômica no Postgres para o rate limit."
 ---
 
 # Project State
@@ -23,13 +23,86 @@ last_activity_desc: "Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 —
 See: .planning/PROJECT.md (atualizado 2026-07-21)
 
 **Core value:** Um agendamento real, feito por um cliente final que nunca ouviu falar do VamoAgendar, cair na agenda do profissional sem que nada quebre no caminho.
-**Current focus:** Phase 02 — integridade-da-agenda
+**Current focus:** Phase 03 — anti-abuso-no-booking-p-blico
 
 ## Current Position
 
-Phase: 02 (integridade-da-agenda) — **COMPLETA** (6/6 planos, verificada em 2026-07-23 com veredito `human_needed`: 5/5 must-haves verificados, 2 itens de UAT de tela abertos)
-Branch: `master` (working tree limpo, HEAD `a9d071a`)
-Próximo: **Phase 03 — Anti-abuso no booking público** (`/gsd-discuss-phase 03`), com uma decisão do owner pendente antes de planejar
+Phase: 03 (anti-abuso-no-booking-p-blico) — **6/6 planos executados; fase encerrada em CÓDIGO, não em EFEITO**
+Branch: `gsd/phase-03-anti-abuso-no-booking-p-blico`
+Concluídos: **03-01** (camada de IP do rate limit), **03-02** (telemetria do bloqueio — Sentry Log aguardado + PostHog), **03-03** (camadas de telefone 5/1h e teto por tenant 30/1h + Issue `ratelimit:teto_tenant_atingido`), **03-04** (teto de leitura 60/1min em `obterSlotsPublicos` + as duas vars do Upstash na lista de obrigatórias de produção), **03-05** (honeypot com sucesso falso) e **03-06** (fechamento: decisão D-01 documentada, PENDENCIAS e gate da fase)
+Próximo: **`/gsd-verify-work 03`** — 7 itens de UAT persistidos em `03-UAT.md`. A fase NÃO
+está marcada completa; o veredito do verificador foi `human_needed`.
+
+### Depois dos 6 planos veio um ciclo de review que mudou o código materialmente
+
+Não pule isto ao ler os seis SUMMARYs: **eles descrevem o estado PRÉ-fix.** O code review
+(`03-REVIEW.md`) achou 4 CRITICAL + 9 WARNING, todos corrigidos em 11 commits
+(`c0ca2ce`..`25997ce`, relatório em `03-REVIEW-FIX.md`). Quatro falso-verdes reais caíram
+ali: `teto_tenant` contava TENTATIVAS (30 requisições com `servicoId` lixo negavam
+agendamento a um tenant inteiro por uma hora, sem criar nada); o balde `'desconhecido'`
+somava todos os visitantes de todos os tenants quando o header faltava; o `Sentry.flush`
+aguardado no caminho de rejeição fazia rejeitar custar mais que aceitar, com o honeypot
+(endpoint sem teto) disparando um flush por requisição; e a allowlist do log validava
+CHAVE e nunca VALOR — `chaveHash` aceitava um telefone cru. Deltas de comportamento:
+`ipDoVisitante` prefere `x-real-ip` e devolve `null` (não balde) quando indeterminável;
+`teto_tenant` conta criações via `verificarLimiteSemConsumir`; o flush mora atrás do
+`after()` do Next.
+
+### D-10 REVISADO pelo owner em 2026-07-27 (ratificação pós-execução)
+
+O fix do WR-03 (`c6c43c2`) trocou a copy do bloqueio de LEITURA de `COPY_ERRO_SLOTS` para
+`COPY_MUITAS_TENTATIVAS` e pôs contagem regressiva no botão — contra a letra do D-10 e dos
+must_haves de 03-01/03-04, **sem** ratificação, e com a asserção de teste reescrita junto
+(a suíte verde parou de sinalizar). O verificador reproduziu como gap; o owner **ratificou**
+o desvio. Registro no formato do D-06: texto original do D-10 intacto em `03-CONTEXT.md`
+com a revisão anotada ao lado, must_haves marcados SUPERSEDIDO, e `override_log` no
+frontmatter do `03-VERIFICATION.md` com os três custos aceitos. Reversível por
+`git revert c6c43c2`. **Lição registrada:** o gap não foi achado por teste — foi achado
+pelo verificador lendo o must_have contra o código.
+
+🚩 **ABU-01, ABU-02 e ABU-03 seguem ABERTOS, por decisão do 03-06.** A fase entrega o
+código inteiro e provado (gate sobre o HEAD final `46569ea`: `pnpm lint` exit 0,
+`pnpm test` **381 testes em 23 arquivos** — baseline pré-fase 280/20 —, `pnpm build` exit 0
+com 14 rotas **sem** as env do Upstash no ambiente, `npx tsc --noEmit` exit 0). O que ela **não**
+entrega é proteção ativa: sem as credenciais do Upstash as quatro camadas rodam em no-op.
+Marcar qualquer um dos três seria afirmar comportamento de execução que ninguém mediu —
+o falso-verde que a Phase 01 reprovou quatro vezes. A razão de cada um está escrita na
+própria linha do requisito em `.planning/REQUIREMENTS.md` (precedente do SEG-05).
+
+⚠️ **Nenhum dos três Success Criteria da Phase 3 é verificável por comando neste estado:**
+o SC1 exige Redis real, o SC2 exige tráfego real para exercer o falso positivo e o SC3
+exige olho no painel. Verificáveis por comando são as *decisões sobre* esses
+comportamentos, e essas estão verdes. Checklist dos itens humanos (script do SC1,
+painéis, campo do honeypot em navegador real, calibração dos quatro números) em
+`docs/PENDENCIAS.md` §"Verificações manuais da Phase 03" — todos nascidos abertos.
+
+✅ **As DUAS defesas da fase existem.** O 03-05 fechou o segundo eixo: campo armadilha
+`info_adicional` no `EtapaContato` (invisível por posicionamento off-screen, `tabIndex={-1}`,
+`aria-hidden`, `autoComplete="off"`, nome fora do vocabulário de autofill) e sucesso falso
+como PRIMEIRA instrução de `criarAgendamentoPublico` — forma exata de `AgendamentoCriado`
+com zero I/O: nada de banco, Redis, engine, cliente, WhatsApp ou lembrete. Telemetria em
+`honeypot.captura` (Log aguardado, o stub sem emissor do 03-02) + evento `booking_honeypot`,
+sem Issue e **sem `booking_completed`** (funil não conta bot como cliente).
+
+Os dois eixos são complementares e nenhum fecha o SC1 sozinho: o honeypot pega bot que
+preenche FORMULÁRIO; script que chama a Server Action direto não preenche o campo e cai no
+rate limit. Único item que a suíte não sabe responder e virou olho humano: campo em
+navegador real (layout, tabulação, autofill) + acompanhar a taxa de `booking_honeypot`, que
+é o detector de autofill capturando pessoa real (Pitfall 6).
+
+⚠️ O rate limit continua não ATIVO: `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN`
+seguem não provisionadas (`user_setup` aberto desde o 03-01), então as quatro camadas estão
+em no-op — e, por consequência, nenhuma telemetria de bloqueio é emitida em execução real.
+Elas existem e estão provadas (escrita: IP 10/10min, telefone 5/1h por tenant, teto de
+tenant 30/1h; leitura: IP 60/1min na grade de slots); o que falta para elas protegerem
+alguma coisa é exclusivamente o provisionamento das duas variáveis. **O honeypot NÃO depende
+disso** — não consulta Redis e já funciona.
+
+🚨 **O 03-04 mudou a natureza dessa pendência.** As duas vars entraram em
+`OBRIGATORIAS_EM_PRODUCAO` (D-04): a partir deste commit, deploy de produção sem elas
+**não sobe** — encerra com código 1 nomeando ambas. Era o objetivo (rate limiter desligado
+em silêncio é o falso-verde que a fase existe para matar), mas amplia a janela de
+crash-loop registrada nos Blockers. `pnpm build` e `pnpm dev` locais seguem livres.
 
 ### ⛳ Quick task 260724-observabilidade-mensageria — BASELINE, não reimplementar
 
@@ -51,17 +124,22 @@ O que passou a existir e é **contrato para código novo**:
 - `src/lib/observabilidade/log.ts` — `logOperacional` (`info`/`warn`/`error`/`fatal`) com
   código estático e **allowlist fechada** de atributos; `beforeSendLog: sanitizarLogSentry`
   no `opcoesBaseSentry`
+
 - `src/lib/observabilidade/hash.ts` — `tenantHash`/`agendamentoHash` (salt
   `ANALYTICS_TENANT_SALT`); identificador de tenant ou de agendamento **só** entra
   pseudonimizado
+
 - `reportarExcecaoAguardando` / `reportarFalhaSilenciosaAguardando` com `Sentry.flush(2000)`
   — obrigatórias em Server Action, webhook e route handler que podem encerrar em seguida
+
 - Mensagem de Issue **sintética e estática** por modo de falha (`whatsapp:evolution_http_error`,
   `qstash:publish_http_error`, `auditoria_whatsapp:insert_failed`, `analytics_posthog:delivery_failed`, …)
   — é o que mantém o agrupamento do Sentry inteiro
+
 - Quatro pilares com papéis distintos: Sentry Issue (falha acionável), Sentry Log (ciclo de
   vida pesquisável), PostHog (taxa agregada), `disparos_whatsapp` (auditoria append-only por
   tenant). Matriz estado a estado no `INCIDENT.md` da task e em `docs/06-MENSAGERIA_E_WHATSAPP.md`
+
 - `scripts/smoke-observabilidade-mensageria.mjs` — harness operacional dos quatro pilares
 
 Prova que acompanha o baseline: 16 cenários em
@@ -118,7 +196,7 @@ Escopo aprovado pelo owner nesta sessão inclui ainda quatro achados do code rev
 Ordem de execução, serialização estrita (um plano por wave): 01-10 → 01-11 → 01-12 → 01-13 → 01-15 → 01-14 → 01-16
 
 Continua aberto também o **UAT humano** (7 itens, só o owner pode fechar). Os dois com prognóstico negativo — "Recuperação de double-booking na tela" e "Caixa de erro de slots na tela" — deixaram de ter o caminho de dados quebrado embaixo; agora dependem só de alguém olhar a tela
-Last activity: 2026-07-23
+Last activity: 2026-07-27
 
 Progress: [██████████] 100% (19/19 planos executados; a 4ª verificação (HEAD `7937aed`) mediu os cinco Success Criteria DIRETAMENTE e todos passaram — o GOAL está alcançado. Dos 3 gaps que não falsificavam nenhum SC, **CR-02 e WR-03 foram corrigidos** no fechamento e **CR-01 ficou como dívida deferida** (instrumento de harness, não vulnerabilidade). **Phase 01 marcada COMPLETA** em 2026-07-23, aceitando o gap não-bloqueante)
 
@@ -189,6 +267,12 @@ Primeira verificação das quatro com acesso DDL ao banco de dev — os cinco Su
 | Phase 02 P04 | ~25min | 3 tasks | 3 files |
 | Phase 02 P05 | ~18min | 3 tasks | 1 files |
 | Phase 02 P06 | ~10min | 3 tasks | 2 files |
+| Phase 03 P01 | ~35min | 2 tasks | 8 files |
+| Phase 03 P02 | ~12min | 2 tasks | 4 files |
+| Phase 03 P03 | ~20min | 2 tasks | 4 files |
+| Phase 03 P04 | ~18min | 2 tasks | 6 files |
+| Phase 03 P05 | ~12min | 2 tasks | 5 files |
+| Phase 03 P06 | ~18min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -293,6 +377,29 @@ Log completo em PROJECT.md (Key Decisions). Decisões que governam o trabalho at
 - [Quick 260724]: `registrarDisparo` reporta a própria falha de INSERT por erro SINTÉTICO (`auditoria_whatsapp:insert_failed`) e nunca se re-chama — auditoria que se audita por si vira recursão
 - [Quick 260724]: quatro pilares com perguntas diferentes e nenhuma sobreposição de papel: Issue = falha acionável, Log = ciclo de vida pesquisável, PostHog = taxa agregada, `disparos_whatsapp` = auditoria por tenant. Colapsar dois deles num só foi como o incidente ficou invisível
 - [Quick 260724]: teste verde NÃO fecha observabilidade — o incidente de origem era "nada apareceu no painel", e isso só fecha com olho humano no painel; por isso a verificação de painel nasceu ABERTA em docs/PENDENCIAS.md em vez de a task ser declarada concluída
+- [Phase ?]: [Phase 03]: 03-01: assuncao A1 confirmada por leitura do fonte instalado — Ratelimit.limit() e try/finally SEM catch, entao rejeicao de rede/credencial sobe intacta; o try/catch do fail-open e o UNICO tratamento desse modo de falha (sem ele, Upstash fora do ar derrubaria todo agendamento)
+- [Phase ?]: [Phase 03]: 03-01: rótulo de Issue IDÊNTICO nos dois modos de falha do fornecedor (ratelimit:redis_unavailable), com a distinção em contexto (motivo: erro|timeout) — dois rótulos estilhaçariam o agrupamento que a quick task 260724 pagou para consertar
+- [Phase ?]: [Phase 03]: 03-01: a pseudonimização da chave mora DENTRO de verificarLimite, não no chamador — quem consome passa o valor cru e não tem como esquecer de hashear, que é a única forma de o invariante nunca-PII ser violado por descuido
+- [Phase ?]: [Phase 03]: 03-01: guarda de IP fica DEPOIS das validações síncronas baratas (payload inválido não gasta comando no Redis) e ANTES de createAdminClient() (flood não gasta consulta no Supabase) — padrão 01-18 aplicado ao caminho de escrita
+- [Phase ?]: [Phase 03]: 03-01: CamadaRateLimit declara as quatro camadas com Partial<Record> de limiters — camada sem instância devolve PASSE, nunca bloqueio acidental, e há teste que prova a ausência em vez de deixá-la implícita
+- [Phase ?]: 03-02: bloqueio de rate limit NÃO abre Sentry Issue — é condição esperada de endpoint público (mesmo racional do ramo 23P01); Issue fica reservada ao teto por tenant e à falha do Redis
+- [Phase ?]: 03-02: log.ts ganhou o par fire-and-forget / AGUARDADA (logOperacionalAguardando com Sentry.flush), espelhando reportar.ts — obrigatório em emissão imediatamente anterior a return de Server Action
+- [Phase ?]: [Phase 03]: 03-03: Rate limit por telefone: 5 tentativas/h implementa o '~3 agendamentos/h' do D-08 — limit() consome token na tentativa (check-then-consume sem refund) e o retry de double-booking já gasta 4
+- [Phase ?]: [Phase 03]: 03-03: Camadas de telefone e teto por tenant rodam PÓS-resolução do slug: a chave exata só nasce ali, e usar o slug dobraria o orçamento pelos dois namespaces (slug e slug_gratuito abrem a mesma agenda)
+- [Phase ?]: [Phase 03]: 03-03: A Issue ratelimit:teto_tenant_atingido mora na ACTION, não no módulo de rate limit: o módulo abre Issue por falha do fornecedor, a action por significado de negócio
+- [Phase ?]: [Phase 03]: 03-04: teto de rate limit sobre LEITURA só é viável onde existe canal de erro discriminado — obterDadosBookingPublico fica FORA (contrato null→notFound() converteria bloqueio em 404 para visitante legítimo sob CGNAT); desvio do D-06 ratificado pelo owner e travado por teste
+- [Phase ?]: [Phase 03]: 03-04: erro de calibração é assimétrico e está escrito assim no código — folgado demais só reduz proteção (reversível), apertado demais adiciona fricção a cliente real (irreversível); por isso leitura_ip é 60/min, o mais folgado dos quatro
+- [Phase ?]: [Phase 03]: 03-04: UPSTASH_REDIS_REST_URL/_TOKEN são o caso mais puro do critério (a) da lista de obrigatórias — a ausência não FALHA, ela LIBERA tudo em silêncio; com as duas na lista, produção não sobe sem rate limit ativo (D-04)
+- [Phase ?]: [Phase 03]: 03-05: honeypot oculto por POSICIONAMENTO off-screen, nunca por display:none ou hidden — campo suprimido é pulado por parte dos bots e a armadilha para de pegar sem nenhum sintoma (a taxa cai a zero, indistinguível de 'não estamos sendo atacados'); a proibição virou asserção negativa de fonte
+- [Phase ?]: [Phase 03]: 03-05: sucesso falso é EXCLUSIVO do honeypot (D-07) — bot que recebe erro tenta de novo, bot que recebe sucesso vai embora; no rate limit a certeza de bot é menor (CGNAT) e por isso lá o erro é honesto
+- [Phase ?]: [Phase 03]: 03-05: o nome do campo é escolhido contra DUAS ameaças que puxam para lados diferentes — longe do vocabulário de autofill (website/url/address/phone2) e sem denunciar a armadilha no bundle; info_adicional satisfaz as duas e o teste trava os dois lados
+- [Phase ?]: [Phase 03]: 03-05: requisito que é a FORMA de um atributo de UI se trava por asserção de FONTE — render em jsdom passaria igual depois de trocar a ocultação, renomear o campo ou apagar o tabIndex, que são justamente os refactors que quebram a defesa
+- [Phase ?]: [Phase 03]: 03-05: string vazia e só-espaços NÃO capturam (trim().length > 0, não truthiness) — todo navegador envia '' para input não preenchido, e se '' capturasse 100% dos clientes reais receberiam sucesso falso
+- [Phase ?]: [Phase 03]: 03-05: a captura não emite booking_completed — funil que conta bot como cliente infla exatamente o número que serve para decidir se o produto funciona, e o dano é silencioso porque funil que sobe parece boa notícia
+- [Phase ?]: [Phase 03]: 03-06: a fase fecha em CÓDIGO e não em EFEITO — ABU-01/02/03 seguem abertos porque o rate limit roda em no-op sem as credenciais do Upstash; marcar seria afirmar comportamento de execução que ninguém mediu
+- [Phase ?]: [Phase 03]: 03-06: ABU-02 é o mais próximo de fechável e mesmo assim fica aberto — a fricção que ele proíbe é a do FALSO POSITIVO (limite mal calibrado sob CGNAT, autofill no honeypot), e os dois modos falham em silêncio
+- [Phase ?]: [Phase 03]: 03-06: a razão de um requisito NÃO marcado mora na própria linha do requisito em REQUIREMENTS.md (precedente SEG-05) — SUMMARY não é onde alguém olha para saber se um requisito fechou, e checkbox vazia sem anotação lê como esquecimento
+- [Phase ?]: [Phase 03]: 03-06: alternativa recusada documentada com o que se PERDE ao recusá-la (RPC/Postgres: zero fornecedor novo), não só com o racional da escolha — registro sem custo declarado envelhece mal
 
 ### Pending Todos
 
@@ -307,6 +414,7 @@ Nenhum ainda.
   ONDE falha, não conserta a entrega. Só o owner fecha, e depende de ambiente com as
   credenciais provisionadas. Checklist em `docs/PENDENCIAS.md` §"Verificação humana pendente
   da quick task 260724". O SC2 da Phase 11 (evento real visto no painel) se sobrepõe a este item
+
 - ✅ **RESOLVIDO 2026-07-21 — DNS do subdomínio de e-mail.** `mail.vamoagendar.com.br` verificado no Resend, DKIM propagado (conferido por `dig`). Deixou de bloquear a Phase 4. Remetente: `naoresponda@mail.vamoagendar.com.br`. Restam dois TXT opcionais do owner: DMARC `p=` com `rua` e SPF do subdomínio — nenhum impede enviar
 - **Nenhum endereço do domínio recebe e-mail** (sem MX na raiz e no subdomínio). O `suporte@`/`contato@` da Phase 10 exige provedor de caixa próprio — o Resend só envia. Decisão adiada por escolha do owner em 2026-07-21
 - **Aprovação da conta Asaas para produção**: dependência externa sem prazo, fora do controle do owner. Não bloqueia a construção (sandbox), bloqueia ATI-02 na Phase 12
@@ -327,6 +435,7 @@ Nenhum ainda.
 
 - **Ponto de atenção do 01-14 (não é bloqueador, é aviso para revisão futura de privilégio):** `salvarPerfilEmpresa` passou a usar `createAdminClient()` numa consulta — é a única forma de a checagem cruzada entre tenants não ser decorativa (sob RLS ela voltaria sempre vazia). O escopo é mínimo: projeção de UMA coluna (`tenant_id`), `head: true` e `.neq('tenant_id', orgId)`, e o que sai da função é o veredito. Ainda assim é um ponto a mais onde o cliente privilegiado aparece **fora** do fluxo público, e merece o olho de qualquer revisão de privilégio
 - **Dívida aceita e datada por gatilho no 01-14:** a decisão `add-alongside` (duas colunas + constraint + duas camadas de aplicação) **não** cobre manter mais de um alias vivo (redirecionar link antigo depois de trocar o slug) nem um terceiro identificador público (domínio próprio, alias por campanha). Qualquer um dos dois virar requisito força a **promoção** para uma tabela de identificadores públicos — nunca uma terceira coluna. A Phase 7 (fim do Plus) revisita a relação plano↔slug e é o momento natural de reavaliar
+- 🔑 **AGRAVADO no 03-04 — Env vars do Upstash Redis NÃO provisionadas** (UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN). Enquanto isso, as quatro camadas de rate limit da Phase 3 seguem em NO-OP: o código existe e está provado, mas NENHUMA proteção real está ativa. **O que mudou:** o plano 03-04 acrescentou as duas a `OBRIGATORIAS_EM_PRODUCAO` em `src/lib/env.ts`, como estava previsto — a partir daqui o boot de produção **cai** sem elas (código 1, nomeando ambas), o que amplia a janela de crash-loop já registrada acima. É o comportamento pedido pelo D-04, não um defeito: rate limiter desligado em silêncio em produção é o falso-verde que a fase inteira existe para eliminar. Ação do owner, agora bloqueante para deploy: criar os databases (prod + dev, mesma conta do QStash — D-05) e provisionar as duas no Railway antes do próximo deploy de produção. Dev e `pnpm build` local continuam funcionando sem elas. **REGISTRADO no 03-06:** o item deixou de viver só em SUMMARY e está em `docs/PENDENCIAS.md` §"🔴 Provisionamento do Upstash Redis — ação do OWNER, gate de DEPLOY", com passo a passo, a regra "nomes de variável, nunca valores" e, ao lado, o risco aceito da cota do Free com detector nomeado (rajada da Issue `ratelimit:redis_unavailable`)
 
 ### Quick Tasks Completed
 
@@ -354,8 +463,8 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-24T19:09:06Z
-Stopped at: Quick task `260724-observabilidade-mensageria` mergeada no `master` (PR #11, merge `a9d071a`) e artefatos de planejamento realinhados a ela. Nenhum trabalho de código novo iniciado nesta sessão.
+Last session: 2026-07-27T19:30:29.983Z
+Stopped at: Completed 03-06-PLAN.md — Phase 03 encerrada em código
 Resume file: None
 
 **Como retomar (ordem):**
@@ -363,8 +472,10 @@ Resume file: None
 1. Ler o bloco "⛳ Quick task 260724-observabilidade-mensageria — BASELINE" em Current
    Position acima. A observabilidade da mensageria **está feita** — usar `logOperacional`,
    as variantes `*Aguardando` e as mensagens sintéticas existentes, nunca reimplementar
+
 2. Phases 01 e 02 estão fechadas em código; o que resta delas é UAT de tela do owner
    (7 + 2 itens em `docs/PENDENCIAS.md`, nenhum marcado)
+
 3. Antes de `/gsd-discuss-phase 03`: a Phase 3 tem **decisão do owner pendente** —
    Upstash Redis vs. RPC atômica no Postgres para o rate limit (o Redis do Railway não
    serve: é TCP e pertence à Evolution API). Está em Blockers/Concerns abaixo e nas notas

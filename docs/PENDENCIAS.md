@@ -3,7 +3,7 @@
 Lista viva de tarefas identificadas. Revisar antes de cada nova etapa de
 desenvolvimento — e obrigatoriamente antes de implementar o checkout Asaas.
 
-Última atualização: 2026-07-24 (Quick Task `260724-observabilidade-mensageria` — Observabilidade Real da Mensageria com Sentry Logs, Sentry Issues aguardadas, PostHog e auditoria append-only em PostgreSQL/`disparos_whatsapp` — resolvido). Antes dele: P0.12-desktop.
+Última atualização: 2026-07-27 (Phase 03 — Anti-abuso no booking público: código fechado, com o provisionamento do Upstash, o risco aceito da cota e as verificações manuais nascendo ABERTOS na seção "Obrigatório antes do lançamento público"). Antes dela: Quick Task `260724-observabilidade-mensageria` (Observabilidade Real da Mensageria com Sentry Logs, Sentry Issues aguardadas, PostHog e auditoria append-only em PostgreSQL/`disparos_whatsapp` — resolvido) e P0.12-desktop.
 
 ---
 
@@ -912,6 +912,169 @@ agenda; cliente legítimo não percebe nenhuma fricção nova.
 
 **Dependências/decisões:** item de integridade primeiro; escolher limites iniciais
 (ex.: N tentativas por IP/telefone por hora) e revisá-los nos pilotos.
+
+> ### ✅ O CÓDIGO desta seção foi escrito na **Phase 03** (2026-07-27) — e não é o mesmo que estar protegido
+>
+> A análise acima descreve o mundo **antes** da Phase 03 e fica registrada porque é o que
+> justifica o desenho. O que passou a existir, provado por suíte hermética
+> (`pnpm test` 23 arquivos / 381 testes, `lint`/`build`/`tsc` exit 0 sobre o HEAD da fase):
+>
+> - **Quatro camadas de `slidingWindow`** em `src/lib/rate-limit.ts`, consumidas nas Server
+>   Actions públicas: escrita por IP (10/10 min), por telefone dentro do tenant (5/1 h),
+>   teto por tenant (30/1 h) e leitura de grade por IP (60/1 min). Chave sempre
+>   pseudonimizada dentro do próprio módulo; fail-open com teto de ~500 ms e Issue
+>   `ratelimit:redis_unavailable` quando o fornecedor falha.
+> - **Honeypot com sucesso falso** (`info_adicional` no `EtapaContato`): captura decidida na
+>   PRIMEIRA instrução de `criarAgendamentoPublico`, com zero I/O.
+> - **Visibilidade do owner:** Sentry Log `ratelimit.bloqueio` / `honeypot.captura` (variante
+>   aguardada, com `flush`) + PostHog `booking_rate_limited` / `booking_honeypot`; Issue
+>   `ratelimit:teto_tenant_atingido` só no estouro do teto por tenant.
+> - Decisão de backend e a alternativa recusada: `docs/01-ARQUITETURA_E_STACK.md`
+>   §"Anti-abuso do booking público".
+>
+> ⚠️ **Nada disso está ATIVO enquanto as credenciais do Upstash não forem provisionadas** —
+> as quatro camadas rodam em no-op e toda requisição passa. O honeypot é a exceção: não
+> consulta Redis e já funciona. Por isso **ABU-01, ABU-02 e ABU-03 continuam abertos** em
+> `.planning/REQUIREMENTS.md`, e por isso os três blocos abaixo existem.
+>
+> **Critérios de conclusão desta seção seguem os originais** ("script simples repetindo POSTs
+> não consegue lotar uma agenda; cliente legítimo não percebe nenhuma fricção nova") — e
+> ambos são medições em ambiente com Redis real, não afirmações derivadas de teste verde.
+
+### 🔴 Provisionamento do Upstash Redis — ação do OWNER, **gate de DEPLOY**
+
+**Só o owner fecha.** O provisionamento acontece no painel da Upstash e no Railway; nenhum
+executor tem acesso a nenhum dos dois. Mesma regra da rotação das signing keys abaixo.
+
+**Por que é gate de deploy e não de desenvolvimento.** A Phase 03 (plano 03-04, decisão
+D-04) acrescentou `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` a
+`OBRIGATORIAS_EM_PRODUCAO` em `src/lib/env.ts`. A partir daquele commit, **boot de produção
+sem as duas encerra com código 1 nomeando ambas**. Isso é o comportamento pedido — rate
+limiter desligado em silêncio é o falso-verde que a fase inteira existe para eliminar —, mas
+**amplia a janela de crash-loop** já registrada nos Blockers do `.planning/STATE.md` (que
+antes cobria `ANALYTICS_TENANT_SALT`, `NEXT_PUBLIC_SENTRY_DSN` e `RESEND_API_KEY`). Dev
+local, `pnpm dev` e `pnpm build` continuam funcionando sem elas, de propósito.
+
+**Passo a passo:**
+
+1. **Criar 2 databases Redis** na mesma conta do QStash — um de **produção** e um de **dev**
+   (D-05: isolamento físico dos contadores; teste em dev nunca consome a janela de um tenant
+   real). ⚠️ **Se o plano da Upstash cobrar pelo segundo database, criar só o de produção** —
+   dev opera em no-op declarado (D-04), que é o comportamento já testado. Não pagar por
+   isolamento de contador de dev.
+2. **Provisionar `UPSTASH_REDIS_REST_URL` e `UPSTASH_REDIS_REST_TOKEN` no Railway ANTES do
+   próximo deploy de produção** (Upstash Console → Redis → database → REST API). Deploy feito
+   antes disso **não sobe**.
+3. Opcionalmente, as credenciais do database de dev no `.env.local` — é o que habilita a
+   prova comportamental do SC1 listada mais abaixo.
+4. **Nomes de variável, nunca valores** — nenhum token entra neste documento, em commit, PR
+   ou mensagem (mesma regra que originou o item da rotação do QStash).
+
+**Critério de fechamento:** as duas variáveis com valor em produção, deploy subindo, e um
+bloqueio real observado nos painéis (ver "Verificações manuais" abaixo). Enquanto isso não
+acontecer, o produto está **exatamente tão exposto quanto antes da Phase 03** no eixo do
+volume — com a diferença de que agora o código existe e falta um passo de painel.
+
+### ⚖️ Risco ACEITO com detector — cota do Upstash Free esgotada joga tudo em fail-open
+
+**O risco.** Por decisão de desenho (D-02), falha ou lentidão do Redis **libera** a
+requisição: indisponibilidade do fornecedor nunca derruba o booking. A consequência lógica é
+que um ataque sustentado o bastante para esgotar a cota diária de comandos do plano Free
+desliga as quatro camadas — e o ataque continua contra uma defesa que passou a responder
+"pode passar". É a inversão clássica de um limitador fail-open, e foi aceita porque a
+alternativa (fail-closed) transformaria qualquer instabilidade do fornecedor em booking
+público fora do ar, que é o dano que o produto não pode pagar.
+
+**O detector, nomeado:** **rajada da Issue `ratelimit:redis_unavailable` no Sentry.** Uma
+ocorrência isolada é ruído de rede; a rajada é o sintoma. Não há outro sinal — o bloqueio
+que deixa de acontecer não gera evento nenhum, por construção.
+
+**Mitigadores já no código** (não eliminam o risco, encarecem o caminho até ele):
+
+- `ephemeralCache` da lib (default) — chave já bloqueada na mesma instância não gasta comando
+  novo, e é justamente o atacante em rajada que mais reincide na mesma chave.
+- Curto-circuito por ordem das camadas: a primeira que barra encerra a checagem.
+- As validações síncronas baratas rodam **antes** do rate limit — payload lixo não gasta
+  comando no Redis.
+
+**Gatilho de reavaliação:** a primeira rajada real da Issue. Aí a decisão vira concreta e tem
+três saídas conhecidas — subir de plano na Upstash, endurecer a camada mais barata (IP) para
+gastar menos comando por requisição, ou aceitar o fail-open explicitamente para aquele
+período. **Não antecipar nenhuma das três sem o número real na mão.**
+
+### 🧪 Verificações manuais da Phase 03 — nenhum executor marca
+
+O código da fase está fechado e provado pela suíte hermética. O que a suíte **não sabe
+medir** está abaixo, e é exatamente o tipo de item que a lição da quick task 260724 ("teste
+verde não fecha observabilidade") e o histórico da Phase 01 mandam nascer aberto. Nada aqui
+foi aprovado; nada aqui deve ser assumido como aprovado.
+
+**Código fechado em 2026-07-27** sobre o HEAD final da fase, com saída real observada:
+`pnpm lint` exit 0 · `pnpm test` **381 testes em 23 arquivos** (baseline pré-fase: 280 em
+20 — a fase só acrescentou, zero regressão) · `pnpm build` exit 0 com 14 rotas, rodado
+**sem** as variáveis do Upstash no ambiente (prova viva do no-op do D-04) · `npx tsc
+--noEmit` exit 0. **Restam exclusivamente os itens manuais abaixo** — nenhum deles é
+alcançável por comando.
+
+**(a) Prova comportamental do SC1 — script real contra Redis real**
+
+- [ ] Com as credenciais de **dev** do Upstash no ambiente, subir `next start` e rodar um
+      script repetindo POSTs de criação de agendamento contra o mesmo slug. O comportamento
+      esperado é: os primeiros criam, e a partir do teto a resposta vira o discriminante
+      `muitas_tentativas` — **sem** criar mais agendamentos. Toca serviço externo, portanto
+      fica **fora** do `pnpm test` hermético (mesma regra do `test:integracao`, opt-in).
+      A suíte prova a *decisão* sobre a resposta do fornecedor; ela nunca prova a resposta do
+      fornecedor.
+- [ ] **Calibração com dado real** (o erro aqui é assimétrico: folgado demais reduz proteção
+      e é reversível; apertado demais adiciona fricção a cliente real e o dano é
+      irreversível): conferir se uma sessão legítima de escolha de horário chega perto de 60
+      consultas de grade por minuto, e se um salão movimentado divulgando o link estoura
+      10 escritas/10 min no mesmo IP. Se chegar perto, o número **sobe**.
+
+**(b) Verificação de painel — os bloqueios aparecendo onde o owner olha**
+
+- [ ] **Sentry Log** `ratelimit.bloqueio` chegando, com `camada` e `chaveHash` — e **sem** IP
+      ou telefone crus em lugar nenhum do evento. Sentry Logs é produto separado de Issues:
+      DSN válido não garante log ingerido.
+- [ ] **PostHog:** eventos `booking_rate_limited` e `booking_honeypot` no Activity.
+- [ ] **Sentry Issue** `ratelimit:teto_tenant_atingido` no estouro do teto por tenant — é o
+      único alarme acionável da fase, o que existe para o cenário "ataque às 3h da manhã", e
+      **conferir que ela carrega só `tenantHash`**, nunca o `org_id`.
+
+**(c) O campo do honeypot em navegador real** (herdado do plano 03-05 — a suíte prova a
+FORMA dos atributos, nunca o comportamento de um motor de layout ou de uma heurística de
+autofill proprietária)
+
+- [ ] Abrir `/book/<slug>` no **celular e no desktop**, chegar na etapa de contato e conferir
+      que nada se deslocou e que não há scroll horizontal.
+- [ ] Percorrer a etapa **só pelo teclado**: o foco vai de "Seu nome" para "WhatsApp" e daí
+      para o CTA, sem parada intermediária.
+- [ ] Salvar um endereço no autofill do navegador e conferir que o campo continua **vazio**
+      ao autopreencher o formulário.
+- [ ] **Depois de abrir ao público, acompanhar a taxa de `booking_honeypot`.** É o detector do
+      pior desfecho nomeado pelo owner: autofill preenchendo o campo de uma **pessoa real**,
+      que então vê a confirmação de um agendamento que não existe. Ninguém vai reclamar — a
+      tela confirmou. Taxa incompatível com tráfego de bot esperado significa que o campo
+      precisa mudar (nome, atributos ou a própria armadilha).
+
+**(d) Qual header de IP a Railway realmente entrega — medição, não crença**
+(aberto pelo CR-01 da revisão de código da fase, 2026-07-27)
+
+A extração de IP passou a preferir `x-real-ip` e, no fallback, a entrada **mais à direita**
+de `x-forwarded-for` — nunca a primeira, que é texto do cliente quando o proxy apenas anexa
+em vez de descartar. A ordem escolhida é estritamente mais difícil de forjar que a anterior,
+mas **continua sendo inferência**: a fonte da garantia original era fórum oficial, não doc
+formal, e duas das quatro camadas dependem dela.
+
+- [ ] Contra o deploy, mandar `curl -H 'X-Forwarded-For: 1.2.3.4' -H 'X-Real-IP: 5.6.7.8'` e
+      conferir **qual valor o app enxerga** (basta provocar um bloqueio e comparar o
+      `chaveHash` do Sentry Log com o hash de cada candidato). Se a Railway não puser
+      `x-real-ip`, ou se o XFF chegar com mais de um hop anexado pela própria plataforma, a
+      camada de IP precisa ser recalibrada — no segundo caso, a entrada mais à direita seria
+      o IP interno do edge e somaria visitantes distintos num balde só.
+- [ ] Conferir que a Issue `ratelimit:ip_indeterminavel` **não** aparece em produção. Se
+      aparecer, as camadas por IP estão em PASSE (fail-open deliberado do CR-04) e o
+      problema é de infraestrutura, não de tráfego — o header sumiu.
 
 ### 🔑 Rotação das signing keys do QStash — ação do owner, prazo 2026-08-05
 

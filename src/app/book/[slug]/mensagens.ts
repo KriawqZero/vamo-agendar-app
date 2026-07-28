@@ -81,6 +81,19 @@ export const COPY_SERVICO_INVALIDO = 'Serviço inválido ou indisponível.'
 export const COPY_EMAIL_INVALIDO = 'E-mail inválido. Confira o endereço ou deixe o campo em branco.'
 
 /**
+ * Rate limit da fase de anti-abuso estourado — condição ESPERADA, não erro.
+ *
+ * Redação contratada no D-07 e a razão de ela existir: quem é barrado pode ser
+ * um script, mas pode ser uma pessoa real atrás do mesmo IP de operadora móvel
+ * (CGNAT) que outro cliente acabou de usar. Por isso a resposta é erro honesto
+ * com saída clara ("aguarde e tente de novo") em vez do sucesso falso, que fica
+ * reservado ao honeypot — lá a certeza de bot é alta; aqui não é, e fazer uma
+ * pessoa achar que agendou sem ter agendado é o pior desfecho possível.
+ */
+export const COPY_MUITAS_TENTATIVAS =
+    'Muitas tentativas seguidas. Aguarde um instante e tente de novo.'
+
+/**
  * Falha de infraestrutura na etapa de contato (leitura ou escrita em `clientes`).
  *
  * ⚠️ Constante PINADA, hoje sem mapeamento próprio: o discriminante colapsa as
@@ -118,6 +131,16 @@ const COPIA_DA_CAIXA_DE_HORARIOS: Record<MotivoPublico, string> = {
     // `email_invalido` só existe no caminho de ESCRITA; nunca chega à caixa de
     // horários. O membro existe aqui apenas para manter o Record exaustivo.
     email_invalido: COPY_ERRO_SLOTS,
+    // ⚠️ `muitas_tentativas` é o ÚNICO que não aponta para `COPY_ERRO_SLOTS`, e
+    // a exceção corrige o WR-03. O D-10 raciocinou que "quem é barrado numa
+    // grade é script, e script não lê tela" — mas a fase inteira argumenta o
+    // contrário em todo lugar: CGNAT de operadora faz CLIENTE REAL dividir IP,
+    // e foi por isso que o caminho de escrita ganhou cópia honesta própria.
+    // Reusar aqui a cópia de falha de CARREGAMENTO dava ao leitor barrado uma
+    // informação falsa sobre a causa, embaixo de um botão que o convidava a
+    // insistir — e insistir consome outro token. A cópia já existia; a
+    // assimetria entre as duas superfícies não tinha justificativa de produto.
+    muitas_tentativas: COPY_MUITAS_TENTATIVAS,
 }
 
 /**
@@ -143,6 +166,7 @@ const COPIA_DO_ENVIO: Record<MotivoPublico, string> = {
     slot_indisponivel: COPY_SLOT_INDISPONIVEL,
     erro_interno: COPY_ERRO_CONFIRMACAO,
     email_invalido: COPY_EMAIL_INVALIDO,
+    muitas_tentativas: COPY_MUITAS_TENTATIVAS,
 }
 
 /**

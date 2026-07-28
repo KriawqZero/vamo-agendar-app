@@ -12,6 +12,11 @@ interface EtapaDataHoraProps {
     carregando: boolean
     erro: string | null
     onTentarDeNovo: () => void
+    /**
+     * Segundos restantes de espera imposta depois de um bloqueio por rate limit
+     * (WR-03). Zero = botão imediato, que é o estado de qualquer outra falha.
+     */
+    esperaRetrySegundos: number
     /** Aviso de slot tomado por outro cliente (double-booking) — some ao escolher de novo. */
     aviso: string | null
     slotSelecionado: Slot | null
@@ -35,6 +40,7 @@ export default function EtapaDataHora({
     carregando,
     erro,
     onTentarDeNovo,
+    esperaRetrySegundos,
     aviso,
     slotSelecionado,
     onSelecionarSlot,
@@ -116,12 +122,28 @@ export default function EtapaDataHora({
                         <p className="text-xs font-semibold text-red-700 dark:text-red-400">
                             {erro}
                         </p>
+                        {/*
+                         * A espera só aparece depois de um bloqueio por rate
+                         * limit (WR-03): antes, a caixa dizia "não foi possível
+                         * carregar" e o botão convidava a insistir — insistir
+                         * consome outro token e alonga a janela que já barrou o
+                         * visitante. Agora a cópia e o botão dizem a mesma
+                         * coisa. Para qualquer outra falha nada muda: `0`
+                         * mantém o botão imediato.
+                         */}
                         <button
                             type="button"
                             onClick={onTentarDeNovo}
-                            className="mt-2 cursor-pointer rounded-full border border-red-200 px-4 py-1.5 text-xs font-semibold text-red-700 transition-all duration-200 hover:bg-red-100 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+                            disabled={esperaRetrySegundos > 0}
+                            className={`mt-2 rounded-full border border-red-200 px-4 py-1.5 text-xs font-semibold text-red-700 transition-all duration-200 dark:border-red-900 dark:text-red-400 ${
+                                esperaRetrySegundos > 0
+                                    ? 'cursor-not-allowed opacity-60'
+                                    : 'cursor-pointer hover:bg-red-100 dark:hover:bg-red-950/40'
+                            }`}
                         >
-                            Tentar de novo
+                            {esperaRetrySegundos > 0
+                                ? `Aguarde ${esperaRetrySegundos}s`
+                                : 'Tentar de novo'}
                         </button>
                     </div>
                 ) : slots.length === 0 ? (

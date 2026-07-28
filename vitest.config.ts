@@ -36,7 +36,11 @@ export default defineConfig({
             QSTASH_URL: 'https://qstash.local',
             QSTASH_CURRENT_SIGNING_KEY: 'sig-atual-teste',
             QSTASH_NEXT_SIGNING_KEY: 'sig-proxima-teste',
-            EVOLUTION_API_URL: 'http://evolution.local'
+            EVOLUTION_API_URL: 'http://evolution.local',
+            // O salt entra aqui para que a suíte exercite o caminho SALGADO, que
+            // é o único que existe em produção. O caminho sem salt tem aviso
+            // próprio (`hash:sem_salt`, WR-01) e é testado stubando a ausência.
+            ANALYTICS_TENANT_SALT: 'salt-de-teste'
         }
     }
 })

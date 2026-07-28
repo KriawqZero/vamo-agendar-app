@@ -1,5 +1,6 @@
 'use server'
 
+import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { obterSlotsDisponiveis } from '@/lib/booking-engine'
@@ -9,8 +10,23 @@ import { PLANOS, obterSlugEfetivo } from '@/lib/planos'
 import type { PlanoId } from '@/lib/planos'
 import { obterPlanoVigentePublico } from '@/lib/assinaturas'
 import { ehHexValida } from '@/lib/cores'
-import { capturarEventoTenant } from '@/lib/analytics/server'
-import { reportarExcecao, reportarFalhaSilenciosa } from '@/lib/observabilidade/reportar'
+import { capturarEventoServidor, capturarEventoTenant } from '@/lib/analytics/server'
+import {
+    hashChaveRateLimit,
+    ipDoVisitante,
+    verificarLimite,
+    verificarLimiteSemConsumir,
+} from '@/lib/rate-limit'
+import type { AtributosLogOperacional } from '@/lib/observabilidade/log'
+import { logOperacionalAguardando } from '@/lib/observabilidade/log'
+import { emitirDepoisDaResposta } from '@/lib/observabilidade/apos-resposta'
+import { permitirEmissao } from '@/lib/observabilidade/emissao'
+import {
+    reportarExcecao,
+    reportarFalhaSilenciosa,
+    reportarFalhaSilenciosaAguardando,
+} from '@/lib/observabilidade/reportar'
+import { hashTenantId } from '@/lib/observabilidade/hash'
 import { erroSinteticoSupabase } from '@/lib/observabilidade/erro-supabase'
 
 // Projeção explícita das leituras públicas. Coluna nova no banco (ex.: cpf_cnpj
@@ -60,6 +76,35 @@ const DURACAO_MAXIMA_MINUTOS = 24 * 60
  * regex, e que a Fricção Zero não justifica): o objetivo aqui é barrar lixo
  * óbvio e limitar tamanho, não recusar endereços exóticos porém válidos.
  */
+/**
+ * Janela mínima entre dois Sentry LOGS de ROTINA do endpoint público (bloqueio
+ * de rate limit, captura de honeypot), por causa e por processo.
+ *
+ * ⚠️ O throttle é a metade do CR-03 que o `after()` sozinho não resolve. Sem
+ * ele, cada requisição barrada emite um evento — e quantas requisições existem é
+ * escolha do ATACANTE. A cota do Sentry vira alvo, e ela acaba exatamente durante
+ * o ataque que deveria estar sinalizando. O caminho do honeypot era o pior: nunca
+ * passa por `verificarLimite`, então é literalmente um endpoint sem teto.
+ *
+ * O que se perde é pequeno e conhecido: sob flood, o log caso-a-caso vira uma
+ * amostra por minuto por camada em vez de uma linha por requisição — e as linhas
+ * descartadas seriam todas iguais. O VOLUME continua medido com fidelidade total
+ * pelo PostHog, que é quem responde "quanto está sendo barrado" e por isso não é
+ * amostrado. Fora de ataque, bloqueio é raro e nada é descartado.
+ */
+const INTERVALO_LOG_ROTINA_MS = 60_000
+
+/**
+ * Janela mínima entre duas Issues do teto por tenant, POR TENANT.
+ *
+ * Mais larga que a de rotina porque o alarme do D-12 precisa alcançar um humano
+ * UMA vez, não trinta. A chave inclui o `tenantHash` para que o ataque a um
+ * tenant não silencie o alarme de outro; o `Map` cresce com o número de tenants
+ * reais (o `tenant_id` vem do perfil resolvido no banco, nunca do visitante),
+ * então não é vetor de crescimento sem teto.
+ */
+const INTERVALO_ISSUE_TETO_TENANT_MS = 15 * 60_000
+
 const NOME_MAXIMO_CARACTERES = 120
 const EMAIL_MAXIMO_CARACTERES = 254
 const FORMATO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -77,6 +122,27 @@ const FORMATO_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
  * qual instante ela representa — a interpretação no fuso do tenant continua sendo
  * assunto exclusivo de `src/lib/timezone.ts`.
  */
+/**
+ * Emite o Sentry Log de rotina do endpoint público sem segurar a resposta e sem
+ * deixar o atacante escolher o volume (CR-03).
+ *
+ * Duas travas, cada uma para um defeito diferente: `permitirEmissao` corta a
+ * repetição, e `emitirDepoisDaResposta` tira o `Sentry.flush(2000)` da frente do
+ * visitante mantendo a entrega garantida (`after()` do Next — o runtime segura a
+ * invocação até o callback terminar). A variante AGUARDADA continua sendo a usada
+ * lá dentro: o incidente 260724 perdeu evento por fire-and-forget puro, e isso
+ * não volta.
+ */
+function logarRotinaDepoisDaResposta(
+    chaveDoThrottle: string,
+    codigo: string,
+    atributos: AtributosLogOperacional,
+): void {
+    if (!permitirEmissao(chaveDoThrottle, INTERVALO_LOG_ROTINA_MS)) return
+
+    emitirDepoisDaResposta(() => logOperacionalAguardando.warn(codigo, atributos))
+}
+
 function ehDataDeCalendario(dateStr: string): boolean {
     const instante = new Date(`${dateStr}T00:00:00Z`)
     return !isNaN(instante.getTime()) && instante.toISOString().slice(0, 10) === dateStr
@@ -100,6 +166,10 @@ function ehDataDeCalendario(dateStr: string): boolean {
  * digita (campo opcional), então merece cópia honesta própria em vez de ser
  * colapsado em `campos_obrigatorios` — só ele exigiu literal novo, porque o teto
  * de nome reusa `campos_obrigatorios` (nome gigante é ataque, não UX).
+ * `muitas_tentativas` é o nono, da Phase 3: rate limit estourado devolve erro
+ * HONESTO, nunca sucesso falso (D-07) — CGNAT de operadora faz clientes reais
+ * dividirem IP, e "ela acha que agendou e não agendou" é o pior desfecho
+ * possível para a confiança no produto.
  */
 export type MotivoPublico =
     | 'campos_obrigatorios'
@@ -110,6 +180,7 @@ export type MotivoPublico =
     | 'slot_indisponivel'
     | 'erro_interno'
     | 'email_invalido'
+    | 'muitas_tentativas'
 
 /** Falhas que a resolução de perfil sabe produzir. */
 type MotivoLeituraPublica = Extract<MotivoPublico, 'slug_invalido' | 'erro_interno'>
@@ -128,9 +199,15 @@ type MotivoLeituraPublica = Extract<MotivoPublico, 'slug_invalido' | 'erro_inter
  * `mensagemDeMotivo` os aceita sem edição e os dois `Record` exaustivos de
  * `src/app/book/[slug]/mensagens.ts` seguem compilando intactos — nenhuma cópia
  * nova precisa ser escrita, porque as duas já estavam contratadas lá.
+ *
+ * `muitas_tentativas` entrou aqui na Phase 3 pela MESMA razão, e só aqui: quem
+ * produz o bloqueio é a guarda de leitura desta função. Alargar
+ * `MotivoLeituraPublica` para acomodá-lo tornaria aquele tipo mentiroso — a
+ * resolução de perfil não sabe produzir estouro de rate limit.
  */
 type MotivoSlotsPublicos =
-    MotivoLeituraPublica | Extract<MotivoPublico, 'data_invalida' | 'servico_invalido'>
+    | MotivoLeituraPublica
+    | Extract<MotivoPublico, 'data_invalida' | 'servico_invalido' | 'muitas_tentativas'>
 
 /**
  * Linha de `perfis_empresas` projetada por `COLUNAS_PERFIL_PUBLICO`. O tipo é
@@ -322,6 +399,13 @@ interface AgendamentoPublicoParams {
     clienteNome: string
     clienteTelefone: string // WhatsApp
     clienteEmail?: string
+    /**
+     * Campo ARMADILHA (honeypot) do formulário público — nome deliberadamente
+     * neutro no fio, para que nem o payload nem o bundle denunciem a armadilha.
+     * Pessoa real nunca o preenche (é invisível, fora da tabulação e não
+     * anunciado por leitor de tela); vindo preenchido, quem enviou é bot.
+     */
+    infoAdicional?: string
 }
 
 /**
@@ -341,7 +425,97 @@ export async function criarAgendamentoPublico({
     clienteNome,
     clienteTelefone,
     clienteEmail,
+    infoAdicional,
 }: AgendamentoPublicoParams): Promise<ResultadoAgendamentoPublico> {
+    // ⚠️ HONEYPOT — a PRIMEIRA instrução do corpo, antes até das validações de
+    // graça, e a única resposta MENTIROSA deste arquivo inteiro.
+    //
+    // Por que primeiro: custo zero e independência total do resto do payload. Um
+    // bot de formulário raramente preenche o resto direito, e a armadilha não
+    // pode depender de `dataHora` ser parseável para funcionar — quem caiu já se
+    // identificou no primeiro campo.
+    //
+    // Por que SUCESSO e não erro, e por que só aqui (D-07): bot que recebe erro
+    // tenta de novo — com outro IP, outro telefone, outra sessão; bot que recebe
+    // sucesso vai embora. A mentira só se justifica onde a certeza de ser bot é
+    // ALTA, e ela é alta exatamente aqui: o campo é invisível, está fora da
+    // ordem de tabulação, não é anunciado por leitor de tela e não casa com
+    // vocabulário de autofill (ver o comentário do campo em `EtapaContato.tsx`).
+    // No rate limit a certeza é bem menor — CGNAT de operadora faz clientes
+    // REAIS dividirem IP —, e por isso lá o erro é honesto (`muitas_tentativas`)
+    // e nunca sucesso falso: "ela acha que agendou e não agendou" é o pior
+    // desfecho possível para a confiança no produto.
+    //
+    // O que a captura NÃO faz, e cada ausência é deliberada: não instancia o
+    // cliente privilegiado, não gasta comando no Redis, não resolve slug, não
+    // grava cliente, não roda a engine, não faz INSERT, não dispara WhatsApp nem
+    // agenda lembrete. Um agendamento fantasma na agenda do profissional seria
+    // pior que o spam que a armadilha existe para barrar.
+    if (typeof infoAdicional === 'string' && infoAdicional.trim().length > 0) {
+        // Telemetria da captura (D-11), com os mesmos dois destinos do bloqueio
+        // de rate limit e pela mesma razão: captura é ROTINA de endpoint
+        // público, então vive como Log pesquisável e taxa agregada — nunca como
+        // Sentry Issue, que fica reservada ao que exige ação do owner.
+        //
+        // O evento do PostHog tem uma segunda função, e ela é a mais importante:
+        // é o DETECTOR de falso-positivo. Se a taxa de captura for incompatível
+        // com o tráfego de bot esperado, o que está preenchendo o campo é o
+        // autofill do navegador — ou seja, PESSOA REAL recebendo sucesso falso,
+        // o pior desfecho nomeado no D-07. Sem esse número, o defeito seria
+        // invisível: ninguém reclama de um agendamento que a tela confirmou.
+        //
+        // `booking_completed` NÃO sai daqui: o funil do owner não pode contar
+        // bot como cliente.
+        //
+        // O log vai pelo caminho THROTTLADO e DIFERIDO (CR-03), e este era o
+        // ponto mais grave dos cinco: a captura nunca passa por
+        // `verificarLimite`, então um `Sentry.flush(2000)` aguardado aqui fazia
+        // de um endpoint SEM TETO um amplificador — cada requisição de bot
+        // segurava um slot do servidor esperando uma ida de rede a terceiro. A
+        // entrega continua garantida (o `flush` só saiu da frente da resposta).
+        //
+        // O evento do PostHog NÃO é throttlado, de propósito: é ele o detector
+        // de falso-positivo de autofill, e detector amostrado não detecta.
+        try {
+            logarRotinaDepoisDaResposta('honeypot.captura', 'honeypot.captura', {
+                fluxo: 'booking_publico',
+            })
+            // Sem propriedades: o slug é dado do VISITANTE, não do tenant
+            // resolvido (a captura acontece antes de qualquer resolução), e
+            // nome/telefone do payload jamais atravessam para fornecedor
+            // terceiro.
+            capturarEventoServidor('booking_honeypot')
+        } catch (telemetriaErr) {
+            // Observabilidade que falha nunca muda a resposta — aqui com um
+            // agravante próprio: um erro devolvido ao bot o faria tentar de novo,
+            // que é exatamente o que a armadilha existe para evitar.
+            console.error('[honeypot] telemetria da captura não emitida (ignorada):', telemetriaErr)
+        }
+
+        // Forma IDÊNTICA a `AgendamentoCriado` — o bot precisa acreditar que
+        // agendou. O fallback de data cobre payload malformado sem lançar: `new
+        // Date()` aqui não é preguiça, é o que impede a armadilha de virar 500
+        // (e 500 é erro, e erro faz o bot voltar).
+        //
+        // ⚠️ `randomUUID` IMPORTADO de `node:crypto`, nunca o global (WR-05): o
+        // global existe a partir do Node 19 e o repositório passou a pinar
+        // `engines: node >= 20` justamente por não ter como garantir isso antes.
+        // Num runtime mais antigo, o global seria `ReferenceError` → 500 — e 500
+        // é exatamente a resposta que faz o bot voltar, ou seja, a falha
+        // inverteria o objetivo da armadilha no seu ponto mais sensível. O
+        // comentário acima mostra que o risco foi pensado para a data e não para
+        // o UUID.
+        return {
+            ok: true,
+            agendamento: {
+                id: randomUUID(),
+                data_hora:
+                    typeof dataHora === 'string' && dataHora ? dataHora : new Date().toISOString(),
+                status: 'confirmado',
+            },
+        }
+    }
+
     // 1. Sanitizar e validar dados de entrada básicos
     if (!slug || !servicoId || !dataHora || !clienteNome || !clienteTelefone) {
         return { ok: false, motivo: 'campos_obrigatorios' }
@@ -378,6 +552,70 @@ export async function criarAgendamentoPublico({
         return { ok: false, motivo: 'data_invalida' }
     }
 
+    // ⚠️ RATE LIMIT POR IP — a posição é o desenho, e ela tem DOIS lados.
+    //
+    // Vem DEPOIS das validações acima porque todas elas são síncronas e de
+    // graça: payload lixo não merece gastar um comando no Redis. E vem ANTES de
+    // `createAdminClient()` pelo mesmo motivo do comentário-manifesto de
+    // `obterSlotsPublicos` (padrão 01-18): a diferença entre recusar de graça e
+    // recusar depois de já ter pago duas consultas ao banco. Um script que
+    // repete a requisição não deve conseguir empurrar carga para o Supabase.
+    //
+    // A camada de IP é a mais FOLGADA das três da fase (10/10 min): CGNAT de
+    // operadora móvel faz clientes distintos dividirem o mesmo IP, e um salão
+    // que acabou de divulgar o link recebe rajada legítima. As camadas que
+    // apertam de verdade (telefone e teto do tenant) entram depois da resolução
+    // do slug, porque o `tenant_id` só nasce lá — plano 03-03.
+    //
+    // `verificarLimite` NUNCA lança e devolve PASSE quando o fornecedor falha
+    // (fail-open, D-02): Redis fora do ar não pode ser o que impede um
+    // agendamento real de chegar à agenda. O bloqueio é valor discriminado, como
+    // toda falha esperada deste arquivo — nunca `throw`.
+    const ipDoCliente = await ipDoVisitante()
+    if (!(await verificarLimite('escrita_ip', [ipDoCliente]))) {
+        // Bloqueio MUDO é bloqueio que ninguém consegue calibrar. A telemetria
+        // tem dois destinos, cada um respondendo a uma pergunta diferente
+        // (D-11): o Sentry Log responde "qual camada barrou qual chave" e é
+        // pesquisável caso a caso; o PostHog responde "quanto está sendo
+        // barrado" e é a taxa agregada que diz se 10/10 min está apertado
+        // demais para CGNAT.
+        //
+        // A Sentry ISSUE NÃO é um dos destinos, e a ausência é deliberada:
+        // bloqueio de IP é condição ESPERADA de um endpoint público, igual à
+        // perda de corrida do `23P01` mais abaixo. Issue de rotina é como o
+        // owner para de olhar a ferramenta — a Issue fica reservada ao teto por
+        // tenant e à falha do Redis, que exigem ação humana.
+        //
+        // O log continua com ENTREGA GARANTIDA (`Sentry.flush`), mas emitido
+        // depois da resposta e com throttle (CR-03): aguardá-lo em linha fazia
+        // rejeitar custar mais que aceitar, exatamente sob flood. O `chaveHash` é
+        // o MESMO hash usado na chave do contador — correlaciona log e Redis sem
+        // que o IP exista em nenhum dos dois.
+        try {
+            logarRotinaDepoisDaResposta('ratelimit.bloqueio:escrita_ip', 'ratelimit.bloqueio', {
+                fluxo: 'booking_publico',
+                camada: 'escrita_ip',
+                // IP indeterminável devolve `null` e a camada vira PASSE
+                // (CR-04), então na prática este ramo sempre tem IP — o `?:`
+                // existe para que o tipo não obrigue a inventar um placeholder
+                // que viraria um `chaveHash` mentiroso no Sentry.
+                chaveHash: ipDoCliente ? hashChaveRateLimit(ipDoCliente) : undefined,
+            })
+            // Variante Servidor, e não Tenant: aqui o slug ainda não foi
+            // resolvido, então não existe `tenant_id` para atribuir o evento.
+            capturarEventoServidor('booking_rate_limited', { camada: 'escrita_ip' })
+        } catch (telemetriaErr) {
+            // Mesmo padrão protegido do ramo `23P01`: observabilidade que
+            // falha nunca pode mudar a resposta que o visitante recebe.
+            console.error(
+                '[rate-limit] telemetria de bloqueio não emitida (ignorada):',
+                telemetriaErr,
+            )
+        }
+
+        return { ok: false, motivo: 'muitas_tentativas' }
+    }
+
     // Todo o caminho público (leituras e escritas) usa o cliente PRIVILEGIADO:
     // a role anon perdeu a Data API nesta fase. O preço disso é que o RLS não
     // filtra mais nada aqui — cada query abaixo carrega o `tenant_id` resolvido
@@ -398,6 +636,119 @@ export async function criarAgendamentoPublico({
 
     const { perfil: tenant } = resolvido
     const tenantId: string = tenant.tenant_id
+
+    // ⚠️ CAMADAS 2 e 3 DO RATE LIMIT — telefone e teto por tenant.
+    //
+    // POR QUE AQUI, e não na fronteira junto com a de IP: a chave exata destas
+    // duas só existe DEPOIS da resolução. Usar o slug como chave dobraria o
+    // orçamento de cada tenant, porque `slug` e `slug_gratuito` são dois textos
+    // que abrem a MESMA agenda — um script alternando entre os dois teria o
+    // dobro do limite de graça. Trocar exatidão por antecedência aqui seria
+    // trocar a defesa pela aparência dela.
+    //
+    // O custo dessa escolha está pago e é pequeno: quem chega até esta linha já
+    // passou pela camada de IP e as duas consultas de resolução são indexadas.
+    // O que o bloqueio economiza é tudo o que vem DEPOIS — serviço, engine de
+    // disponibilidade, RPC e INSERT —, que é onde mora o custo real do caminho.
+    //
+    // As duas correm em PARALELO de propósito: o cliente legítimo paga a
+    // latência de UMA ida ao Redis, não de duas somadas (ABU-02/D-06). Nenhuma
+    // das duas lança, e as duas devolvem PASSE se o fornecedor falhar (D-02).
+    //
+    // ⚠️ ASSIMETRIA DELIBERADA entre as duas, e é ela que fecha o CR-02/WR-02: a
+    // de telefone CONSUME (é ela que precisa contar tentativa, porque tentativa
+    // repetida com o mesmo número é exatamente o abuso que o D-08 mira), a de
+    // tenant só CONSULTA. Enquanto as duas consumiam, uma requisição já
+    // condenada pelo bloqueio de telefone ainda queimava o token do tenant, e
+    // uma requisição com `servicoId` lixo também — 30 delas negavam agendamento
+    // a um tenant inteiro por uma hora, sem criar nada. O token do tenant sai
+    // agora depois do INSERT, onde "criação" quer dizer criação.
+    const [passouTelefone, passouTenant] = await Promise.all([
+        // Telefone + tenant: o mesmo número agendando em dois estabelecimentos
+        // são dois baldes. Telefone JÁ normalizado, senão a formatação digitada
+        // escolheria o balde.
+        verificarLimite('escrita_telefone', [telefoneLimpo, tenantId]),
+        verificarLimiteSemConsumir('teto_tenant', [tenantId]),
+    ])
+
+    if (!passouTelefone) {
+        // Bloqueio de telefone é ROTINA — mesma natureza do bloqueio de IP: log
+        // pesquisável + taxa agregada, e NENHUMA Issue. O que muda em relação à
+        // camada de IP é a variante do PostHog: aqui o tenant já existe, e a
+        // taxa POR TENANT é o que responde "esta agenda está sendo atacada?".
+        try {
+            logarRotinaDepoisDaResposta(
+                'ratelimit.bloqueio:escrita_telefone',
+                'ratelimit.bloqueio',
+                {
+                    fluxo: 'booking_publico',
+                    camada: 'escrita_telefone',
+                    chaveHash: hashChaveRateLimit(telefoneLimpo),
+                    tenantHash: hashTenantId(tenantId),
+                },
+            )
+            capturarEventoTenant('booking_rate_limited', tenantId, {
+                camada: 'escrita_telefone',
+            })
+        } catch (telemetriaErr) {
+            console.error(
+                '[rate-limit] telemetria de bloqueio por telefone não emitida (ignorada):',
+                telemetriaErr,
+            )
+        }
+
+        return { ok: false, motivo: 'muitas_tentativas' }
+    }
+
+    if (!passouTenant) {
+        // ⚠️ ESTE é o único bloqueio da fase que vira Sentry ISSUE (D-12).
+        //
+        // Estourar 30 criações numa hora, somadas TODAS as origens, não é um
+        // cliente insistente: é ataque distribuído em andamento — alguém que já
+        // derrotou as camadas de IP e telefone rotativando ambos. O teto não
+        // impede o enchimento total do horizonte de um tenant pequeno (risco
+        // ACEITO pelo owner), ele desacelera o ataque para que este alarme tenha
+        // tempo de alcançar um humano. É o cenário "ataque às 3h da manhã": sem
+        // Issue, o profissional descobre pela agenda lotada de nomes falsos.
+        //
+        // Mensagem SINTÉTICA e ESTÁTICA, variante AGUARDADA, tenant só como
+        // hash — os três contratos de mensageria do CLAUDE.md, pelos três
+        // motivos: agrupamento que não estilhaça sob ataque, evento que não se
+        // perde quando o runtime congela no `return`, e invariante nunca-PII.
+        //
+        // O que mudou com o CR-03: as duas emissões saem DEPOIS da resposta e a
+        // Issue é throttlada por tenant. Este era o pior caso de latência da
+        // fase — dois `Sentry.flush(2000)` aguardados em série no mesmo ramo, e
+        // um ramo que só acontece sob ataque, ou seja, exatamente quando segurar
+        // slots do servidor é mais caro.
+        const chaveIssueDoTenant = `ratelimit:teto_tenant_atingido:${hashTenantId(tenantId)}`
+        try {
+            logarRotinaDepoisDaResposta('ratelimit.bloqueio:teto_tenant', 'ratelimit.bloqueio', {
+                fluxo: 'booking_publico',
+                camada: 'teto_tenant',
+                tenantHash: hashTenantId(tenantId),
+            })
+            capturarEventoTenant('booking_rate_limited', tenantId, { camada: 'teto_tenant' })
+            // ACRÉSCIMO à telemetria de rotina, nunca substituição: o alarme
+            // sozinho chegaria sem o histórico que permite dimensionar o ataque.
+            if (permitirEmissao(chaveIssueDoTenant, INTERVALO_ISSUE_TETO_TENANT_MS)) {
+                emitirDepoisDaResposta(() =>
+                    reportarFalhaSilenciosaAguardando('ratelimit:teto_tenant_atingido', {
+                        fluxo: 'booking_publico',
+                        camada: 'teto_tenant',
+                        tenantHash: hashTenantId(tenantId),
+                    }),
+                )
+            }
+        } catch (telemetriaErr) {
+            console.error(
+                '[rate-limit] telemetria do teto por tenant não emitida (ignorada):',
+                telemetriaErr,
+            )
+        }
+
+        return { ok: false, motivo: 'muitas_tentativas' }
+    }
 
     const timezone = tenant.timezone || TIMEZONE_PADRAO
     // Mesmo regrasAcesso usado em obterSlotsPublicos: sem isto, a validação do
@@ -547,6 +898,19 @@ export async function criarAgendamentoPublico({
         return { ok: false, motivo: 'erro_interno' }
     }
 
+    // ⚠️ AQUI, e só aqui, o token do teto por tenant é consumido (CR-02): o
+    // agendamento já existe na agenda do profissional, então "30 por hora" volta
+    // a significar 30 CRIAÇÕES por hora — que é o que o D-09 decidiu e o que a
+    // documentação sempre afirmou. O retorno é ignorado de propósito: a decisão
+    // de bloquear já foi tomada lá em cima, com a consulta sem consumo; o que
+    // esta chamada faz é registrar o fato consumado para a PRÓXIMA requisição.
+    //
+    // Awaited, e não diferido: o contador só vale alguma coisa se for confiável,
+    // e o custo é uma ida ao Redis com teto de 500 ms e fail-open — irrisório ao
+    // lado do disparo de notificações que vem logo abaixo. Este é o caminho de
+    // SUCESSO, que o atacante não consegue amplificar de graça.
+    await verificarLimite('teto_tenant', [tenantId])
+
     // Funil: agendamento público concluído (sem nome/telefone — nunca PII).
     try {
         capturarEventoTenant('booking_completed', tenantId, {
@@ -579,6 +943,28 @@ export async function criarAgendamentoPublico({
  * funcionar imediatamente após um downgrade (e volta num re-upgrade).
  */
 export async function obterDadosBookingPublico(slug: string) {
+    // ⚠️ SEM RATE LIMIT, e a ausência é decisão registrada — não esquecimento.
+    //
+    // O contrato desta função é `null` → `notFound()` em `page.tsx`. Um teto
+    // aqui não teria como devolver "muitas tentativas": o bloqueio viraria
+    // 404, e um visitante legítimo atrás de CGNAT veria "estabelecimento não
+    // existe" — indistinguível de link quebrado, e o pior desfecho possível
+    // para a confiança no produto. A função de LEITURA que ganhou teto é
+    // `obterSlotsPublicos`, que tem canal de erro discriminado.
+    //
+    // ⚠️ O argumento de UX acima sustenta a decisão sozinho, e é só ele. O
+    // argumento de CUSTO que acompanhava esta decisão foi RETIRADO (WR-08): ele
+    // dizia "uma requisição por VISITA (o page load), contra dezenas de
+    // consultas de grade na mesma sessão", e essa contagem assume comportamento
+    // de NAVEGADOR — precisamente o que o modelo de ameaça rejeita em todo o
+    // resto deste arquivo ("qualquer um lê o id da Server Action no bundle e
+    // chama com o payload que quiser"). Um script chama esta action num laço:
+    // quatro consultas com cliente privilegiado por requisição, sem teto algum.
+    //
+    // Risco residual nomeado e medido pelo eixo certo (carga no Supabase, não
+    // número de page loads). Desvio do D-06 ratificado pelo owner em
+    // 2026-07-27; reavaliação em fase futura se o page load virar alvo medido.
+    //
     // Leitura pública inteira no cliente PRIVILEGIADO (a role anon perdeu a
     // Data API nesta fase). Com o RLS fora do caminho, o filtro por tenant e a
     // lista de colunas passam a ser a defesa — ambos ficam no helper e nas
@@ -706,6 +1092,50 @@ export async function obterSlotsPublicos(
         duracaoMinutos > DURACAO_MAXIMA_MINUTOS
     ) {
         return { ok: false, motivo: 'servico_invalido' }
+    }
+
+    // ⚠️ TETO DE LEITURA POR IP — a quarta e última camada da fase.
+    //
+    // Esta é a função que um script martelaria: varrer a grade de um horizonte
+    // inteiro para mapear a agenda (ou só para custar consultas ao Supabase)
+    // significa repetir ESTA chamada, não o page load. Por isso é aqui que o
+    // teto de leitura mora, e não em `obterDadosBookingPublico` — cujo contrato
+    // `null` → `notFound()` transformaria bloqueio em 404 (ver o comentário
+    // no topo daquela função).
+    //
+    // A posição repete o padrão 01-18 pelas duas razões de sempre: DEPOIS das
+    // validações síncronas acima, porque payload lixo não merece gastar um
+    // comando na cota do Redis; e ANTES de `createAdminClient()`, porque o que
+    // o bloqueio precisa economizar é justamente a consulta ao banco que o
+    // martelo estava buscando provocar.
+    //
+    // 60/min é BEM folgado de propósito (D-06/D-10): sessão legítima nunca
+    // alcança, e a UI reusa a caixa de erro que já existe desde o 03-01 —
+    // nenhuma copy nova, nenhuma fricção nova.
+    const ipDoLeitor = await ipDoVisitante()
+    if (!(await verificarLimite('leitura_ip', [ipDoLeitor]))) {
+        // Mesmos dois destinos do bloqueio de escrita por IP, e nenhuma Issue:
+        // barrar leitura num endpoint público é rotina, e Issue de rotina é
+        // como o owner para de olhar a ferramenta bem na hora em que ela
+        // importa. Variante SERVIDOR do PostHog porque o slug ainda não foi
+        // resolvido — não existe tenant a quem atribuir o evento.
+        try {
+            logarRotinaDepoisDaResposta('ratelimit.bloqueio:leitura_ip', 'ratelimit.bloqueio', {
+                fluxo: 'booking_publico',
+                camada: 'leitura_ip',
+                // Mesma razão do bloqueio de escrita: sem IP a camada libera
+                // (CR-04), então aqui o IP existe.
+                chaveHash: ipDoLeitor ? hashChaveRateLimit(ipDoLeitor) : undefined,
+            })
+            capturarEventoServidor('booking_rate_limited', { camada: 'leitura_ip' })
+        } catch (telemetriaErr) {
+            console.error(
+                '[rate-limit] telemetria de bloqueio de leitura não emitida (ignorada):',
+                telemetriaErr,
+            )
+        }
+
+        return { ok: false, motivo: 'muitas_tentativas' }
     }
 
     const admin = createAdminClient()
