@@ -94,6 +94,49 @@ ressalva: |
 expected: Provocar um bloqueio real e conferir nos painéis: Sentry Log `ratelimit.bloqueio` com `camada` e `chaveHash` (e **sem** IP ou telefone crus); PostHog `booking_rate_limited` e `booking_honeypot` no Activity; Sentry Issue `ratelimit:teto_tenant_atingido` carregando só `tenantHash`.
 why_human: Em no-op nada é barrado, logo nada é emitido. E teste verde **não** fecha observabilidade — é a lição literal da quick task 260724, cujo incidente de origem era exatamente "nada apareceu em painel nenhum". Sentry Logs é produto separado de Issues: DSN válido não garante log ingerido.
 result: [pending]
+verificado_pelo_agente: |
+  A metade "CHEGOU?" foi medida pelo orquestrador em 2026-07-27 via MCP do Sentry,
+  do PostHog e do Supabase, provocando os eventos com sondas contra `next start`
+  real. A metade "o CONTEÚDO está limpo?" continua sendo do owner — ver abaixo.
+
+  **Sentry Logs** (projeto `vamo-agendar-app`):
+    00:36:36Z  warn  codigo=ratelimit.bloqueio  "Requisição pública bloqueada por rate limit"
+    00:16:37Z  warn  codigo=ratelimit.bloqueio  (run anterior)
+    00:41:15Z  warn  codigo=honeypot.captura    "Campo armadilha preenchido no booking público"
+
+  **PostHog** (`$is_server: True` em todos):
+    20:41:16  booking_honeypot
+    20:36:37  booking_rate_limited  camada=escrita_ip   (×2 — o run limpo)
+    20:16:37  booking_rate_limited  camada=escrita_ip   (×2 — run anterior)
+
+  Dois eventos por execução do harness, que é exatamente o número de bloqueios que
+  ele provoca. Correspondência 1:1 com as sondas, não coincidência.
+
+  **Anti-PII, lado PostHog — verificado no schema, não por leitura de amostra:** as
+  ÚNICAS propriedades de `booking_rate_limited` são `camada` (custom) mais as
+  automáticas do SDK (`$lib`, `$is_server`, `$geoip_disable`, `$virt_*`). Não existe
+  propriedade de IP, telefone nem `org_id` — nem vazia, nem preenchida.
+
+  **O honeypot não tocou em nada — provado no banco, não por asserção de teste.**
+  A resposta da sonda trouxe `{"ok":true,"agendamento":{"id":"f8f4dd30-08a7-40b8-abb3-5418c5bc4d24","status":"confirmado"}}`.
+  Consulta direta ao Postgres depois disso:
+    agendamento_sintetico_existe .......... 0   (o id que a tela mostrou não existe)
+    agendamentos_criados_nas_ultimas_3h ... 0   (nenhuma sonda criou nada)
+    clientes_das_sondas_por_nome .......... 0
+    clientes_das_sondas_por_telefone ...... 0
+    total_agendamentos_no_banco ........... 3   (os pré-existentes, intocados)
+resta_para_o_owner: |
+  1. **Conteúdo dos Sentry Logs.** Confirmei que os logs CHEGARAM com o código
+     sintético certo; não consegui ler os atributos `camada` e `chaveHash` pelo MCP
+     (o agente de busca do Sentry descarta atributos customizados da query — é
+     limitação da ferramenta, não ausência do dado). Olhar um log no painel e
+     confirmar os dois atributos presentes E nenhum IP/telefone cru é a parte que
+     não dá para terceirizar: foi exatamente uma trava dessas que o incidente
+     260724 mostrou não fechar por teste.
+  2. **Sentry Issue `ratelimit:teto_tenant_atingido` NÃO foi exercitada.** As
+     sondas usam slug inexistente e morrem antes das camadas de telefone e tenant.
+     Exercitá-la exigiria slug real e ~30 tentativas, o que criaria agendamentos no
+     banco. Fica para tráfego real ou para uma sessão em que se aceite o resíduo.
 
 ### 5. Copy nova do bloqueio de leitura em navegador real (nasce da ratificação do D-10)
 
