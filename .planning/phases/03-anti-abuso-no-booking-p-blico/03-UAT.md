@@ -3,20 +3,28 @@ status: testing
 phase: 03-anti-abuso-no-booking-p-blico
 source: [03-VERIFICATION.md]
 started: 2026-07-27T00:00:00Z
-updated: 2026-07-27T00:00:00Z
+updated: 2026-07-27T20:30:00Z
 ---
 
 ## Current Test
 
-number: 1
-name: Provisionar os 2 databases Redis na Upstash e as env vars no Railway
+number: 3
+name: SC2 — o cliente legítimo não percebe nada, inclusive nos dois falsos-positivos
 expected: |
-  Os dois databases Redis existem na mesma conta do QStash (um de produção, um de dev —
-  isolamento físico dos contadores, D-05). `UPSTASH_REDIS_REST_URL` e
-  `UPSTASH_REDIS_REST_TOKEN` provisionadas no Railway. O boot de produção sobe.
+  Cinco checagens em navegador real, todas sobre a experiência de quem NÃO é atacante:
 
-  Sem elas o boot CAI de propósito listando as duas (D-04, `src/lib/env.ts:57-58`) — é
-  gate de DEPLOY, não de desenvolvimento: dev roda em no-op sem elas.
+  (a) salvar um endereço no autofill do navegador e conferir que o campo armadilha
+      `info_adicional` continua VAZIO ao autopreencher o formulário;
+  (b) percorrer a etapa de contato só pelo teclado — o foco deve pular direto de
+      WhatsApp para o botão, sem parar no campo invisível;
+  (c) abrir `/book/<slug>` em celular e desktop sem nenhum deslocamento de layout;
+  (d) com Redis real, sentir se o caminho de sucesso ficou perceptivelmente mais lento
+      (são 3 idas ao Redis: escrita_ip, o Promise.all telefone+tenant, e o teto do
+      tenant depois do INSERT);
+  (e) depois de abrir ao público, acompanhar a taxa de `booking_honeypot` no PostHog.
+
+  Os itens (a) e (b) são os que importam mais: se o autofill preencher a armadilha, uma
+  pessoa REAL vê a confirmação de um agendamento que não existe — e nunca reclama.
 awaiting: user response
 
 ## Tests
@@ -25,13 +33,45 @@ awaiting: user response
 
 expected: Os dois databases criados na conta do QStash; as duas env vars no Railway; boot de produção sobe. Sem elas, boot cai com código 1 nomeando ambas.
 blocking: sim — **enquanto isto não for feito, nenhuma das quatro camadas de rate limit barra coisa alguma, em ambiente nenhum**. O honeypot é a única defesa ativa hoje (não consulta Redis).
-result: [pending]
+result: pass
+passed_at: 2026-07-27
+note: "Gate de deploy liberado pelo owner. Destrava os testes 2, 4 e 6, que exigem Redis real."
 
 ### 2. SC1 — script repetindo requisições para de conseguir criar agendamentos
 
 expected: Com as credenciais de DEV no ambiente, subir `next start` e rodar um script repetindo POSTs de criação contra o mesmo slug. Os primeiros criam; a partir do teto a resposta vira `muitas_tentativas` e nenhum agendamento novo entra na agenda. Conferir que os contadores aparecem no database de **dev**, e não no de produção.
 why_human: A suíte prova a DECISÃO do app sobre a resposta do fornecedor (limiter mockado); nunca prova a resposta do fornecedor. Depende do teste 1.
-result: [pending]
+result: pass
+passed_at: 2026-07-27
+medido_por: "scripts/verificar-rate-limit-escrita.sh (commit a8b267f) — automatizado, reexecutável"
+evidencia: |
+  7 vereditos, 0 reprovações, contra `next start` de produção e Upstash Redis real:
+
+    PREPARO            id de criarAgendamentoPublico (404b7ac2…) derivado do manifesto
+    CONTROLE           GET / → 200, processo vivo
+    JANELA_LIMPA       1ª sonda de 198.51.100.7 → `slug_invalido`
+    PASSAGEM           as 10 sondas dentro do teto atravessaram → `slug_invalido`
+    BLOQUEIO           as 2 acima do teto → `muitas_tentativas`
+    ISOLAMENTO_POR_IP  198.51.100.8 → `slug_invalido` com o vizinho bloqueado
+    SEM_VAZAMENTO      nenhum corpo devolveu IP cru, org_, tenant_id nem PGRST
+
+  Nenhum agendamento criado, nenhum cliente gravado: as sondas usam slug
+  inexistente com os demais campos válidos, então consomem token e morrem
+  logo DEPOIS do rate limit (a ordem das guardas é o que torna isso possível).
+contrafactual: |
+  `SABOTAR_FORNECEDOR=1` (Upstash → host inexistente): BLOQUEIO **REPROVOU**,
+  exit 0 no modo invertido. O harness nasceu depois do código, então o verde
+  sozinho não valeria — este é o controle que prova que ele mede.
+
+  De quebra provou o fail-open do D-02/D-03 contra fornecedor de verdade
+  indisponível, não contra mock: com o Redis fora, as 12 sondas passaram e
+  o booking seguiu funcionando.
+achado: |
+  A PRIMEIRA tentativa de contrafactual usava `UPSTASH_REDIS_REST_URL=` vazia e
+  foi impedida pelo produto: o `next start` morreu no boot com
+  `[boot] Variáveis obrigatórias ausentes em produção: UPSTASH_REDIS_REST_URL`.
+  É evidência não planejada de que o fail-fast do D-04 (teste 1) funciona de
+  verdade — e o motivo de o contrafactual ter mudado de eixo.
 
 ### 3. SC2 — o cliente legítimo não percebe nada, inclusive nos dois falsos-positivos
 
@@ -66,9 +106,9 @@ result: [pending]
 ## Summary
 
 total: 7
-passed: 0
+passed: 2
 issues: 0
-pending: 7
+pending: 5
 skipped: 0
 blocked: 0
 
