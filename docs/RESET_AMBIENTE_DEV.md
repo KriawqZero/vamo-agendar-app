@@ -81,6 +81,47 @@ Prefira a opção A no dia a dia: mesmo efeito prático (dados zerados) sem risc
 > Passe `--local` ou `--linked` sempre, explicitamente. O procedimento inteiro abaixo
 > só faz sentido para o Cloud — no local, o reset resolve em um comando.
 
+### 3.1 O seed do banco local (`supabase/seed.sql`)
+
+O reset do **local** não deixa o banco vazio: o CLI executa `supabase/seed.sql` no fim de
+todo `npx supabase db reset --local` (não há bloco `[db.seed]` em `config.toml`, então vale
+o caminho default `./seed.sql`). O seed cria um tenant utilizável de uma vez:
+
+| O que cria | Valores |
+|---|---|
+| `perfis_empresas` | `slug` = `slug_gratuito` = `salao-do-seed`, fuso `America/Sao_Paulo`, antecedência 15 min, horizonte 14 dias |
+| `servicos` | dois ativos, 30 min e 60 min (durações diferentes exercitam a regra anti-buraco, que usa a menor duração ativa do tenant) |
+| `horarios_funcionamento` | seg–sex com duas janelas (09–12 e 13–18), sábado 09–13, domingo fechado |
+
+Um comando depois do reset, `/book/salao-do-seed` responde. Não são criados agendamentos
+nem clientes: data fixa vira passado e some da grade, data relativa faria o seed produzir
+estado diferente a cada execução.
+
+> ⚠️ **O seed apaga e recria o tenant dele** (`DELETE FROM perfis_empresas WHERE tenant_id
+> = <o do seed>`, com CASCADE). No `db reset` isso é inócuo — o banco já está limpo. Rodar
+> `psql -f supabase/seed.sql` à mão, porém, apaga os dados **locais** daquele tenant.
+
+**O `tenant_id` e o `ALTER ROLE` que se faz uma vez.** O `tenant_id` é o `org_id` do Clerk,
+não é gerável por SQL, e corrigi-lo depois é impossível: ele é PK referenciada pelas FKs
+`fk_tenant` **sem** `ON UPDATE CASCADE`, então o `UPDATE` falha. Por padrão o seed usa o
+literal sintético `org_seed_local` e avisa, no `RAISE NOTICE` final, que com ele o
+**dashboard** não enxerga o tenant (o RLS compara `tenant_id` com o claim `org_id` do JWT).
+O booking público funciona normalmente mesmo assim, porque a leitura pública usa cliente
+privilegiado e resolve o tenant pelo slug — nada nesse caminho fala com o Clerk.
+
+Para o tenant do seed nascer com o `org_id` real e aparecer também no dashboard:
+
+```bash
+psql "postgresql://postgres:postgres@127.0.0.1:54422/postgres" \
+  -c "ALTER ROLE postgres SET vamoagendar.org_id = 'org_...';"
+npx supabase db reset --local
+```
+
+> O `ALTER ROLE` é feito **uma vez só**: o ajuste mora em `pg_db_role_setting` com
+> `datid = 0` (escopo de cluster) e **sobrevive ao drop/create de database que o `db reset`
+> faz**. O valor fica fora do repositório de propósito — `seed.sql` é versionado, e o
+> `org_id` do owner é identificador de conta.
+
 **Storage (opcional):** as imagens de logo/capa dos tenants ficam no bucket
 `imagens-perfis` e não são atingidas pelo TRUNCATE. Para limpar junto:
 

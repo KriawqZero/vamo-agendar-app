@@ -56,6 +56,29 @@ ou `--linked` explicitamente — o default é a opção perigosa.
 não por compose deste repo. A stack Docker da Evolution API foi movida para
 `../obsoleto-docker-evolution/` em 2026-07-22 (contexto em `OBSOLETO.md` lá).
 
+### O seed do banco local
+
+`supabase/seed.sql` roda em **todo** `npx supabase db reset --local` (o CLI usa o caminho
+default `./seed.sql`; a nuvem nunca é semeada por aqui). Ele cria um tenant utilizável —
+`/book/salao-do-seed`, dois serviços ativos de durações diferentes e horários de segunda a
+sábado — para que verificação de tela do booking público não dependa de recadastrar nada à
+mão. Sem agendamentos e sem clientes de propósito: data fixa apodrece, data relativa faz o
+seed produzir estado diferente a cada execução.
+
+O `tenant_id` é o `org_id` do Clerk e não é gerável por SQL, então o seed usa um literal
+sintético (`org_seed_local`) e **avisa no `RAISE NOTICE`** que, com ele, o **dashboard** não
+enxerga o tenant (o RLS compara com o claim `org_id` do JWT) — o booking público funciona
+assim mesmo, porque a leitura pública roda com cliente privilegiado resolvido pelo slug.
+Para o tenant nascer com o id real, rode **uma vez** no banco local:
+
+```sql
+ALTER ROLE postgres SET vamoagendar.org_id = 'org_...';
+```
+
+O ajuste mora em `pg_db_role_setting` com escopo de cluster e **sobrevive ao `db reset`**.
+Corrigir o `tenant_id` depois não é opção: ele é PK referenciada por FKs sem
+`ON UPDATE CASCADE`, então o `UPDATE` falha. Ou o id nasce certo, ou não nasce.
+
 ### Migrations
 
 Com banco local disponível, `supabase db diff` deixa de exigir shadow database
