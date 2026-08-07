@@ -148,20 +148,39 @@ result: [pending]
 
 expected: `curl -H 'X-Forwarded-For: 1.2.3.4' -H 'X-Real-IP: 5.6.7.8'` contra o deploy, comparando o `chaveHash` do Sentry Log com o hash de cada candidato. O app deve enxergar `5.6.7.8`. E a Issue `ratelimit:ip_indeterminavel` **não** deve aparecer em produção.
 why_human: Item (d), aberto pelo CR-01 do code review. A ordem `x-real-ip` → última entrada do XFF é estritamente mais difícil de forjar que a anterior, mas continua sendo **inferência**: a fonte da garantia era fórum oficial, não doc formal, e duas das quatro camadas dependem dela.
-result: [pending]
+result: deferred
+deferred_at: 2026-08-07
+deferred_to: Phase 11 (Observabilidade e go-live)
+deferral_note: |
+  Mede o comportamento do proxy da Railway — inalcançável sem deploy em produção.
+  Registrado com dono (owner), gatilho (primeiro deploy) e detector (a Issue
+  `ratelimit:ip_indeterminavel` aparecendo em produção) em `docs/PENDENCIAS.md`
+  §"Diferidos para o go-live" e nas notas de execução da Phase 11 no ROADMAP.
+  Risco aceito: até a medição, a camada de IP pode agrupar visitantes distintos
+  num balde só ou ser forjável. O fail-open do CR-04 garante que o erro degrada
+  para "não protege", nunca para "bloqueia cliente legítimo".
 
 ### 7. Calibração dos limites com dado real
 
 expected: Uma sessão legítima de escolha de horário chega perto de 60 consultas/min? Um salão movimentado divulgando o link estoura 10 escritas/10 min no mesmo IP? Folga confortável nos dois — se chegar perto, o número **sobe**.
 why_human: O erro é assimétrico: folgado demais reduz proteção e é reversível; apertado demais adiciona fricção a cliente real, e esse dano é irreversível (ninguém volta para reclamar).
-result: [pending]
+result: deferred
+deferred_at: 2026-08-07
+deferred_to: Phase 11 (Observabilidade e go-live) / Phase 12
+deferral_note: |
+  Precisa de tráfego real — não existe sessão legítima nem salão movimentado para medir
+  antes da abertura ao público. Mesmo registro do teste 6. Junto dele foi diferido o
+  acompanhamento da taxa de `booking_honeypot`, que é o detector do pior desfecho da
+  fase (autofill preenchendo o campo de uma pessoa real, que vê confirmação de um
+  agendamento que não existe e não reclama, porque a tela confirmou).
 
 ## Summary
 
 total: 7
 passed: 3
 issues: 0
-pending: 4
+pending: 2
+deferred: 2
 skipped: 0
 blocked: 0
 

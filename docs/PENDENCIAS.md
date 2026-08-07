@@ -1018,40 +1018,63 @@ alcançável por comando.
 
 **(a) Prova comportamental do SC1 — script real contra Redis real**
 
-- [ ] Com as credenciais de **dev** do Upstash no ambiente, subir `next start` e rodar um
-      script repetindo POSTs de criação de agendamento contra o mesmo slug. O comportamento
-      esperado é: os primeiros criam, e a partir do teto a resposta vira o discriminante
-      `muitas_tentativas` — **sem** criar mais agendamentos. Toca serviço externo, portanto
-      fica **fora** do `pnpm test` hermético (mesma regra do `test:integracao`, opt-in).
-      A suíte prova a *decisão* sobre a resposta do fornecedor; ela nunca prova a resposta do
-      fornecedor.
-- [ ] **Calibração com dado real** (o erro aqui é assimétrico: folgado demais reduz proteção
-      e é reversível; apertado demais adiciona fricção a cliente real e o dano é
-      irreversível): conferir se uma sessão legítima de escolha de horário chega perto de 60
-      consultas de grade por minuto, e se um salão movimentado divulgando o link estoura
-      10 escritas/10 min no mesmo IP. Se chegar perto, o número **sobe**.
+- [x] **FECHADO em 2026-07-27** por `scripts/verificar-rate-limit-escrita.sh` (commit
+      `a8b267f`), automatizado e reexecutável, contra `next start` de produção e Upstash
+      Redis **real**: 7 vereditos, 0 reprovações — as 10 sondas dentro do teto atravessaram,
+      as 2 acima viraram `muitas_tentativas`, um segundo IP passou com o vizinho bloqueado,
+      e nenhum corpo devolveu IP cru, `org_`, `tenant_id` nem `PGRST`. Nenhum agendamento
+      criado (as sondas usam slug inexistente e morrem *depois* do rate limit — a ordem das
+      guardas é o que torna isso possível).
+      **Contrafactual:** com `SABOTAR_FORNECEDOR=1` (Upstash apontado para host inexistente)
+      o veredito BLOQUEIO **reprovou** e o modo invertido saiu 0 — o harness nasceu depois do
+      código, então o verde sozinho não valeria. De quebra provou o fail-open do D-02/D-03
+      contra fornecedor de verdade fora do ar, não contra mock.
+      **Achado não planejado:** a primeira tentativa de contrafactual usava
+      `UPSTASH_REDIS_REST_URL=` vazia e foi impedida pelo próprio produto — o `next start`
+      morreu no boot nomeando a variável. É evidência viva de que o fail-fast do D-04
+      funciona, e o motivo de o contrafactual ter mudado de eixo.
+- [ ] **Calibração com dado real** — 🔁 **DIFERIDO para o go-live (Phase 11)**, ver
+      "Diferidos para o go-live" no fim desta seção. Não é alcançável sem tráfego real.
 
 **(b) Verificação de painel — os bloqueios aparecendo onde o owner olha**
 
-- [ ] **Sentry Log** `ratelimit.bloqueio` chegando, com `camada` e `chaveHash` — e **sem** IP
-      ou telefone crus em lugar nenhum do evento. Sentry Logs é produto separado de Issues:
-      DSN válido não garante log ingerido.
-- [ ] **PostHog:** eventos `booking_rate_limited` e `booking_honeypot` no Activity.
+- [~] **Sentry Log** `ratelimit.bloqueio` — **metade fechada em 2026-07-27**: os eventos
+      CHEGARAM (medidos via MCP do Sentry, `warn`, `codigo=ratelimit.bloqueio` às 00:36:36Z e
+      00:16:37Z, mais `codigo=honeypot.captura` às 00:41:15Z). O que **continua aberto** é o
+      conteúdo: confirmar no painel que `camada` e `chaveHash` estão presentes e que não há IP
+      nem telefone cru em atributo nenhum. O MCP não lê atributos customizados (limitação da
+      ferramenta, não ausência do dado), e esta é exatamente a trava que o incidente 260724
+      mostrou não fechar por teste.
+- [x] **PostHog — FECHADO em 2026-07-27.** `booking_rate_limited` (camada `escrita_ip`, ×2 por
+      execução do harness — correspondência 1:1 com os bloqueios provocados) e
+      `booking_honeypot` observados no Activity, todos com `$is_server: True`. **Anti-PII
+      verificado no schema, não por amostra:** as únicas propriedades de `booking_rate_limited`
+      são `camada` mais as automáticas do SDK (`$lib`, `$is_server`, `$geoip_disable`,
+      `$virt_*`) — não existe propriedade de IP, telefone ou `org_id`, nem vazia.
 - [ ] **Sentry Issue** `ratelimit:teto_tenant_atingido` no estouro do teto por tenant — é o
       único alarme acionável da fase, o que existe para o cenário "ataque às 3h da manhã", e
       **conferir que ela carrega só `tenantHash`**, nunca o `org_id`.
+      **Não exercitada até aqui:** as sondas do harness usam slug inexistente e morrem antes
+      das camadas de telefone e de tenant. Exercitá-la exige slug real e ~30 tentativas, o que
+      cria agendamentos no banco — fica para tráfego real ou para uma sessão em que se aceite
+      o resíduo.
+
+  **Prova adicional, do honeypot, obtida no banco e não por asserção de teste:** a sonda
+  recebeu `{"ok":true,"agendamento":{"id":"f8f4dd30-…","status":"confirmado"}}` e a consulta
+  direta ao Postgres logo depois devolveu 0 para o id sintético, 0 agendamentos criados nas
+  últimas 3h, 0 clientes das sondas por nome e por telefone, e os 3 agendamentos
+  pré-existentes intocados. O sucesso falso é falso de verdade.
 
 **(c) O campo do honeypot em navegador real** (herdado do plano 03-05 — a suíte prova a
 FORMA dos atributos, nunca o comportamento de um motor de layout ou de uma heurística de
 autofill proprietária)
 
-- [ ] Abrir `/book/<slug>` no **celular e no desktop**, chegar na etapa de contato e conferir
-      que nada se deslocou e que não há scroll horizontal.
-- [ ] Percorrer a etapa **só pelo teclado**: o foco vai de "Seu nome" para "WhatsApp" e daí
-      para o CTA, sem parada intermediária.
-- [ ] Salvar um endereço no autofill do navegador e conferir que o campo continua **vazio**
-      ao autopreencher o formulário.
-- [ ] **Depois de abrir ao público, acompanhar a taxa de `booking_honeypot`.** É o detector do
+- [x] **FECHADO em 2026-07-27** (commit `8bd5183`, conferido pelo owner em navegador real):
+      `/book/<slug>` no celular e no desktop sem deslocamento nem scroll horizontal; foco
+      indo de "Seu nome" para "WhatsApp" e daí para o CTA, sem parada intermediária; e o
+      campo-armadilha continuando **vazio** com endereço salvo no autofill do navegador.
+- [ ] **Depois de abrir ao público, acompanhar a taxa de `booking_honeypot`.**
+      🔁 **DIFERIDO para o go-live (Phase 11)** — depende de tráfego real. É o detector do
       pior desfecho nomeado pelo owner: autofill preenchendo o campo de uma **pessoa real**,
       que então vê a confirmação de um agendamento que não existe. Ninguém vai reclamar — a
       tela confirmou. Taxa incompatível com tráfego de bot esperado significa que o campo
@@ -1059,6 +1082,7 @@ autofill proprietária)
 
 **(d) Qual header de IP a Railway realmente entrega — medição, não crença**
 (aberto pelo CR-01 da revisão de código da fase, 2026-07-27)
+🔁 **DIFERIDO para o go-live (Phase 11)** — ver "Diferidos para o go-live" abaixo.
 
 A extração de IP passou a preferir `x-real-ip` e, no fallback, a entrada **mais à direita**
 de `x-forwarded-for` — nunca a primeira, que é texto do cliente quando o proxy apenas anexa
@@ -1075,6 +1099,29 @@ formal, e duas das quatro camadas dependem dela.
 - [ ] Conferir que a Issue `ratelimit:ip_indeterminavel` **não** aparece em produção. Se
       aparecer, as camadas por IP estão em PASSE (fail-open deliberado do CR-04) e o
       problema é de infraestrutura, não de tráfego — o header sumiu.
+
+**Diferidos para o go-live (Phase 11) — decisão do owner em 2026-08-07**
+
+Três itens desta fase são estruturalmente inalcançáveis antes de existir deploy em produção
+e tráfego real. Travar a Phase 03 por eles pararia o roadmap inteiro esperando algo que não
+depende de código, então saem daqui com dono, gatilho e detector escritos — não somem.
+
+| Item | Por que não fecha agora | Dono | Gatilho |
+|---|---|---|---|
+| **(d)** Qual header de IP a Railway entrega | Mede o comportamento do proxy da plataforma; exige o deploy de pé | Owner | Primeiro deploy em produção |
+| Calibração dos limites (item de **(a)**) | Precisa de sessão legítima e de salão movimentado de verdade | Owner | Phase 12 (primeiros profissionais) ou antes, se o volume aparecer |
+| Taxa de `booking_honeypot` (item de **(c)**) | Só existe com tráfego real; é o detector do pior desfecho da fase | Owner | Abertura ao público |
+
+**Detector de que o deferimento cobrou o preço:** a Issue `ratelimit:ip_indeterminavel`
+aparecendo em produção significa que (d) errou e as camadas por IP estão em passe. Taxa de
+`booking_honeypot` incompatível com o tráfego de bot esperado significa que o campo pegou
+pessoa real — e ninguém vai reclamar, porque a tela confirmou.
+
+**Risco aceito ao diferir:** enquanto (d) não for medido, a camada de IP pode estar
+agrupando visitantes distintos num balde só (se o XFF chegar com hop extra do edge) ou
+sendo forjável (se a Railway não puser `x-real-ip`). O fail-open do CR-04 garante que o
+erro degrada para "não protege", nunca para "bloqueia cliente legítimo" — que é o lado
+certo do erro assimétrico da fase.
 
 ### 🔑 Rotação das signing keys do QStash — ação do owner, prazo 2026-08-05
 

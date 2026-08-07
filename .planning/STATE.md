@@ -5,9 +5,9 @@ milestone_name: Lançamento público
 current_phase: 03
 current_phase_name: anti-abuso-no-booking-p-blico
 status: awaiting_uat
-stopped_at: "Phase 03 executada (6/6), revisada (4 CRITICAL + 9 WARNING corrigidos) e verificada — veredito human_needed, 7 itens em 03-UAT.md. NÃO marcada completa."
-last_updated: "2026-07-27T19:30:29.997Z"
-last_activity: 2026-07-27
+stopped_at: "Phase 03 executada (6/6), revisada e verificada. UAT: 3 pass, 2 DIFERIDOS para a Phase 11 (testes 6 e 7 — header de IP da Railway e calibração dos limites; exigem deploy e tráfego real, registrados com dono/gatilho/detector em docs/PENDENCIAS.md §'Diferidos para o go-live' e nas notas da Phase 11 do ROADMAP). Faltam 2, ambos do owner e alcançáveis hoje: teste 4 (abrir um Sentry Log ratelimit.bloqueio no painel e confirmar `camada`+`chaveHash` presentes e nenhum IP/telefone cru — a metade 'chegou?' já foi medida via MCP) e teste 5 (ver a copy do bloqueio de leitura em navegador real). NÃO marcada completa."
+last_updated: "2026-08-07T00:00:00.000Z"
+last_activity: 2026-08-07
 progress:
   total_phases: 3
   completed_phases: 3
