@@ -121,13 +121,69 @@
 #        bash scripts/verificar-rate-limit-escrita.sh                        # exige verde
 #        SABOTAR_FORNECEDOR=1 bash scripts/verificar-rate-limit-escrita.sh   # exige vermelho
 #
+# 12) MODO ALVO EXTERNO (`ALVO_EXTERNO=<url>`) — o servidor é DE OUTRA PESSOA.
+#    Regra que domina todas as outras deste modo: **sem `ALVO_EXTERNO`, nada
+#    muda** — mesmos vereditos, mesma ordem, mesmos códigos de saída. Todo
+#    comportamento novo entra atrás de `MODO_EXTERNO`.
+#
+#    Nesse modo o harness NÃO roda `pnpm build`, NÃO sobe `next start`, NÃO
+#    confere porta ocupada e NÃO monta complemento de env (não há processo nosso
+#    para herdá-lo). `PID` permanece vazio e `encerrar_servidor` retorna cedo:
+#    matar processo de terceiro seria transformar um instrumento de medição em
+#    incidente. `PORTA` deixa de significar coisa alguma e some do cabeçalho.
+#
+#    A checagem de `UPSTASH_REDIS_REST_URL`/`_TOKEN` em `.env.local` também vale
+#    só no modo local — é ela que impede o harness de medir o no-op do NOSSO
+#    processo. O alvo externo tem o ambiente dele, e abortar por causa do nosso
+#    seria erro de preparação inventado. A consequência honesta: se o ALVO
+#    estiver em no-op, o veredito BLOQUEIO reprova — que é a leitura correta.
+#
+# 13) PORTÃO DE CUSTO (`CONFIRMO_CUSTO_NO_ALVO=1`). Obrigatório em modo externo.
+#    Sem ele o harness aborta (código 2) ANTES de disparar uma única sonda.
+#    Motivo: contra alvo externo as sondas consomem orçamento de rate limit DE
+#    VERDADE e escrevem contadores no Redis dele; contra produção, deixam o IP
+#    que rodou sem poder criar agendamento pela duração da janela. O que NÃO
+#    acontece continua valendo (nota 5): as sondas morrem em `slug_invalido`,
+#    depois do rate limit e antes da resolução do slug — nenhum agendamento e
+#    nenhum cliente são gravados.
+#
+# 14) `SABOTAR_FORNECEDOR=1` + `ALVO_EXTERNO` é INCOERENTE e aborta (código 2). O
+#    contrafactual funciona injetando env no processo que o harness sobe, e em
+#    modo externo esse processo não existe. Fingir que funcionaria produziria um
+#    "contrafactual" que na verdade mediu o alvo intacto — o pior desfecho
+#    possível para um controle.
+#
+# 15) ⚠️ CONTROLE_DE_ID — a armadilha central do modo externo. O id da Server
+#    Action sai do manifesto do build LOCAL; contra o alvo remoto ele pode
+#    simplesmente não existir. Id errado não dá erro óbvio: dá uma resposta
+#    DIFERENTE, que o harness classificaria como veredito. Por isso, antes de
+#    qualquer sonda de contagem, vai uma SONDA DE CONTROLE: mesmo corpo, com
+#    `clienteNome` vazio, exigindo HTTP 200 e o discriminante
+#    `campos_obrigatorios` no corpo.
+#
+#    Por que essa sonda especificamente: na ordem das guardas (nota 5) o ramo de
+#    campo obrigatório retorna ANTES do rate limit. A sonda custa ZERO token —
+#    prova que o id resolve para aquela action no alvo sem consumir orçamento
+#    nenhum. E prova que resolve para *aquela* action, não outra: nenhuma outra
+#    devolve esse discriminante.
+#
+#    Em modo externo o harness não constrói. Manifesto ausente ⇒ aborta mandando
+#    rodar `pnpm build` **no commit que está deployado**. Construir sozinho aqui
+#    seria pior que não construir: geraria um id a partir da árvore de trabalho e
+#    daria a ilusão de correspondência com o alvo — e correspondência é
+#    exatamente o que o CONTROLE_DE_ID existe para medir.
+#
 # ---------------------------------------------------------------------------
 # USO
 # ---------------------------------------------------------------------------
 #   bash scripts/verificar-rate-limit-escrita.sh
 #   PULAR_BUILD=1 bash scripts/verificar-rate-limit-escrita.sh   # reusa .next/
 #   PORTA_RATELIMIT=4003 bash scripts/verificar-rate-limit-escrita.sh
-#   SABOTAR_NOOP=1 bash scripts/verificar-rate-limit-escrita.sh   # contrafactual
+#   SABOTAR_FORNECEDOR=1 bash scripts/verificar-rate-limit-escrita.sh  # contrafactual
+#
+#   # Alvo externo (servidor que este script não constrói, não sobe e não mata):
+#   ALVO_EXTERNO=https://exemplo.com CONFIRMO_CUSTO_NO_ALVO=1 \
+#       bash scripts/verificar-rate-limit-escrita.sh
 #
 # Seis vereditos:
 #   PREPARO            id de `criarAgendamentoPublico` derivado do manifesto E as
@@ -151,7 +207,18 @@
 set -uo pipefail
 
 PORTA="${PORTA_RATELIMIT:-3993}"
+
+# Ver nota 12: o alvo externo é um servidor de outra pessoa. `MODO_EXTERNO` é o
+# único interruptor deste modo — tudo o que muda está guardado por ele, para que
+# a execução padrão continue byte a byte a mesma.
+MODO_EXTERNO=0
 BASE_URL="http://127.0.0.1:$PORTA"
+if [ -n "${ALVO_EXTERNO:-}" ]; then
+    MODO_EXTERNO=1
+    # Barra final removida: `$BASE_URL$ROTA_SONDA` produziria `//book/...`.
+    BASE_URL="${ALVO_EXTERNO%/}"
+fi
+
 LIMITE_CONTROLE=30
 MANIFESTO='.next/server/server-reference-manifest.json'
 MODULO_ACTION='src/app/actions/public-booking.ts'
@@ -181,6 +248,14 @@ corpo_sonda() {
         "$SLUG_INEXISTENTE"
 }
 
+# Ver nota 15: MESMO corpo, com `clienteNome` vazio. `campos_obrigatorios`
+# retorna ANTES do rate limit, então esta sonda custa ZERO token — é o que
+# permite conferir a correspondência do id sem consumir orçamento do alvo.
+corpo_sonda_controle() {
+    printf '[{"slug":"%s","servicoId":"00000000-0000-0000-0000-000000000000","dataHora":"2030-01-01T13:00:00.000Z","clienteNome":"","clienteTelefone":"11999998888"}]' \
+        "$SLUG_INEXISTENTE"
+}
+
 # Complemento para as obrigatórias que faltarem em dev — e SÓ para as que
 # faltarem. Nenhum valor aqui é credencial.
 #
@@ -195,19 +270,26 @@ corpo_sonda() {
 #
 # Por isso o complemento é condicional: só entra o que realmente falta no
 # ambiente. Ver nota 1 — nenhum VALOR é impresso, aqui ou em qualquer ramo.
-COMPLEMENTO_DEV=("APP_URL=http://127.0.0.1:$PORTA")
+#
+# ⚠️ SÓ FAZ SENTIDO NO MODO LOCAL (nota 12): complemento de env é injetado no
+# processo que ESTE script sobe. Em modo externo não existe processo nosso, e o
+# alvo carrega o ambiente dele — as duas listas ficam vazias e nada é montado.
+COMPLEMENTO_DEV=()
 COMPLEMENTADAS=()
-for NOME_VAR in ANALYTICS_TENANT_SALT NEXT_PUBLIC_SENTRY_DSN RESEND_API_KEY; do
-    if grep -qE "^${NOME_VAR}=." .env.local 2>/dev/null; then
-        continue
-    fi
-    case "$NOME_VAR" in
-        ANALYTICS_TENANT_SALT) COMPLEMENTO_DEV+=('ANALYTICS_TENANT_SALT=harness-sal-de-teste') ;;
-        NEXT_PUBLIC_SENTRY_DSN) COMPLEMENTO_DEV+=('NEXT_PUBLIC_SENTRY_DSN=https://harness@localhost.invalid/1') ;;
-        RESEND_API_KEY) COMPLEMENTO_DEV+=('RESEND_API_KEY=harness-chave-invalida') ;;
-    esac
-    COMPLEMENTADAS+=("$NOME_VAR")
-done
+if [ "$MODO_EXTERNO" -eq 0 ]; then
+    COMPLEMENTO_DEV=("APP_URL=http://127.0.0.1:$PORTA")
+    for NOME_VAR in ANALYTICS_TENANT_SALT NEXT_PUBLIC_SENTRY_DSN RESEND_API_KEY; do
+        if grep -qE "^${NOME_VAR}=." .env.local 2>/dev/null; then
+            continue
+        fi
+        case "$NOME_VAR" in
+            ANALYTICS_TENANT_SALT) COMPLEMENTO_DEV+=('ANALYTICS_TENANT_SALT=harness-sal-de-teste') ;;
+            NEXT_PUBLIC_SENTRY_DSN) COMPLEMENTO_DEV+=('NEXT_PUBLIC_SENTRY_DSN=https://harness@localhost.invalid/1') ;;
+            RESEND_API_KEY) COMPLEMENTO_DEV+=('RESEND_API_KEY=harness-chave-invalida') ;;
+        esac
+        COMPLEMENTADAS+=("$NOME_VAR")
+    done
+fi
 
 # Ver nota 11. Variável de ambiente vence o `.env.local` no Next. A URL tem forma
 # válida (satisfaz o fail-fast do D-04) e aponta para host inexistente: o cliente
@@ -222,6 +304,9 @@ DIR_TEMP="$(mktemp -d)"
 PID=''
 
 encerrar_servidor() {
+    # Ver nota 12: em modo externo `PID` NUNCA é atribuído, então esta função é
+    # inerte e o `trap`/`limpar` não toca em processo nenhum. É requisito, não
+    # detalhe — o servidor medido é de outra pessoa.
     [ -z "$PID" ] && return 0
     kill -- -"$PID" 2>/dev/null
     local i=0
@@ -289,19 +374,51 @@ codigo_http() {
 if [ "$MODO_CONTRAFACTUAL" -eq 1 ]; then
     echo 'CONTRAFACTUAL (SABOTAR_FORNECEDOR=1) — Upstash apontado para host inexistente'
     echo 'Este modo EXIGE que o veredito BLOQUEIO reprove. Verde aqui significa instrumento cego.'
+elif [ "$MODO_EXTERNO" -eq 1 ]; then
+    echo '################################################################'
+    echo '#  ALVO EXTERNO — O SERVIDOR NÃO É GERENCIADO POR ESTE SCRIPT  #'
+    echo '################################################################'
+    echo "  Medindo: $BASE_URL"
+    echo '  Este script NÃO constrói, NÃO sobe e NÃO encerra esse servidor.'
+    echo '  As sondas consomem orçamento de rate limit REAL do alvo.'
 else
     echo 'Verificação do rate limit de ESCRITA por IP contra Upstash Redis real'
 fi
-echo "Action alvo: $NOME_ACTION_ESCRITA   |   Porta: $PORTA   |   Teto: $TETO_ESCRITA_IP/10min"
+if [ "$MODO_EXTERNO" -eq 1 ]; then
+    # `PORTA` não significa nada aqui e sairia do cabeçalho como ruído.
+    echo "Action alvo: $NOME_ACTION_ESCRITA   |   Teto esperado: $TETO_ESCRITA_IP/10min"
+else
+    echo "Action alvo: $NOME_ACTION_ESCRITA   |   Porta: $PORTA   |   Teto: $TETO_ESCRITA_IP/10min"
+fi
 echo "IPs de sonda (RFC 5737, não roteáveis): $IP_SONDA e $IP_VIZINHO"
 echo
 
 command -v pnpm >/dev/null 2>&1 || abortar 'pnpm não encontrado no PATH.'
 [ -f package.json ] || abortar 'rode a partir da raiz do projeto (package.json não encontrado).'
-porta_ocupada && abortar "a porta $PORTA já está ocupada — encerre o processo antes de medir."
+
+# --- Portões do modo externo (ver notas 13 e 14) ------------------------------
+# Os dois abortam ANTES de qualquer sonda — inclusive antes da sonda de controle,
+# que é gratuita em token mas ainda assim é tráfego contra servidor de terceiro.
+if [ "$MODO_EXTERNO" -eq 1 ]; then
+    if [ "$MODO_CONTRAFACTUAL" -eq 1 ]; then
+        abortar "SABOTAR_FORNECEDOR=1 é INCOERENTE com ALVO_EXTERNO. O contrafactual sabota o processo que ESTE script sobe, e em modo externo esse processo não existe: o harness mediria o alvo INTACTO e chamaria o resultado de contrafactual — o pior desfecho possível para um controle (nota 14). Rode o contrafactual em modo local."
+    fi
+
+    if [ "${CONFIRMO_CUSTO_NO_ALVO:-}" != '1' ]; then
+        abortar "modo externo exige CONFIRMO_CUSTO_NO_ALVO=1 (nota 13). O QUE ISSO CUSTA em $BASE_URL: as sondas consomem orçamento de rate limit de verdade e escrevem contadores no Redis do alvo; se o alvo for produção, o IP que rodar este script pode ficar sem poder criar agendamento pela duração da janela ($TETO_ESCRITA_IP/10min). O QUE NÃO ACONTECE: as sondas usam slug inexistente com os demais campos válidos e morrem em \`slug_invalido\`, depois do rate limit e antes da resolução do slug — nenhum agendamento e nenhum cliente são gravados (nota 5). Nenhuma sonda foi disparada."
+    fi
+else
+    porta_ocupada && abortar "a porta $PORTA já está ocupada — encerre o processo antes de medir."
+fi
 
 # --- Build (preparação, não é veredito) --------------------------------------
-if [ "${PULAR_BUILD:-}" = '1' ]; then
+if [ "$MODO_EXTERNO" -eq 1 ]; then
+    # Ver nota 15: construir aqui geraria um id a partir da árvore de trabalho e
+    # daria a ilusão de correspondência com o alvo. Não construir e ABORTAR é o
+    # único desfecho que preserva o significado do CONTROLE_DE_ID.
+    [ -f "$MANIFESTO" ] || abortar "modo externo não constrói, e $MANIFESTO não existe. Rode \`pnpm build\` NO COMMIT QUE ESTÁ DEPLOYADO no alvo e tente de novo — o id da Server Action sai desse manifesto e só vale se corresponder ao build remoto."
+    echo '  … build NÃO executado (modo externo) — o manifesto local é o do commit que você construiu'
+elif [ "${PULAR_BUILD:-}" = '1' ]; then
     [ -f .next/BUILD_ID ] || abortar 'PULAR_BUILD=1 mas .next/BUILD_ID não existe — rode uma vez sem pular.'
     echo '  … build pulado por PULAR_BUILD=1 (.next/BUILD_ID presente)'
 else
@@ -342,34 +459,51 @@ fi
 # elas o módulo opera em no-op e TODAS as sondas passariam: o harness reportaria
 # "nada foi barrado" sem distinguir isso de "o limite não existe". Ver nota 1:
 # só os NOMES aparecem, jamais os valores.
-FALTANDO=()
-if [ -f .env.local ]; then
-    for NOME_VAR in UPSTASH_REDIS_REST_URL UPSTASH_REDIS_REST_TOKEN; do
-        grep -qE "^${NOME_VAR}=." .env.local 2>/dev/null || FALTANDO+=("$NOME_VAR")
-    done
-else
-    FALTANDO=(UPSTASH_REDIS_REST_URL UPSTASH_REDIS_REST_TOKEN '(.env.local ausente)')
-fi
-if [ "${#FALTANDO[@]}" -gt 0 ]; then
-    abortar "credenciais do Upstash ausentes em .env.local: ${FALTANDO[*]}. Sem elas o rate limit opera em NO-OP e este harness mediria o nada — abortar é o único desfecho honesto."
+#
+# ⚠️ Só vale no modo LOCAL (nota 12). Em modo externo o ambiente que importa é o
+# do ALVO, e abortar por causa do nosso `.env.local` seria erro de preparação
+# inventado. A consequência honesta: se o alvo estiver em no-op, o veredito
+# BLOQUEIO reprova — e reprovar é a leitura correta desse estado.
+if [ "$MODO_EXTERNO" -eq 0 ]; then
+    FALTANDO=()
+    if [ -f .env.local ]; then
+        for NOME_VAR in UPSTASH_REDIS_REST_URL UPSTASH_REDIS_REST_TOKEN; do
+            grep -qE "^${NOME_VAR}=." .env.local 2>/dev/null || FALTANDO+=("$NOME_VAR")
+        done
+    else
+        FALTANDO=(UPSTASH_REDIS_REST_URL UPSTASH_REDIS_REST_TOKEN '(.env.local ausente)')
+    fi
+    if [ "${#FALTANDO[@]}" -gt 0 ]; then
+        abortar "credenciais do Upstash ausentes em .env.local: ${FALTANDO[*]}. Sem elas o rate limit opera em NO-OP e este harness mediria o nada — abortar é o único desfecho honesto."
+    fi
 fi
 
-if [ "${#COMPLEMENTADAS[@]}" -eq 0 ]; then
+if [ "$MODO_EXTERNO" -eq 1 ]; then
+    NOTA_COMPLEMENTO='ambiente do ALVO (nenhuma variável nossa é injetada — não há processo nosso)'
+elif [ "${#COMPLEMENTADAS[@]}" -eq 0 ]; then
     NOTA_COMPLEMENTO='nenhuma variável precisou de complemento falso — a telemetria deste run vai para os painéis reais'
 else
     NOTA_COMPLEMENTO="complementadas com valor falso por ausência em .env.local: ${COMPLEMENTADAS[*]}"
 fi
 
-registrar APROVADO PREPARO \
-    "id de $NOME_ACTION_ESCRITA (prefixo ${ID_ACTION_ESCRITA:0:8}…) derivado de $MANIFESTO; UPSTASH_REDIS_REST_URL e UPSTASH_REDIS_REST_TOKEN presentes; $NOTA_COMPLEMENTO"
+if [ "$MODO_EXTERNO" -eq 1 ]; then
+    registrar APROVADO PREPARO \
+        "id de $NOME_ACTION_ESCRITA (prefixo ${ID_ACTION_ESCRITA:0:8}…) derivado do manifesto LOCAL — a correspondência com o alvo é medida no CONTROLE_DE_ID, não assumida; $NOTA_COMPLEMENTO"
+else
+    registrar APROVADO PREPARO \
+        "id de $NOME_ACTION_ESCRITA (prefixo ${ID_ACTION_ESCRITA:0:8}…) derivado de $MANIFESTO; UPSTASH_REDIS_REST_URL e UPSTASH_REDIS_REST_TOKEN presentes; $NOTA_COMPLEMENTO"
+fi
 
 # --- Veredito 2: CONTROLE ----------------------------------------------------
-iniciar_servidor ratelimit "${COMPLEMENTO_DEV[@]}"
+# Em modo externo o servidor já está no ar e não é nosso: `iniciar_servidor` não
+# é chamado, `PID` fica vazio, e o CONTROLE vira só a checagem de que o alvo
+# responde 200 na raiz.
+[ "$MODO_EXTERNO" -eq 0 ] && iniciar_servidor ratelimit ${COMPLEMENTO_DEV[@]+"${COMPLEMENTO_DEV[@]}"}
 
 CODIGO_RAIZ=000
 i=0
 while [ "$i" -lt $((LIMITE_CONTROLE * 2)) ]; do
-    if ! kill -0 "$PID" 2>/dev/null; then
+    if [ "$MODO_EXTERNO" -eq 0 ] && ! kill -0 "$PID" 2>/dev/null; then
         CODIGO_RAIZ='processo-morreu'
         break
     fi
@@ -379,12 +513,26 @@ while [ "$i" -lt $((LIMITE_CONTROLE * 2)) ]; do
     i=$((i + 1))
 done
 
-if [ "$CODIGO_RAIZ" = '200' ] && kill -0 "$PID" 2>/dev/null; then
-    registrar APROVADO CONTROLE 'GET / devolveu 200 e o processo seguiu vivo'
+PROCESSO_VIVO=0
+if [ "$MODO_EXTERNO" -eq 1 ] || kill -0 "$PID" 2>/dev/null; then
+    PROCESSO_VIVO=1
+fi
+
+if [ "$CODIGO_RAIZ" = '200' ] && [ "$PROCESSO_VIVO" -eq 1 ]; then
+    if [ "$MODO_EXTERNO" -eq 1 ]; then
+        registrar APROVADO CONTROLE "GET $BASE_URL/ devolveu 200 — o alvo externo está no ar"
+    else
+        registrar APROVADO CONTROLE 'GET / devolveu 200 e o processo seguiu vivo'
+    fi
 else
-    registrar REPROVADO CONTROLE \
-        "GET / devolveu '$CODIGO_RAIZ' (exigido 200 com o processo vivo) — o build pode estar quebrado"
-    tail -n 12 "$DIR_TEMP/ratelimit.err" >&2
+    if [ "$MODO_EXTERNO" -eq 1 ]; then
+        registrar REPROVADO CONTROLE \
+            "GET $BASE_URL/ devolveu '$CODIGO_RAIZ' (exigido 200) — o alvo externo não está respondendo"
+    else
+        registrar REPROVADO CONTROLE \
+            "GET / devolveu '$CODIGO_RAIZ' (exigido 200 com o processo vivo) — o build pode estar quebrado"
+        tail -n 12 "$DIR_TEMP/ratelimit.err" >&2
+    fi
     echo
     echo "Sem servidor saudável não há o que medir — os vereditos seguintes seriam ruído."
     exit 1
@@ -415,6 +563,33 @@ classificar() {
         *) printf 'INDEFINIDO' ;;
     esac
 }
+
+# --- Aborto CONTROLE_DE_ID (ver nota 15) -------------------------------------
+# NÃO é veredito, é preparação: um id que o alvo não tem produziria uma resposta
+# diferente, que os vereditos seguintes classificariam como comportamento do
+# rate limit. Nunca produzir veredito sobre um id que o alvo não tem.
+if [ "$MODO_EXTERNO" -eq 1 ]; then
+    ARQ_CONTROLE_ID="$DIR_TEMP/controle-id.out"
+    CODIGO_CONTROLE_ID=$(curl -s -o "$ARQ_CONTROLE_ID" -w '%{http_code}' --max-time 15 -X POST \
+        -H "Next-Action: $ID_ACTION_ESCRITA" \
+        -H 'Content-Type: text/plain;charset=UTF-8' \
+        -H "X-Real-IP: $IP_SONDA" \
+        --data-raw "$(corpo_sonda_controle)" \
+        "$BASE_URL$ROTA_SONDA" 2>/dev/null)
+    CORPO_CONTROLE_ID=$(cat "$ARQ_CONTROLE_ID" 2>/dev/null)
+
+    CONTROLE_ID_OK=0
+    case "$CORPO_CONTROLE_ID" in *campos_obrigatorios*) CONTROLE_ID_OK=1 ;; esac
+
+    if [ "$CODIGO_CONTROLE_ID" != '200' ] || [ "$CONTROLE_ID_OK" -eq 0 ]; then
+        abortar "CONTROLE_DE_ID falhou: a sonda de controle devolveu HTTP $CODIGO_CONTROLE_ID e o corpo NÃO trouxe \`campos_obrigatorios\`. Corpo: $(printf '%s' "$CORPO_CONTROLE_ID" | head -c 300 | tr '\n' '|')
+  Hipótese mais provável: a árvore de trabalho local NÃO é o commit deployado em $BASE_URL, então o id derivado do manifesto local não existe no alvo. Rode \`pnpm build\` no commit que está deployado.
+  Segunda hipótese, para 403/500 em vez de um corpo de action: a proteção de origem das Server Actions do Next barrou a requisição (Origin/Host divergentes) — suspeite disso ANTES de suspeitar do id.
+  Nenhuma sonda de contagem foi disparada: este ramo do fluxo morre em \`campos_obrigatorios\`, antes do rate limit, e portanto não consumiu token nenhum."
+    fi
+
+    echo "  … CONTROLE_DE_ID OK: o alvo resolveu o id para \`$NOME_ACTION_ESCRITA\` (devolveu \`campos_obrigatorios\`, sem gastar token)"
+fi
 
 # --- Veredito 3: JANELA_LIMPA (ver nota 8) -----------------------------------
 CORPO_PRIMEIRA=$(sondar "$IP_SONDA")
