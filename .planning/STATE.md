@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lançamento público
-current_phase: 03
-current_phase_name: anti-abuso-no-booking-p-blico
-status: awaiting_uat
-stopped_at: Quick task 260807-m5m concluída: `camada`/`chaveHash` eram descartados pelo `beforeSendLog` DEPOIS de aprovados pelo nosso filtro (duas allowlists duplicadas, uma envelhecida) — agora há fonte única, e a validação de forma de hash passou a valer também na última barreira (um `tenantHash` com IP cru atravessava). Phase 03 NÃO está completa: UAT com 3 pass, 2 DIFERIDOS para a Phase 11 (testes 6 e 7 — header de IP da Railway e calibração, exigem deploy e tráfego real; registrados com dono/gatilho/detector em docs/PENDENCIAS.md §'Diferidos para o go-live') e 2 pendentes do owner — teste 4 (painel do Sentry, e agora exige deploy com o código novo: log anterior não serve como prova) e teste 5 (copy do bloqueio de leitura em tela).
-last_updated: "2026-08-07T20:14:25.883Z"
+current_phase: 04
+current_phase_name: canal-de-e-mail-transacional
+status: phase_complete
+stopped_at: "Phase 03 COMPLETA em 2026-08-07: 6/6 planos, UAT encerrado com 5 aprovados e 2 diferidos para a Phase 11 (testes 6 e 7 — header de IP da Railway e calibração com tráfego real; registrados com dono, gatilho e detector em docs/PENDENCIAS.md §'Diferidos para o go-live'). ABU-01/02/03 fechados. Ressalva ativa: a Issue ratelimit:teto_tenant_atingido nunca foi exercitada — é o único alarme acionável da fase e disparar exige slug real e ~30 tentativas. Próximo: planejar a Phase 04 (canal de e-mail transacional) — o DNS do Resend já está verificado desde 2026-07-21, então a dependência externa dela não bloqueia."
+last_updated: "2026-08-07T23:00:00.000Z"
 last_activity: 2026-08-07
 progress:
   total_phases: 3

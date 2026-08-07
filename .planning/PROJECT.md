@@ -133,8 +133,15 @@ cair na agenda do profissional sem que nada quebre no caminho.
   todos em "Depois de evidência" no `docs/PENDENCIAS.md`, cada um com gatilho observável.
   *Corrigido em 2026-07-21:* "cancelamento autônomo pelo cliente" saiu desta lista — foi
   promovido de v2 para v1 na sessão de planejamento e é a Phase 8 inteira (AUT-01 a AUT-09)
-- **Tráfego pago** — divulgação orgânica e direta primeiro; mídia paga só depois que o
-  funil mostrar conversão
+- **Tráfego pago como canal de aquisição** — divulgação orgânica e direta primeiro; mídia
+  paga só depois que o funil mostrar conversão. *Barra definida em 2026-07-28 (`.marketing/DECISOES.md`
+  D-16): uma peça precisa bater ≥ 3× a média orgânica do próprio perfil, ou ~10 mil
+  visualizações, para receber verba.*
+  **Exceção registrada em 2026-07-28:** até R$ 300/mês de gasto em anúncio é permitido como
+  **treinamento operacional** do owner no gerenciador de anúncios — não como canal, não com
+  expectativa de retorno, e sem depender da barra acima. Está escrito aqui, e não só no
+  `.marketing/`, porque documentação divergente da realidade foi exatamente o que produziu
+  o problema do preço desatualizado na landing.
 
 ## Context
 

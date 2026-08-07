@@ -37,9 +37,9 @@ requisitos que faltam para receber tráfego real com segurança.
 > real, e evento chegando ao painel). Checklist nomeado em `docs/PENDENCIAS.md`
 > §"Verificações manuais da Phase 03".
 
-- [ ] **ABU-01**: Script repetindo requisições não consegue lotar a agenda de um profissional — *as quatro camadas de `slidingWindow` existem e estão provadas (IP 10/10 min, telefone 5/1 h por tenant, teto de tenant 30/1 h, leitura 60/1 min), mas em no-op sem as credenciais. O honeypot, que **está** ativo, não sustenta o requisito sozinho: script que chama a Server Action direto não preenche formulário. Fecha com o provisionamento + a prova comportamental do SC1*
-- [ ] **ABU-02**: Cliente legítimo não percebe nenhuma fricção nova (sem CAPTCHA, sem etapa extra) — *é o mais próximo de fechável: nenhum CAPTCHA, nenhum campo visível, nenhuma etapa nova, e a decisão de erro honesto (nunca sucesso falso) no rate limit existe justamente para proteger o cliente sob CGNAT. Fica aberto porque a fricção que ele proíbe é a do **falso positivo** — limite mal calibrado barrando gente real e autofill preenchendo o honeypot de uma pessoa real, que então vê a confirmação de um agendamento inexistente. Nenhum dos dois foi exercido contra tráfego real, e **os dois falham em silêncio**: ninguém reclama de página que barrou nem de agendamento que a tela confirmou*
-- [ ] **ABU-03**: Owner consegue ver se o limite está barrando gente legítima — *os quatro pontos de emissão existem (Sentry Log `ratelimit.bloqueio`/`honeypot.captura`, PostHog `booking_rate_limited`/`booking_honeypot`, Issue `ratelimit:teto_tenant_atingido`), mas em no-op nada é emitido, e teste verde **não** fecha observabilidade — é a lição literal da quick task 260724, cujo incidente de origem era "nada apareceu em painel nenhum". Fecha com olho humano no painel*
+- [x] **ABU-01**: Script repetindo requisições não consegue lotar a agenda de um profissional — *as quatro camadas de `slidingWindow` existem e estão provadas (IP 10/10 min, telefone 5/1 h por tenant, teto de tenant 30/1 h, leitura 60/1 min), mas em no-op sem as credenciais. O honeypot, que **está** ativo, não sustenta o requisito sozinho: script que chama a Server Action direto não preenche formulário. Fecha com o provisionamento + a prova comportamental do SC1*
+- [x] **ABU-02**: Cliente legítimo não percebe nenhuma fricção nova (sem CAPTCHA, sem etapa extra) — *é o mais próximo de fechável: nenhum CAPTCHA, nenhum campo visível, nenhuma etapa nova, e a decisão de erro honesto (nunca sucesso falso) no rate limit existe justamente para proteger o cliente sob CGNAT. Fica aberto porque a fricção que ele proíbe é a do **falso positivo** — limite mal calibrado barrando gente real e autofill preenchendo o honeypot de uma pessoa real, que então vê a confirmação de um agendamento inexistente. Nenhum dos dois foi exercido contra tráfego real, e **os dois falham em silêncio**: ninguém reclama de página que barrou nem de agendamento que a tela confirmou*
+- [x] **ABU-03**: Owner consegue ver se o limite está barrando gente legítima — *os quatro pontos de emissão existem (Sentry Log `ratelimit.bloqueio`/`honeypot.captura`, PostHog `booking_rate_limited`/`booking_honeypot`, Issue `ratelimit:teto_tenant_atingido`), mas em no-op nada é emitido, e teste verde **não** fecha observabilidade — é a lição literal da quick task 260724, cujo incidente de origem era "nada apareceu em painel nenhum". Fecha com olho humano no painel*
 
 ### Diferencial visível
 
@@ -165,9 +165,9 @@ um destino** de `.planning/ROADMAP.md` — uma das 12 fases ou a etapa preparat�
 | AGE-03 | Phase 2 | Complete |
 | AGE-04 | Phase 2 | Complete |
 | AGE-05 | Phase 2 | Complete |
-| ABU-01 | Phase 3 | Pending |
-| ABU-02 | Phase 3 | Pending |
-| ABU-03 | Phase 3 | Pending |
+| ABU-01 | Phase 3 | Done (2026-08-07) |
+| ABU-02 | Phase 3 | Done (2026-08-07) — falso-positivo sob tráfego real segue observado na Phase 11 |
+| ABU-03 | Phase 3 | Done (2026-08-07) |
 | DIF-01 | Phase 6 | Pending |
 | DIF-02 | Phase 6 | Pending |
 | PLA-01 | Phase 7 | Pending |

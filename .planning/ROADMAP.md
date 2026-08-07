@@ -100,7 +100,7 @@ precisa ser sabido antes.
 - [ ] **Etapa preparatória: Fundação operacional** - Sentry, PostHog e Resend de pé antes da Phase 1 começar
 - [x] **Phase 1: Hardening da superfície pública** - A chave publicável deixa de servir a base de profissionais e a agenda de todos os tenants
 - [x] **Phase 2: Integridade da agenda** - Duração gravada no agendamento e proteção atômica contra double-booking
-- [ ] **Phase 3: Anti-abuso no booking público** - Rate limit e honeypot sem nenhuma fricção visível ao cliente
+- [x] **Phase 3: Anti-abuso no booking público** - Rate limit e honeypot sem nenhuma fricção visível ao cliente
 - [ ] **Phase 4: Canal de e-mail transacional** - Resend em domínio próprio, com remetente reconhecível e supressão de bounce
 - [ ] **Phase 5: Contato flexível no booking** - Cliente final agenda com e-mail OU WhatsApp e recebe a confirmação pelo que informou
 - [ ] **Phase 6: Diferencial visível — agenda densa** - Profissional enxerga o buraco de agenda que a grade anti-buraco evitou
@@ -550,7 +550,7 @@ faria a prova medir a árvore errada — mesmo racional das Phases 1 e 2.
 | Etapa preparatória. Fundação operacional | 1/1 | Código fechado — 2 gates do owner abertos | 2026-07-21 |
 | 1. Hardening da superfície pública | 19/19 | Complete (7 UAT de tela abertos) | 2026-07-23 |
 | 2. Integridade da agenda | 6/6 | Complete (2 UAT de tela abertos) | 2026-07-23 |
-| 3. Anti-abuso no booking público | 6/6 | In Progress|  |
+| 3. Anti-abuso no booking público | 6/6 | Complete (2 UAT diferidos p/ Phase 11) | 2026-08-07 |
 | 4. Canal de e-mail transacional | 0/TBD | Not started | - |
 | 5. Contato flexível no booking | 0/TBD | Not started | - |
 | 6. Diferencial visível — agenda densa | 0/TBD | Not started | - |

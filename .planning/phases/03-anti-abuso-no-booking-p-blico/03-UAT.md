@@ -1,5 +1,5 @@
 ---
-status: testing
+status: complete
 phase: 03-anti-abuso-no-booking-p-blico
 source: [03-VERIFICATION.md]
 started: 2026-07-27T00:00:00Z
@@ -8,30 +8,13 @@ updated: 2026-07-27T20:30:00Z
 
 ## Current Test
 
-number: 5
-name: Copy nova do bloqueio de leitura em navegador real
+number: —
+name: nenhum
 expected: |
-  Único item restante da fase. Roteiro pronto, ~5 min, no ambiente local que já está
-  de pé:
-
-  1. `sed -i "190s/slidingWindow(60, '1 m')/slidingWindow(3, '1 m')/" src/lib/rate-limit.ts`
-     — o teto real é 60/min, e trocar de data 61 vezes em menos de um minuto não é
-     viável na mão. O que se testa aqui é a COPY, o contador e o layout; o caminho
-     de render é idêntico com qualquer teto.
-  2. `pnpm build && APP_URL=http://127.0.0.1:3000 pnpm start`
-  3. Abrir `http://127.0.0.1:3000/book/salao-do-seed` (tenant do `supabase/seed.sql`),
-     escolher um serviço e clicar em 4 datas diferentes.
-  4. Conferir na tela: "Muitas tentativas seguidas. Aguarde um instante e tente de
-     novo.", botão em `Aguarde 10s` desabilitado contando para trás, e nenhuma
-     caixa empurrando o que está em volta. Repetir em mobile.
-  5. `git checkout src/lib/rate-limit.ts` — OBRIGATÓRIO, o teto baixo não se commita.
-
-  Ponto a observar com atenção: o contador é FIXO em 10 s (`BookingApp.tsx:70`) mas a
-  janela do rate limit é de 1 min, e o limiter consome token na tentativa. Ou seja, o
-  botão volta a ficar clicável antes de a janela limpar, e clicar aos 10 s falha de
-  novo e ainda estende a janela. Só olhando a tela dá para dizer se isso vira fricção
-  sentida ou passa despercebido.
-awaiting: user response
+  UAT ENCERRADO em 2026-08-07: 5 aprovados, 0 pendentes, 2 diferidos para a Phase 11
+  (testes 6 e 7 — header de IP da Railway e calibração com tráfego real; registrados
+  com dono, gatilho e detector em `docs/PENDENCIAS.md` §"Diferidos para o go-live").
+awaiting: nothing
 
 ## Tests
 
@@ -228,7 +211,21 @@ achado_2026-08-07: |
 
 expected: Ver na tela "Muitas tentativas seguidas. Aguarde um instante e tente de novo." com o botão em `Aguarde {N}s` desabilitado, em mobile e desktop. Confirmar que a contagem **não** trava o visitante além da janela e **não** desloca o layout.
 why_human: Item que nasce da decisão do owner de 2026-07-27 (ratificação do desvio do D-10, `03-VERIFICATION.md` §override_log). Nenhum executor pode marcá-lo — ninguém viu esta tela ainda.
-result: [pending]
+result: pass
+passed_at: 2026-08-07
+medido_por: "owner, em navegador real contra o tenant do `supabase/seed.sql` (`/book/salao-do-seed`)"
+ressalva_do_registro: |
+  O owner reportou o item como funcionando. O que ele NÃO reportou explicitamente,
+  e portanto não está verificado aqui, é o comportamento do contador quando a
+  janela ainda não limpou: o `esperaRetry` é fixo em 10 s (`BookingApp.tsx:70`)
+  enquanto a janela do limiter é de 1 min, e o limiter consome token na tentativa
+  — então o botão reabilita antes de a janela zerar, e insistir aos 10 s falha de
+  novo e estende a janela.
+
+  Não invalida a aprovação: o UAT pedia que a contagem não travasse o visitante
+  ALÉM da janela, e 10 s < 60 s satisfaz isso. O que fica sem medição é a direção
+  inversa. É constante de calibração, reversível, e o ajuste (se algum dia
+  incomodar) não muda contrato nenhum.
 pre_requisito_de_ambiente_caiu: |
   **2026-08-07 (quick task `260807-ooq`) — o que mudou é o CUSTO DE CHEGAR À TELA, não o
   teste.** Antes, ver esta tela exigia recadastrar perfil, serviços e horários à mão a cada
@@ -337,9 +334,9 @@ deferral_note: |
 ## Summary
 
 total: 7
-passed: 4
+passed: 5
 issues: 0
-pending: 1
+pending: 0
 deferred: 2
 skipped: 0
 blocked: 0
