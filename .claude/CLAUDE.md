@@ -94,7 +94,7 @@ cair na agenda do profissional sem que nada quebre no caminho.
 
 ## Platform Requirements
 
-- Node.js + pnpm 11.9.0; Supabase CLI (`npx supabase`) para diffs de schema — banco é **Supabase Cloud**, sem instância local
+- Node.js + pnpm 11.9.0; Docker (para a stack local do Supabase); Supabase CLI (`npx supabase`). Desde 2026-08-07 há **dois** bancos: local para o dia a dia (`supabase start`, portas 544xx — a faixa é deslocada porque a máquina roda outra stack local em paralelo) e **Cloud** para o que usa `--linked` e o MCP. `db reset` sem flag mira a nuvem
 - Alvo Next.js self-hosted ou Vercel (não há `vercel.json` nem CI em `.github/workflows` — deploy/CI não configurados no repo)
 
 <!-- GSD:stack-end -->

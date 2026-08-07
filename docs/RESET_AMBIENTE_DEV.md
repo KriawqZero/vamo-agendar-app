@@ -73,9 +73,13 @@ npx supabase db reset --linked   # DESTRUTIVO: derruba e recria o banco remoto i
 
 Prefira a opção A no dia a dia: mesmo efeito prático (dados zerados) sem risco de divergência no pipeline de migrations. Use a B apenas quando o objetivo for validar as migrations do zero.
 
-> ⚠️ **Não existe banco local neste projeto.** O Supabase é exclusivamente Cloud — não
-> rode `npx supabase start`, `npx supabase db reset` sem `--linked` nem `supabase db diff`
-> sem `--linked`: todos tentam subir uma stack local por Docker que este projeto não usa.
+> ⚠️ **Desde 2026-08-07 existem DOIS bancos**, e este documento trata do **Cloud**.
+> O banco local (`npx supabase start`, portas 544xx) é o do desenvolvimento diário;
+> zerá-lo é trivial e sem consequência: `npx supabase db reset --local`.
+>
+> O que exige cuidado é que **`db reset` sem flag mira o linkado, ou seja, a nuvem**.
+> Passe `--local` ou `--linked` sempre, explicitamente. O procedimento inteiro abaixo
+> só faz sentido para o Cloud — no local, o reset resolve em um comando.
 
 **Storage (opcional):** as imagens de logo/capa dos tenants ficam no bucket
 `imagens-perfis` e não são atingidas pelo TRUNCATE. Para limpar junto:

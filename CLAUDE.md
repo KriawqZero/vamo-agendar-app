@@ -12,27 +12,57 @@ pnpm dev          # servidor de desenvolvimento
 pnpm build        # build de produção
 pnpm lint         # eslint
 pnpm test         # testes unitários (vitest)
+
+npx supabase start                 # sobe o banco local (portas 544xx — ver Infraestrutura)
+npx supabase status                # confere de pé e em que portas
+npx supabase stop                  # derruba sem apagar dados
+npx supabase db reset --local      # recria o banco LOCAL a partir das migrations
 npx supabase db diff --linked -f <nome_da_migracao>   # gerar migration a partir dos schemas declarativos
 ```
 
 Gerenciador de pacotes: **pnpm**.
 
-## Infraestrutura: tudo é gerenciado, nada roda local
+## Infraestrutura: banco local em dev, o resto é gerenciado
 
-**Não existe Docker neste projeto e não existe serviço local para subir.** Banco no
-Supabase **Cloud**, Evolution API na **Railway**, filas no **Upstash QStash**, e-mail no
+Existem **dois** bancos, e confundir qual está na mira é o erro caro desta seção:
+
+- **Supabase local** (desde 2026-08-07) — stack Docker do próprio CLI, usada no
+  desenvolvimento do dia a dia. Sobe com `npx supabase start`.
+- **Supabase Cloud** — o projeto linkado. É o alvo de `--linked` e do MCP `mcp__supabase__*`.
+
+Todo o resto continua gerenciado, sem equivalente local: Evolution API na **Railway**
+(que também hospeda o app em `vamoagendar.com.br`), filas no **Upstash QStash**, e-mail no
 **Resend**, auth no **Clerk**, analytics/erros em **PostHog** e **Sentry**.
 
-Nunca rode: `supabase start`, `supabase stop`, `supabase db reset` sem `--linked`,
-`docker compose up`. Todos assumem uma stack local que não existe — e um
-`supabase db reset` sem `--linked` mira o banco errado.
+### Portas da stack local — deslocadas de propósito
 
-**Docker efêmero é exceção legítima, e só uma:** `supabase db diff` precisa de um shadow
-database em container para comparar os schemas declarativos. Isso é tooling descartável,
-não infraestrutura — não confunda com "o projeto tem banco local". Peça aprovação antes
-(o `permissions.ask` cobre `Bash(docker *)`), e prefira escrever a migration à mão quando
-o delta for pequeno: as três migrations de privilégio deste repo (`20260709193156`,
-`20260722044858`, e a de policies da fase 1) foram todas escritas manualmente.
+A máquina do owner roda **outra** stack local do Supabase em paralelo (projeto
+`bolaodoleo`) nas portas padrão. Por isso `supabase/config.toml` fixa a faixa 544xx:
+API `54421`, Postgres `54422`, Studio `54423`, Mailpit `54424`, Analytics `54427`,
+pooler `54429`. O `project_id` isola os nomes dos containers; a porta publicada no host
+é o que o `config.toml` isola. Não "simplifique" isso de volta para o default.
+
+### O comando que exige atenção
+
+```bash
+npx supabase db reset --local     # recria o banco LOCAL a partir das migrations
+npx supabase db reset --linked    # ⚠️ recria o banco em NUVEM
+```
+
+`db reset` **sem flag** mira o banco linkado, ou seja, a nuvem. Sempre passe `--local`
+ou `--linked` explicitamente — o default é a opção perigosa.
+
+`docker compose up` continua sem uso: a stack local é gerenciada pelo CLI do Supabase,
+não por compose deste repo. A stack Docker da Evolution API foi movida para
+`../obsoleto-docker-evolution/` em 2026-07-22 (contexto em `OBSOLETO.md` lá).
+
+### Migrations
+
+Com banco local disponível, `supabase db diff` deixa de exigir shadow database
+efêmero em container e passa a comparar contra ele. Continua valendo a preferência por
+escrever a migration à mão quando o delta é pequeno: as três migrations de privilégio
+deste repo (`20260709193156`, `20260722044858`, e a de policies da fase 1) foram todas
+escritas manualmente.
 
 - **Migrations de DDL declarativo**: `npx supabase db diff --linked -f <nome>`.
 - **REVOKE/GRANT e outros privilégios**: `db diff` **não os emite** — escreva a migration à
@@ -152,6 +182,23 @@ Se o WhatsApp do tenant estiver desconectado, o fluxo falha **silenciosamente** 
 | `SUPABASE_DECLARATIVE-DATABASE-SCHEMA.md` | Exceções do fluxo de migrations declarativas |
 
 `lixo/` — documentos descartados na limpeza de 2026-07-10. **Nunca use como referência** (contém tecnologias banidas e fluxos depreciados).
+
+## Marketing é premissa contínua, igual código
+
+Produto que ninguém conhece não é produto, é hobby. Marketing tem central permanente em
+`.marketing/` e não recomeça do zero a cada sessão.
+
+**Em qualquer sessão de marketing:** ler `.marketing/DECISOES.md`, o último arquivo de
+`.marketing/HISTORICO/` e o `.marketing/PLANO-PRE-LANCAMENTO.md` **antes** de propor
+qualquer coisa; continuar de onde parou; ao terminar, registrar a sessão em
+`HISTORICO/`, atualizar `BACKLOG.md`/`EXPERIMENTOS.md`/`METRICAS.md` e escrever decisões
+novas em `DECISOES.md` (log append-only — decisão antiga nunca se reescreve).
+
+O contexto que os marketing skills leem automaticamente é `.agents/product-marketing.md`
+(nome canônico do skill `product-marketing`) — mantenha-o em dia; todos os outros skills
+derivam dele. Restrições duras vigentes: teto de ~5h/semana (as 4–5h/dia são do código),
+nenhuma peça cita preço até a Phase 7 fechar, nenhum número não medido, nenhum depoimento
+fabricado — não existe cliente ainda.
 
 ## Recursos auxiliares
 
