@@ -8,24 +8,29 @@ updated: 2026-07-27T20:30:00Z
 
 ## Current Test
 
-number: 4
-name: SC3 — o owner consegue ver quantas requisições foram barradas e por qual chave
+number: 5
+name: Copy nova do bloqueio de leitura em navegador real
 expected: |
-  Provocar um bloqueio real e conferir nos TRÊS painéis:
+  Único item restante da fase. Roteiro pronto, ~5 min, no ambiente local que já está
+  de pé:
 
-  - **Sentry Log** — evento `ratelimit.bloqueio` com os atributos `camada` e `chaveHash`,
-    e SEM IP ou telefone crus em lugar nenhum;
-  - **PostHog Activity** — eventos `booking_rate_limited` e `booking_honeypot`;
-  - **Sentry Issue** — `ratelimit:teto_tenant_atingido` carregando só `tenantHash`.
+  1. `sed -i "190s/slidingWindow(60, '1 m')/slidingWindow(3, '1 m')/" src/lib/rate-limit.ts`
+     — o teto real é 60/min, e trocar de data 61 vezes em menos de um minuto não é
+     viável na mão. O que se testa aqui é a COPY, o contador e o layout; o caminho
+     de render é idêntico com qualquer teto.
+  2. `pnpm build && APP_URL=http://127.0.0.1:3000 pnpm start`
+  3. Abrir `http://127.0.0.1:3000/book/salao-do-seed` (tenant do `supabase/seed.sql`),
+     escolher um serviço e clicar em 4 datas diferentes.
+  4. Conferir na tela: "Muitas tentativas seguidas. Aguarde um instante e tente de
+     novo.", botão em `Aguarde 10s` desabilitado contando para trás, e nenhuma
+     caixa empurrando o que está em volta. Repetir em mobile.
+  5. `git checkout src/lib/rate-limit.ts` — OBRIGATÓRIO, o teto baixo não se commita.
 
-  Atalho: `bash scripts/verificar-rate-limit-escrita.sh` já provoca 2 bloqueios reais de
-  `escrita_ip` por execução — mas ele roda em `next start` LOCAL, então só serve se o
-  Sentry/PostHog do ambiente local estiverem apontando para os projetos que você abre.
-
-  Ressalva que vale mais que o resto: **teste verde não fecha observabilidade.** É a
-  lição literal da quick task 260724, cujo incidente de origem era exatamente "nada
-  apareceu em painel nenhum". Sentry Logs é produto separado de Issues — DSN válido não
-  garante log ingerido.
+  Ponto a observar com atenção: o contador é FIXO em 10 s (`BookingApp.tsx:70`) mas a
+  janela do rate limit é de 1 min, e o limiter consome token na tentativa. Ou seja, o
+  botão volta a ficar clicável antes de a janela limpar, e clicar aos 10 s falha de
+  novo e ainda estende a janela. Só olhando a tela dá para dizer se isso vira fricção
+  sentida ou passa despercebido.
 awaiting: user response
 
 ## Tests
@@ -93,7 +98,34 @@ ressalva: |
 
 expected: Provocar um bloqueio real e conferir nos painéis: Sentry Log `ratelimit.bloqueio` com `camada` e `chaveHash` (e **sem** IP ou telefone crus); PostHog `booking_rate_limited` e `booking_honeypot` no Activity; Sentry Issue `ratelimit:teto_tenant_atingido` carregando só `tenantHash`.
 why_human: Em no-op nada é barrado, logo nada é emitido. E teste verde **não** fecha observabilidade — é a lição literal da quick task 260724, cujo incidente de origem era exatamente "nada apareceu em painel nenhum". Sentry Logs é produto separado de Issues: DSN válido não garante log ingerido.
-result: [pending]
+result: pass
+passed_at: 2026-08-07
+medido_por: "owner, evento inteiro aberto no painel do Sentry — a metade que nenhum instrumento fecha"
+evidencia_do_owner: |
+  Evento `019fde459d7a7baea0fcff9a8f75d279` (release `a0c5093`, 22:08:52Z), os 19
+  atributos auditados um a um:
+
+    camada      escrita_ip          ✓ presente
+    chaveHash   fab55e98a271f413    ✓ 16 hex, forma canônica
+    codigo      ratelimit.bloqueio  ✓ sintético
+    message     "Requisição pública bloqueada por rate limit"  ✓ estática
+    severity    warn                ✓ como o código emite
+
+  E o que se procurava NÃO achar: nenhum valor em formato de IP, nenhum telefone,
+  nenhum `org_` — nem nos atributos nossos nem nos automáticos do SDK.
+
+  Único atributo que identifica algo: `server.address: fedora`, o hostname da
+  máquina que emitiu. Entra pelo bypass de prefixo `server.` do SDK, não é dado de
+  cliente final, e em produção vira o hostname do container. É um dos três achados
+  já registrados em `docs/PENDENCIAS.md` — conhecido, não violação.
+
+ressalva: |
+  A Issue `ratelimit:teto_tenant_atingido` continua NUNCA exercitada: as sondas do
+  harness usam slug inexistente e morrem antes das camadas de telefone e de tenant.
+  Ela é o único alarme acionável da fase — o que existe para "ataque às 3h da
+  manhã". Exercitá-la exige slug real e ~30 tentativas, o que cria agendamentos.
+  Fica para tráfego real ou para uma sessão em que se aceite o resíduo.
+
 verificado_pelo_agente: |
   A metade "CHEGOU?" foi medida pelo orquestrador em 2026-07-27 via MCP do Sentry,
   do PostHog e do Supabase, provocando os eventos com sondas contra `next start`
@@ -305,9 +337,9 @@ deferral_note: |
 ## Summary
 
 total: 7
-passed: 3
+passed: 4
 issues: 0
-pending: 2
+pending: 1
 deferred: 2
 skipped: 0
 blocked: 0
