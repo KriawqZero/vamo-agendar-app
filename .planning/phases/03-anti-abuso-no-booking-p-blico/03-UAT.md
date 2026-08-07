@@ -125,8 +125,25 @@ verificado_pelo_agente: |
     clientes_das_sondas_por_nome .......... 0
     clientes_das_sondas_por_telefone ...... 0
     total_agendamentos_no_banco ........... 3   (os pré-existentes, intocados)
+medido_pelo_orquestrador_em_2026-08-07: |
+  Depois do conserto das allowlists (quick task 260807-m5m), um run do harness
+  local provocou dois bloqueios reais e os atributos CHEGARAM ao Sentry — lidos
+  via MCP, não inferidos:
+
+    22:20:25Z  codigo=ratelimit.bloqueio  camada=escrita_ip  chaveHash=85c199a0fb2436b9
+    22:15:46Z  codigo=ratelimit.bloqueio  camada=escrita_ip  chaveHash=5b4cc78ee8963f37
+    22:15:18Z  codigo=ratelimit.bloqueio  camada=escrita_ip  chaveHash=d44412b34d32b42b
+
+  `chaveHash` distinto por run porque o IP da sonda muda — correlaciona com o
+  contador do Redis sem que o IP exista em lugar nenhum, que era o ponto.
+
+  Isso fecha objetivamente a metade "os atributos estão lá?". O que continua do
+  owner é a varredura do evento INTEIRO no painel procurando o que NÃO pode estar
+  lá (IP ou telefone cru em qualquer atributo, inclusive os automáticos do SDK) —
+  a metade que nenhum instrumento fecha por construção.
+
 resta_para_o_owner: |
-  1. **Conteúdo dos Sentry Logs.** Confirmei que os logs CHEGARAM com o código
+  1. **Varredura anti-PII do evento inteiro no painel.** Confirmei que os logs CHEGARAM com o código
      sintético certo; não consegui ler os atributos `camada` e `chaveHash` pelo MCP,
      e atribuí isso a limitação da ferramenta ("descarta atributos customizados da
      query — não ausência do dado"). ⚠️ **Essa atribuição estava ERRADA e foi
