@@ -87,7 +87,11 @@ describe('Sentry Logs & logOperacional Sanitização', () => {
             message: 'mensageria.iniciada',
             attributes: {
                 fluxo: 'notificacoes_agendamento',
-                tenantHash: 'abc12345',
+                // Era `abc12345` (8 hex) — fixture que sobrou da época em que o
+                // `beforeSendLog` filtrava só por NOME de chave. Agora as duas
+                // barreiras compartilham o mesmo predicado, então este valor
+                // precisa ter a forma canônica de verdade (16 hex).
+                tenantHash: 'abc1234500000000',
                 'sentry.sdk.name': 'sentry.javascript.nextjs',
                 'server.address': 'railway-us',
                 PII_NOME: 'PII_TESTE_MARIA',
@@ -101,7 +105,7 @@ describe('Sentry Logs & logOperacional Sanitização', () => {
 
         expect(logSanitizado.attributes).toEqual({
             fluxo: 'notificacoes_agendamento',
-            tenantHash: 'abc12345',
+            tenantHash: 'abc1234500000000',
             'sentry.sdk.name': 'sentry.javascript.nextjs',
             'server.address': 'railway-us',
         })

@@ -10,55 +10,13 @@
  * 5. Aceita SOMENTE a allowlist tipada de atributos (`AtributosLogOperacional`).
  */
 
+import { atributoDeLogPermitido } from './atributos-log'
+import type { AtributosLogOperacional } from './atributos-log'
 import { dsnDoSentry } from './dsn'
 
-export interface AtributosLogOperacional {
-    codigo?: string
-    fluxo?: string
-    etapa?: string
-    operacao?: string
-    resultado?: string
-    provider?: string
-    motivo?: string
-    statusCode?: number
-    tenantHash?: string
-    agendamentoHash?: string
-    runtime?: string
-    tentativa?: number
-    retry?: boolean
-    duracaoMs?: number
-    /** Camada de rate limit que decidiu (`escrita_ip`, `teto_tenant`, …). */
-    camada?: string
-    /**
-     * Chave PSEUDONIMIZADA do contador de rate limit — o MESMO hash usado no
-     * store do fornecedor (`hashChaveRateLimit`). É o que permite correlacionar
-     * log ↔ contador sem que IP ou telefone existam em lugar nenhum.
-     *
-     * O que garante isso é a validação de FORMA em `sanitizarAtributosLog`
-     * (16 hex), não a boa vontade do chamador: valor fora dessa forma é
-     * descartado no ato (WR-07).
-     */
-    chaveHash?: string
-}
-
-const CHAVES_PERMITIDAS_LOG = new Set<keyof AtributosLogOperacional>([
-    'codigo',
-    'fluxo',
-    'etapa',
-    'operacao',
-    'resultado',
-    'provider',
-    'motivo',
-    'statusCode',
-    'tenantHash',
-    'agendamentoHash',
-    'runtime',
-    'tentativa',
-    'retry',
-    'duracaoMs',
-    'camada',
-    'chaveHash',
-])
+// Reexportado para não mexer em nenhum consumidor: o tipo sempre morou aqui, e
+// a reexportação mantém isso verdadeiro depois da extração para a fonte única.
+export type { AtributosLogOperacional } from './atributos-log'
 
 /**
  * Mapeamento de códigos operacionais internos para frases amigáveis e claras
@@ -119,29 +77,14 @@ export const MENSAGENS_LOG: Record<string, string> = {
 }
 
 /**
- * Atributos cujo VALOR precisa ter forma de hash, não só nome permitido.
- *
- * ⚠️ Existe por causa do WR-07, e o defeito era de natureza, não de descuido: a
- * allowlist filtrava por CHAVE, então `chaveHash` e `tenantHash` aceitavam
- * qualquer string — inclusive um IP ou um telefone cru, se um chamador futuro
- * esquecesse de hashear. O invariante nunca-PII neste caminho era CONVENÇÃO DE
- * CHAMADOR, apesar de o JSDoc do campo afirmar que "a allowlist fechada é o que
- * garante isso". Validar a forma é o que transforma a promessa em estrutura, e
- * custa uma linha.
- */
-const CHAVES_DE_HASH = new Set<keyof AtributosLogOperacional>([
-    'tenantHash',
-    'agendamentoHash',
-    'chaveHash',
-])
-
-/** Forma canônica de todo hash pseudonimizador do projeto: sha256 truncado a 16 hex. */
-const FORMATO_HASH = /^[0-9a-f]{16}$/
-
-/**
  * Sanitiza o objeto de atributos antes de enviar ao Sentry.logger,
  * garantindo que apenas chaves da allowlist com tipos simples atravessam — e que
  * os campos de hash carregam mesmo um hash.
+ *
+ * O julgamento em si mora em `atributos-log.ts`, compartilhado com o
+ * `beforeSendLog` — as duas barreiras precisam concordar, e a única forma de
+ * garantir isso é não haver duas listas. Contrato público inalterado: mesma
+ * assinatura, `undefined` quando nada sobra, nunca lança.
  */
 export function sanitizarAtributosLog(
     atributos?: Record<string, unknown>,
@@ -150,22 +93,11 @@ export function sanitizarAtributosLog(
 
     const limpo: Record<string, string | number | boolean> = {}
 
+    // Descarta em SILÊNCIO, sem lançar: o contrato 1 vale acima de tudo, e um
+    // atributo a menos no log é infinitamente melhor que um telefone a mais no
+    // fornecedor terceiro.
     for (const [chave, valor] of Object.entries(atributos)) {
-        if (!CHAVES_PERMITIDAS_LOG.has(chave as keyof AtributosLogOperacional)) {
-            continue
-        }
-
-        // Descarta em SILÊNCIO, sem lançar: o contrato 1 vale acima de tudo, e
-        // um atributo a menos no log é infinitamente melhor que um telefone a
-        // mais no fornecedor terceiro.
-        if (
-            CHAVES_DE_HASH.has(chave as keyof AtributosLogOperacional) &&
-            !FORMATO_HASH.test(String(valor))
-        ) {
-            continue
-        }
-
-        if (typeof valor === 'string' || typeof valor === 'number' || typeof valor === 'boolean') {
+        if (atributoDeLogPermitido(chave, valor)) {
             limpo[chave] = valor
         }
     }

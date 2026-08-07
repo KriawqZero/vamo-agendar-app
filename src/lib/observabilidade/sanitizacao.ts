@@ -1,10 +1,16 @@
 /**
  * Sanitização anti-PII de eventos e breadcrumbs do Sentry.
  *
- * ZERO imports — nem o SDK do Sentry, nem tipos dele. O tipo estrutural mínimo
- * é declarado aqui de propósito: assim as funções ficam testáveis em Vitest sem
- * puxar `@sentry/node` + instrumentações OTel para dentro da suíte, e nenhuma
- * variável nova precisa entrar no `vitest.config.ts`.
+ * ZERO imports DO SDK — nem `@sentry/*`, nem tipos dele. O tipo estrutural
+ * mínimo é declarado aqui de propósito: assim as funções ficam testáveis em
+ * Vitest sem puxar `@sentry/node` + instrumentações OTel para dentro da suíte,
+ * e nenhuma variável nova precisa entrar no `vitest.config.ts`.
+ *
+ * O único import é `./atributos-log`, e ele NÃO quebra a regra — é justamente o
+ * módulo que também não importa nada, criado para ser embarcável nos três
+ * arquivos de init sem arrastar dependência alguma. A regra sempre foi sobre o
+ * SDK, não sobre a contagem de imports; o que ela protege (suíte hermética,
+ * init leve) continua intacto.
  *
  * ⚠️ Isto é defesa em profundidade, NÃO a única barreira. O SDK já não manda
  * cookie nem corpo de requisição por padrão (só o tamanho inferido do
@@ -12,6 +18,8 @@
  * camada existe porque `/book/[slug]` é a página onde o cliente final digita
  * nome e telefone, e ali "quase certo" não serve.
  */
+
+import { atributoDeLogPermitido } from './atributos-log'
 
 interface RequisicaoDoEvento {
     method?: string
@@ -96,37 +104,30 @@ export interface FormatoDeLog {
 }
 
 /**
- * ALLOWLIST das chaves de `attributes` de log operacional.
- */
-const ATRIBUTOS_DE_LOG_PERMITIDOS = new Set([
-    'codigo',
-    'fluxo',
-    'etapa',
-    'operacao',
-    'resultado',
-    'provider',
-    'motivo',
-    'statusCode',
-    'tenantHash',
-    'agendamentoHash',
-    'runtime',
-    'tentativa',
-    'retry',
-    'duracaoMs',
-])
-
-/**
- * `beforeSendLog`: reduz `attributes` à sua allowlist e nega qualquer PII.
+ * `beforeSendLog`: reduz `attributes` à allowlist COMPARTILHADA e nega PII.
+ *
+ * ⚠️ Este módulo tinha a sua PRÓPRIA cópia da allowlist de atributos, e ela
+ * envelheceu: a Phase 03 acrescentou `camada` e `chaveHash` à lista de
+ * `log.ts` e não a esta, então os dois atributos passavam pelo nosso filtro
+ * para morrer aqui, na última barreira. O log `ratelimit.bloqueio` chegava ao
+ * painel sem dizer qual camada bloqueou. Pior: a cópia daqui filtrava só por
+ * NOME, então `tenantHash` valendo um IP cru — que a primeira barreira
+ * descarta desde o WR-07 — atravessava esta função e ia para o fornecedor.
+ *
+ * Por isso o julgamento agora é um só, importado de `atributos-log.ts`. Isso
+ * traz a validação de FORMA de hash também para cá, o que importa porque quem
+ * chamar `Sentry.logger.*` direto contorna a primeira barreira inteira.
+ *
+ * Exceção preservada: `sentry.` e `server.` são concernimento do SDK, não do
+ * domínio — entram desde que o valor seja primitivo, sem passar pelo predicado.
  */
 export function sanitizarLogSentry<T extends FormatoDeLog>(log: T): T {
     if (log && typeof log === 'object' && log.attributes && typeof log.attributes === 'object') {
         const novosAtributos: Record<string, unknown> = {}
         for (const [chave, valor] of Object.entries(log.attributes)) {
-            if (
-                ATRIBUTOS_DE_LOG_PERMITIDOS.has(chave) ||
-                chave.startsWith('sentry.') ||
-                chave.startsWith('server.')
-            ) {
+            const ehMetaDoSdk = chave.startsWith('sentry.') || chave.startsWith('server.')
+
+            if (ehMetaDoSdk) {
                 if (
                     typeof valor === 'string' ||
                     typeof valor === 'number' ||
@@ -134,6 +135,11 @@ export function sanitizarLogSentry<T extends FormatoDeLog>(log: T): T {
                 ) {
                     novosAtributos[chave] = valor
                 }
+                continue
+            }
+
+            if (atributoDeLogPermitido(chave, valor)) {
+                novosAtributos[chave] = valor
             }
         }
         log.attributes = novosAtributos
