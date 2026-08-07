@@ -48,6 +48,22 @@ export interface FormatoDeEvento {
  * `reportarExcecao(err, { email: destinatario })`. Denylist falharia em
  * silêncio nesse dia; allowlist obriga uma linha explícita aqui, que é a
  * revisão que a regra "nunca PII" precisa ter.
+ *
+ * ⚠️ Esta lista continua SEPARADA da allowlist de atributos de log
+ * (`atributos-log.ts`), e isso é deliberado, não a divergência que a quick task
+ * 260807-m5m consertou. Ela é de propósito mais ESTREITA — não tem `codigo`,
+ * `operacao`, `runtime`, `chaveHash`… —, porque Issue e Log têm públicos
+ * diferentes. Unificar as duas alargaria o que vai nas Issues sem ninguém ter
+ * revisado, que é o oposto do que uma allowlist existe para fazer. A fonte
+ * única vale para o caminho dos Logs; aqui a trava é o teste mais a revisão
+ * explícita que acrescentar uma linha obriga.
+ *
+ * `camada` entrou (quick task 260807-m5m) porque seu domínio é FECHADO: o tipo
+ * é `CamadaRateLimit = 'escrita_ip' | 'escrita_telefone' | 'teto_tenant' |
+ * 'leitura_ip'` (`rate-limit.ts`), e a reconfirmação por grep mostrou que todo
+ * call site passa um desses quatro literais — nunca dado digitado pelo
+ * visitante. É o que autoriza alargar a última barreira anti-PII: sem o domínio
+ * fechado, a resposta seria não.
  */
 const CHAVES_DE_EXTRA_PERMITIDAS = new Set([
     'fluxo',
@@ -56,6 +72,7 @@ const CHAVES_DE_EXTRA_PERMITIDAS = new Set([
     'statusCode',
     'motivo',
     'tenantHash',
+    'camada',
 ])
 
 /**

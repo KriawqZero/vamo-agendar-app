@@ -155,6 +155,32 @@ describe('sanitizarEventoSentry', () => {
         expect(JSON.stringify(evento)).not.toContain('Maria')
     })
 
+    // O `extra` LITERAL que `reportarIndisponibilidade` (`rate-limit.ts`) emite
+    // na Issue `ratelimit:redis_unavailable` — e o mesmo formato da Issue
+    // `ratelimit:teto_tenant_atingido` em `public-booking.ts`. Sem `camada` na
+    // allowlist, a Issue chegava ao painel sem dizer QUAL camada decidiu.
+    it('preserva `camada` no extra das Issues de rate limit, sem afrouxar a allowlist', () => {
+        const evento = sanitizarEventoSentry({
+            extra: {
+                fluxo: 'rate_limit',
+                camada: 'escrita_ip',
+                motivo: 'timeout',
+                // A asserção que impede este teste de virar prova de que a
+                // allowlist foi AFROUXADA em vez de estendida: um campo de PII
+                // no mesmo `extra` continua sendo apagado.
+                telefone: '11999999999',
+            },
+        })
+
+        expect(evento.extra).toEqual({
+            fluxo: 'rate_limit',
+            camada: 'escrita_ip',
+            motivo: 'timeout',
+        })
+        expect(evento.extra).not.toHaveProperty('telefone')
+        expect(JSON.stringify(evento)).not.toContain('11999999999')
+    })
+
     it('mantém em request apenas method, url e headers — campo novo cai fora', () => {
         const evento = sanitizarEventoSentry({
             request: {
