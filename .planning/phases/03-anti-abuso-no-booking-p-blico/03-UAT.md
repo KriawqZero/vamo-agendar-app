@@ -127,16 +127,53 @@ verificado_pelo_agente: |
     total_agendamentos_no_banco ........... 3   (os pré-existentes, intocados)
 resta_para_o_owner: |
   1. **Conteúdo dos Sentry Logs.** Confirmei que os logs CHEGARAM com o código
-     sintético certo; não consegui ler os atributos `camada` e `chaveHash` pelo MCP
-     (o agente de busca do Sentry descarta atributos customizados da query — é
-     limitação da ferramenta, não ausência do dado). Olhar um log no painel e
-     confirmar os dois atributos presentes E nenhum IP/telefone cru é a parte que
-     não dá para terceirizar: foi exatamente uma trava dessas que o incidente
-     260724 mostrou não fechar por teste.
+     sintético certo; não consegui ler os atributos `camada` e `chaveHash` pelo MCP,
+     e atribuí isso a limitação da ferramenta ("descarta atributos customizados da
+     query — não ausência do dado"). ⚠️ **Essa atribuição estava ERRADA e foi
+     corrigida em 2026-08-07 — ver `achado_2026-08-07` abaixo: os dois atributos
+     realmente não estavam no log.** Olhar um log no painel e confirmar os dois
+     atributos presentes E nenhum IP/telefone cru continua sendo a parte que não dá
+     para terceirizar: foi exatamente uma trava dessas que o incidente 260724
+     mostrou não fechar por teste.
   2. **Sentry Issue `ratelimit:teto_tenant_atingido` NÃO foi exercitada.** As
      sondas usam slug inexistente e morrem antes das camadas de telefone e tenant.
      Exercitá-la exigiria slug real e ~30 tentativas, o que criaria agendamentos no
      banco. Fica para tráfego real ou para uma sessão em que se aceite o resíduo.
+achado_2026-08-07: |
+  **A razão pela qual `camada` e `chaveHash` não apareciam foi encontrada e
+  corrigida** (quick task 260807-m5m). Não era limitação do MCP: os atributos de
+  fato NÃO estavam no log.
+
+  Havia duas allowlists de atributos, duplicadas, e uma envelheceu. A Phase 03
+  acrescentou `camada` e `chaveHash` à lista de `log.ts` (o nosso filtro) e não à
+  do `beforeSendLog` em `sanitizacao.ts` — que é a ÚLTIMA barreira antes do
+  fornecedor. Os dois atributos passavam pelo primeiro filtro e eram descartados
+  DEPOIS de aprovados, no caminho de saída. É por isso que o log
+  `ratelimit.bloqueio` da evidência acima (release `25997ce`, 2026-07-28T00:36:36Z)
+  chegou com `codigo` e `fluxo` — que estavam nas duas listas — e sem `camada` nem
+  `chaveHash`, que estavam só na primeira.
+
+  Achado adicional, mais grave que o sintoma, revelado pelo par de asserções do
+  teste novo: a cópia do `beforeSendLog` filtrava só por NOME de chave, sem validar
+  forma. `tenantHash` valendo um IP cru ATRAVESSAVA a última barreira e ia para o
+  fornecedor — a validação de forma (16 hex, WR-07) existia só na primeira. Fechado
+  junto.
+
+  O que a correção entrega: fonte única de julgamento (`atributos-log.ts`)
+  consultada pelas duas barreiras, validação de forma de hash também na última,
+  `camada` na allowlist de `extra` das Issues, e um teste que itera a allowlist
+  exportada — se a bifurcação voltar, ele fica vermelho sem depender de ninguém
+  lembrar de atualizá-lo.
+
+  ⚠️ **O que isso muda na conferência do owner, e é o ponto que mais importa:** os
+  dois atributos passam a viajar no log emitido **a partir do próximo deploy com
+  este código**. Portanto **um log ANTERIOR a esse deploy não serve como prova —
+  nem a favor nem contra**: ele foi emitido pela versão que descartava os
+  atributos, e vai continuar sem eles no painel para sempre. A conferência precisa
+  provocar um bloqueio NOVO, depois do deploy, e olhar esse log.
+
+  Este teste continua `[pending]`. Instrumento nenhum fecha "olhei o painel e não
+  havia PII" — só o owner fecha.
 
 ### 5. Copy nova do bloqueio de leitura em navegador real (nasce da ratificação do D-10)
 

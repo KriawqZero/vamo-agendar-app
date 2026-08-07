@@ -1042,9 +1042,12 @@ alcançável por comando.
       CHEGARAM (medidos via MCP do Sentry, `warn`, `codigo=ratelimit.bloqueio` às 00:36:36Z e
       00:16:37Z, mais `codigo=honeypot.captura` às 00:41:15Z). O que **continua aberto** é o
       conteúdo: confirmar no painel que `camada` e `chaveHash` estão presentes e que não há IP
-      nem telefone cru em atributo nenhum. O MCP não lê atributos customizados (limitação da
-      ferramenta, não ausência do dado), e esta é exatamente a trava que o incidente 260724
+      nem telefone cru em atributo nenhum. Esta é exatamente a trava que o incidente 260724
       mostrou não fechar por teste.
+      ⚠️ **Correção de 2026-08-07 (quick task 260807-m5m):** a explicação registrada aqui —
+      "o MCP não lê atributos customizados, limitação da ferramenta, não ausência do dado" —
+      **estava errada**. Os atributos realmente não estavam no log. Ver o item dedicado
+      logo abaixo.
 - [x] **PostHog — FECHADO em 2026-07-27.** `booking_rate_limited` (camada `escrita_ip`, ×2 por
       execução do harness — correspondência 1:1 com os bloqueios provocados) e
       `booking_honeypot` observados no Activity, todos com `$is_server: True`. **Anti-PII
@@ -1058,6 +1061,37 @@ alcançável por comando.
       das camadas de telefone e de tenant. Exercitá-la exige slug real e ~30 tentativas, o que
       cria agendamentos no banco — fica para tráfego real ou para uma sessão em que se aceite
       o resíduo.
+
+  **🔍 Achado de 2026-08-07 — por que `camada` e `chaveHash` não apareciam (quick task
+  260807-m5m).** Não era limitação do MCP. Existiam **duas allowlists de atributos de log,
+  duplicadas, e uma envelheceu**: a Phase 03 acrescentou `camada` e `chaveHash` à lista de
+  `src/lib/observabilidade/log.ts` (o nosso filtro) e não à do `beforeSendLog` em
+  `sanitizacao.ts`, que é a ÚLTIMA barreira antes do fornecedor. Os dois atributos passavam
+  pelo primeiro filtro e eram descartados **depois de aprovados**, na saída. Bate com a
+  evidência de produção: o log de `25997ce` (2026-07-28T00:36:36Z) chegou com `codigo` e
+  `fluxo` — que estavam nas duas listas — e sem os dois que estavam só na primeira.
+
+  **Achado adicional, mais grave que o sintoma**, revelado pelo par de asserções do teste
+  novo: a cópia do `beforeSendLog` filtrava só por NOME de chave, sem validar forma. Um
+  `tenantHash` valendo **IP cru atravessava a última barreira** e ia para o fornecedor — a
+  validação de forma (16 hex, WR-07) existia só na primeira.
+
+  O que a correção **fechou** (provado por teste, gates verdes):
+  - fonte única de julgamento (`src/lib/observabilidade/atributos-log.ts`) consultada pelas
+    duas barreiras — não há mais uma segunda lista capaz de envelhecer sozinha;
+  - validação de forma de hash aplicada **também** na última barreira, o que importa porque
+    quem chama `Sentry.logger.*` direto contorna a primeira inteira;
+  - `camada` na allowlist de `extra` do `beforeSend`, então as Issues de rate limit passam a
+    dizer qual camada decidiu (domínio fechado nos quatro literais de `CamadaRateLimit`,
+    reconfirmado por grep antes de alargar);
+  - teste que **itera a allowlist exportada**: chave nova sem cobertura reprova em vez de
+    passar em silêncio, e a bifurcação não volta sem alguém ver.
+
+  O que **continua aberto, e é do owner**: o olho humano no painel. E há uma condição nova
+  que não existia antes — **a conferência exige deploy com este código**. Os dois atributos
+  só viajam nos logs emitidos a partir do próximo deploy; um log anterior a ele **não serve
+  como prova, nem a favor nem contra**, porque foi emitido pela versão que os descartava.
+  Provocar um bloqueio NOVO depois do deploy é parte do procedimento.
 
   **Prova adicional, do honeypot, obtida no banco e não por asserção de teste:** a sonda
   recebeu `{"ok":true,"agendamento":{"id":"f8f4dd30-…","status":"confirmado"}}` e a consulta
