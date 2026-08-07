@@ -1093,6 +1093,25 @@ alcançável por comando.
   como prova, nem a favor nem contra**, porque foi emitido pela versão que os descartava.
   Provocar um bloqueio NOVO depois do deploy é parte do procedimento.
 
+  **Três achados da revisão de código da quick task 260807-m5m que NÃO foram consertados
+  ali, por decisão de escopo.** Nenhum é vetor vivo hoje; os três são promessas escritas que
+  o código ainda não cumpre, e a razão de estarem aqui é que promessa de segurança não
+  cumprida envelhece pior que bug conhecido.
+
+  - **`FORMATO_HASH` aceita 16 dígitos decimais.** `/^[0-9a-f]{16}$/` casa com
+    `1234567890123456` — um PAN de cartão cabe na forma canônica de hash. Nenhum chamador
+    faz isso, e os três produtores de hash do projeto usam `.digest('hex').slice(0,16)`.
+    *Gatilho:* endurecer se algum dia entrar hash de origem não controlada por nós.
+  - **O bypass de prefixo `sentry.` engole `sentry.message.parameter.N`,** que é dado do
+    chamador verbatim (verificado em `@sentry/core@10.67.0`, `logs/internal.js:71-79`). Não
+    usamos logging com parâmetros de template em lugar nenhum — se alguém passar a usar,
+    esse caminho contorna a allowlist inteira. *Detector:* aparecer `sentry.message.parameter`
+    em atributo de log no painel.
+  - **A frase "última barreira antes do fornecedor" é imprecisa** e está escrita em vários
+    comentários: atributos de escopo são mesclados **depois** do `beforeSendLog`
+    (`internal.js:99-103`). O `beforeSendLog` filtra os atributos que NÓS passamos, não tudo
+    o que sai. Nada hoje põe PII no escopo, mas a redação induz a confiança errada.
+
   **Prova adicional, do honeypot, obtida no banco e não por asserção de teste:** a sonda
   recebeu `{"ok":true,"agendamento":{"id":"f8f4dd30-…","status":"confirmado"}}` e a consulta
   direta ao Postgres logo depois devolveu 0 para o id sintético, 0 agendamentos criados nas

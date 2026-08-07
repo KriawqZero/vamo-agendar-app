@@ -49,12 +49,18 @@ const AMOSTRA_POR_CHAVE: Record<keyof AtributosLogOperacional, string | number |
 }
 
 describe('allowlist de atributos de log — fonte única das duas barreiras', () => {
-    it('o mapa de amostras cobre a allowlist inteira (chave nova sem amostra reprova)', () => {
-        const semAmostra = [...CHAVES_PERMITIDAS_LOG].filter(
-            (chave) => !(chave in AMOSTRA_POR_CHAVE),
-        )
-
-        expect(semAmostra).toEqual([])
+    // Igualdade nos DOIS sentidos, não inclusão num só — e a diferença é a
+    // mesma que motivou esta tarefa, um nível acima.
+    //
+    // `AMOSTRA_POR_CHAVE` é `Record<keyof AtributosLogOperacional, …>`, então o
+    // compilador já obriga o mapa a cobrir a INTERFACE inteira. Exigir aqui que
+    // a allowlist seja igual ao mapa fecha, por transitividade, a única fresta
+    // que sobrava: `new Set<keyof …>([...])` NÃO exige exaustividade, logo um
+    // campo acrescentado só à interface compilaria, o chamador escreveria o
+    // atributo sem aviso nenhum e ele sumiria em silêncio na barreira — que é,
+    // exatamente, o bug da release 25997ce reencenado uma camada acima.
+    it('allowlist e interface descrevem o MESMO conjunto de chaves', () => {
+        expect([...CHAVES_PERMITIDAS_LOG].sort()).toEqual(Object.keys(AMOSTRA_POR_CHAVE).sort())
     })
 
     // ESTE é o teste que impede a divergência de voltar. Ele não conhece nome
