@@ -15,6 +15,11 @@ const eslintConfig = defineConfig([
     // Artefatos auxiliares fora do código-fonte:
     ".agents/**",
     ".obsidian/**",
+    // Gerado pelo CLI do Supabase em `supabase start` (runtime das Edge
+    // Functions, já minificado). É `.gitignore`d, mas o flat config do ESLint 9
+    // não lê o .gitignore — sem esta linha, subir a stack local passa a
+    // REPROVAR `pnpm lint` com ~150 erros em código que não é nosso.
+    "supabase/.temp/**",
   ]),
 ]);
 

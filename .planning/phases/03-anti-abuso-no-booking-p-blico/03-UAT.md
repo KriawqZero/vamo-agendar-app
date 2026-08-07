@@ -180,6 +180,27 @@ achado_2026-08-07: |
 expected: Ver na tela "Muitas tentativas seguidas. Aguarde um instante e tente de novo." com o botão em `Aguarde {N}s` desabilitado, em mobile e desktop. Confirmar que a contagem **não** trava o visitante além da janela e **não** desloca o layout.
 why_human: Item que nasce da decisão do owner de 2026-07-27 (ratificação do desvio do D-10, `03-VERIFICATION.md` §override_log). Nenhum executor pode marcá-lo — ninguém viu esta tela ainda.
 result: [pending]
+pre_requisito_de_ambiente_caiu: |
+  **2026-08-07 (quick task `260807-ooq`) — o que mudou é o CUSTO DE CHEGAR À TELA, não o
+  teste.** Antes, ver esta tela exigia recadastrar perfil, serviços e horários à mão a cada
+  reset do banco local. Agora:
+
+    npx supabase start          # se ainda não estiver de pé
+    npx supabase db reset --local
+    pnpm dev
+    # abrir http://localhost:3000/book/salao-do-seed
+
+  `supabase/seed.sql` roda automaticamente no reset e cria o tenant `salao-do-seed` com dois
+  serviços ativos (30 e 60 min) e horários de segunda a sábado.
+
+  **O Clerk NÃO é necessário para esta tela** — verificado no fonte, não assumido:
+  `obterDadosBookingPublico` (`src/app/actions/public-booking.ts`) usa `createAdminClient()`
+  e resolve o tenant pelo slug em `resolverPerfilPublicoPorSlug`; nada no caminho de
+  `/book/<slug>` consulta o Clerk. Por isso o `tenant_id` sintético do seed não atrapalha a
+  página pública (o **dashboard**, esse sim, não enxerga o tenant sem o GUC — o seed avisa).
+
+  Continua `[pending]`: nada aqui aproxima o item de aprovado. Ninguém viu esta tela ainda, e
+  só o owner fecha item de UAT.
 
 ### 6. Medir qual header de IP a Railway realmente entrega
 
@@ -196,6 +217,59 @@ deferral_note: |
   Risco aceito: até a medição, a camada de IP pode agrupar visitantes distintos
   num balde só ou ser forjável. O fail-open do CR-04 garante que o erro degrada
   para "não protege", nunca para "bloqueia cliente legítimo".
+instrumento_disponivel: |
+  **2026-08-07 (quick task `260807-ooq`) — o instrumento passou a existir. O item continua
+  `deferred`: reclassificá-lo é decisão do owner, não do executor.**
+
+  O que caducou foi a JUSTIFICATIVA do adiamento, não a pendência. O deferimento dizia
+  "inalcançável sem deploy em produção"; o deploy existe desde 2026-08-07
+  (`vamoagendar.com.br`, Railway). Faltava só poder mirar fora do `127.0.0.1` — e faltava um
+  jeito de responder "qual header?" sem depender de painel.
+
+  Comandos exatos:
+
+    # NO COMMIT QUE ESTÁ DEPLOYADO — o id da Server Action sai deste manifesto e
+    # só vale se corresponder ao build remoto (o harness ABORTA se não corresponder)
+    pnpm build
+
+    # (a) execução normal contra o deploy — os 7 vereditos de sempre, ~13 sondas
+    ALVO_EXTERNO=https://vamoagendar.com.br CONFIRMO_CUSTO_NO_ALVO=1 \
+      bash scripts/verificar-rate-limit-escrita.sh
+
+    # (b) a medição deste teste — qual header o alvo usa como chave, ~16 sondas
+    MEDIR_HEADER_IP=1 ALVO_EXTERNO=https://vamoagendar.com.br CONFIRMO_CUSTO_NO_ALVO=1 \
+      bash scripts/verificar-rate-limit-escrita.sh
+
+  **O oráculo é o próprio balde do rate limit, não o painel.** O `chaveHash` não volta na
+  resposta HTTP, então comparar hashes no Sentry seria teste de crença. O script enche o
+  balde com dois candidatos de faixas de documentação distintas (`X-Real-IP: 203.0.113.x`,
+  RFC 5737 TEST-NET-3; `X-Forwarded-For: 192.0.2.x`, TEST-NET-1) e interroga três sondas.
+  Tabela verdade, impressa também como última linha `VEREDITO_HEADER: <valor>`:
+
+    sem header BLOQUEADA ....................  ip-da-conexao    DESFECHO BOM (não forjável)
+    só X-Real-IP BLOQUEADA, sem-header passou  x-real-ip        forjável
+    só X-Forwarded-For BLOQUEADA, idem ......  x-forwarded-for  forjável
+    nenhuma bloqueada ......................   inconclusivo     NUNCA é aprovação
+
+  Os hashes dos dois candidatos são impressos como CORROBORAÇÃO (para comparar com o
+  `chaveHash` do Sentry Log), nunca como veredito — e só quando `ANALYTICS_TENANT_SALT`
+  existe no shell e o tripwire confirma que a forma do hash não mudou no código.
+
+  **⚠️ Custo declarado** (o portão `CONFIRMO_CUSTO_NO_ALVO=1` é obrigatório e imprime isto
+  ANTES de disparar qualquer sonda): consome orçamento de rate limit real do alvo e escreve
+  contadores no Redis dele; e no desfecho BOM quem enche o balde é o **IP real da máquina que
+  rodar**, que fica sem poder criar agendamento no alvo pela janela inteira (10 min). O que
+  NÃO acontece: as sondas usam slug inexistente e morrem em `slug_invalido`, depois do rate
+  limit — nenhum agendamento e nenhum cliente são gravados.
+
+  **Controle que prova que o instrumento discrimina:** contra um `next start` local, onde a
+  resposta é conhecida de antemão (sem proxy na frente, o `X-Real-IP` da própria sonda é o
+  único candidato possível), o veredito saiu `x-real-ip` em duas execuções independentes.
+  Contra um alvo que responde 200 mas não tem a Server Action, o harness aborta (código 2) no
+  CONTROLE_DE_ID em vez de produzir veredito.
+
+  A segunda caixa deste teste — a Issue `ratelimit:ip_indeterminavel` NÃO aparecendo em
+  produção — continua sendo olho no painel. Instrumento nenhum fecha isso.
 
 ### 7. Calibração dos limites com dado real
 

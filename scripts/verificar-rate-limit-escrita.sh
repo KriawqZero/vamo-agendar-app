@@ -173,6 +173,51 @@
 #    daria a ilusão de correspondência com o alvo — e correspondência é
 #    exatamente o que o CONTROLE_DE_ID existe para medir.
 #
+# 16) MODO MEDIÇÃO (`MEDIR_HEADER_IP=1`) — QUAL header de IP o alvo usa como
+#    chave. Substitui a bateria normal de vereditos por uma medição, e funciona
+#    nos DOIS modos. Rodar em modo LOCAL é o CONTROLE que prova que o instrumento
+#    discrimina: sem proxy na frente, a resposta é conhecida de antemão — o
+#    `X-Real-IP` que a própria sonda manda é o único candidato possível.
+#
+#    ⚠️ O ORÁCULO É O PRÓPRIO BALDE DO RATE LIMIT, NÃO O PAINEL. O `chaveHash`
+#    não volta na resposta HTTP, então "qual header o app usou" seria, por
+#    painel, um teste de crença. Pelo balde vira observação: quem encheu o balde
+#    é quem é a chave.
+#
+#    Dois candidatos de faixas de documentação DIFERENTES, para serem
+#    inconfundíveis no relatório e em qualquer painel: `203.0.113.x` (RFC 5737,
+#    TEST-NET-3) vai em `X-Real-IP` e `192.0.2.x` (TEST-NET-1) vai em
+#    `X-Forwarded-For`. Octeto final derivado do relógio, pelo motivo da nota 4.
+#
+#    Sequência: BASELINE (sonda sem header forjado; se vier BLOQUEADA, aborta —
+#    o balde da chave que o alvo usa para nós já está sujo e nada do que vem
+#    depois mede o que diz medir, mesma lógica da nota 8) → ENCHER (sondas com os
+#    DOIS headers até bloquear; nunca bloqueou ⇒ inconclusivo e saída 2, porque
+#    pode ser rate limit em no-op no alvo) → DISCRIMINAR (três sondas: sem header,
+#    só `X-Real-IP`, só `X-Forwarded-For`) → VEREDITO por tabela verdade.
+#
+# 17) A LINHA `VEREDITO_HEADER:` É LEGÍVEL POR MÁQUINA DE PROPÓSITO. Ela sai como
+#    último item do relatório, com exatamente quatro valores possíveis:
+#    `ip-da-conexao`, `x-real-ip`, `x-forwarded-for`, `inconclusivo`. Sem ela, a
+#    única forma de um script conferir o resultado seria grepar a prosa — e a
+#    prosa contém a TABELA VERDADE INTEIRA, que casa com qualquer veredito. Um
+#    gate assim ficaria verde independentemente do que foi medido, que é o
+#    falso-verde clássico deste projeto.
+#
+# 18) OS HASHES CANDIDATOS SÃO CORROBORAÇÃO, NUNCA O VEREDITO. A fórmula é
+#    reproduzida por um `node -e` inline e é uma DUPLICATA de `hashComSal`
+#    (`src/lib/observabilidade/hash.ts`) com o domínio de `hashChaveRateLimit`
+#    (`src/lib/rate-limit.ts`) — as duas mudam juntas. Por isso há TRIPWIRE: se o
+#    domínio deixar de estar declarado no primeiro ou o truncamento a 16 deixar
+#    de estar no segundo, o script PULA a impressão e avisa. Melhor não imprimir
+#    do que imprimir hash de fórmula velha.
+#
+#    Sal ausente ⇒ nada é impresso, e o motivo é dito: hash com sal vazio é hash
+#    errado que parece certo. O VALOR do sal nunca aparece em ramo nenhum
+#    (nota 1) — o `node -e` o lê do ambiente, jamais de argv, que é público em
+#    `ps`. E os hashes impressos não devem ser colados em issue/PR: são
+#    pseudônimos, mas de plaintext conhecido.
+#
 # ---------------------------------------------------------------------------
 # USO
 # ---------------------------------------------------------------------------
@@ -183,6 +228,10 @@
 #
 #   # Alvo externo (servidor que este script não constrói, não sobe e não mata):
 #   ALVO_EXTERNO=https://exemplo.com CONFIRMO_CUSTO_NO_ALVO=1 \
+#       bash scripts/verificar-rate-limit-escrita.sh
+#
+#   # Medição de qual header de IP o alvo usa como chave (nota 16):
+#   MEDIR_HEADER_IP=1 ALVO_EXTERNO=https://exemplo.com CONFIRMO_CUSTO_NO_ALVO=1 \
 #       bash scripts/verificar-rate-limit-escrita.sh
 #
 # Seis vereditos:
@@ -219,6 +268,11 @@ if [ -n "${ALVO_EXTERNO:-}" ]; then
     BASE_URL="${ALVO_EXTERNO%/}"
 fi
 
+# Ver nota 16: substitui a bateria de vereditos por uma medição. Vale nos dois
+# modos — em modo local ele é o CONTROLE de resposta conhecida.
+MODO_MEDICAO=0
+[ "${MEDIR_HEADER_IP:-}" = '1' ] && MODO_MEDICAO=1
+
 LIMITE_CONTROLE=30
 MANIFESTO='.next/server/server-reference-manifest.json'
 MODULO_ACTION='src/app/actions/public-booking.ts'
@@ -241,6 +295,13 @@ IP_VIZINHO="198.51.100.$(( (SEMENTE % 250) + 1 ))"
 if [ "$IP_SONDA" = "$IP_VIZINHO" ]; then
     IP_VIZINHO="198.51.100.$(( (SEMENTE + 7) % 250 + 1 ))"
 fi
+
+# Ver nota 16: candidatos do modo medição, em faixas de documentação DIFERENTES
+# entre si e diferentes da usada pelas sondas normais. Faixas distintas tornam a
+# leitura inconfundível — no relatório e em qualquer painel, `203.0.113.x` só
+# pode ter chegado por `X-Real-IP` e `192.0.2.x` só por `X-Forwarded-For`.
+CANDIDATO_REAL_IP="203.0.113.$SEMENTE"   # RFC 5737 TEST-NET-3
+CANDIDATO_XFF="192.0.2.$SEMENTE"         # RFC 5737 TEST-NET-1
 
 # Ver nota 5: forma válida em todos os campos, slug que não resolve.
 corpo_sonda() {
@@ -390,7 +451,13 @@ if [ "$MODO_EXTERNO" -eq 1 ]; then
 else
     echo "Action alvo: $NOME_ACTION_ESCRITA   |   Porta: $PORTA   |   Teto: $TETO_ESCRITA_IP/10min"
 fi
-echo "IPs de sonda (RFC 5737, não roteáveis): $IP_SONDA e $IP_VIZINHO"
+if [ "$MODO_MEDICAO" -eq 1 ]; then
+    echo 'MODO MEDIÇÃO (MEDIR_HEADER_IP=1) — a bateria de vereditos dá lugar a UMA pergunta:'
+    echo 'qual header de IP o alvo usa como chave do rate limit? O oráculo é o próprio balde.'
+    echo "Candidatos: X-Real-IP=$CANDIDATO_REAL_IP (TEST-NET-3) e X-Forwarded-For=$CANDIDATO_XFF (TEST-NET-1)"
+else
+    echo "IPs de sonda (RFC 5737, não roteáveis): $IP_SONDA e $IP_VIZINHO"
+fi
 echo
 
 command -v pnpm >/dev/null 2>&1 || abortar 'pnpm não encontrado no PATH.'
@@ -405,7 +472,15 @@ if [ "$MODO_EXTERNO" -eq 1 ]; then
     fi
 
     if [ "${CONFIRMO_CUSTO_NO_ALVO:-}" != '1' ]; then
-        abortar "modo externo exige CONFIRMO_CUSTO_NO_ALVO=1 (nota 13). O QUE ISSO CUSTA em $BASE_URL: as sondas consomem orçamento de rate limit de verdade e escrevem contadores no Redis do alvo; se o alvo for produção, o IP que rodar este script pode ficar sem poder criar agendamento pela duração da janela ($TETO_ESCRITA_IP/10min). O QUE NÃO ACONTECE: as sondas usam slug inexistente com os demais campos válidos e morrem em \`slug_invalido\`, depois do rate limit e antes da resolução do slug — nenhum agendamento e nenhum cliente são gravados (nota 5). Nenhuma sonda foi disparada."
+        CUSTO_EXTRA=''
+        if [ "$MODO_MEDICAO" -eq 1 ]; then
+            # Ver nota 16: a medição gasta mais, e no desfecho BOM (proxy
+            # sobrepondo os nossos headers) quem enche o balde é o IP REAL de
+            # quem rodou — a máquina que executa fica sem poder criar
+            # agendamento pela janela inteira.
+            CUSTO_EXTRA=" CUSTO ADICIONAL DO MEDIR_HEADER_IP=1: até ~16 sondas de escrita em vez de ~13; e se o alvo IGNORAR os headers forjados (o desfecho bom, proxy sobrepondo), quem enche o balde é o IP REAL desta máquina — ela fica sem poder criar agendamento no alvo pela janela inteira."
+        fi
+        abortar "modo externo exige CONFIRMO_CUSTO_NO_ALVO=1 (nota 13). O QUE ISSO CUSTA em $BASE_URL: as sondas consomem orçamento de rate limit de verdade e escrevem contadores no Redis do alvo; se o alvo for produção, o IP que rodar este script pode ficar sem poder criar agendamento pela duração da janela ($TETO_ESCRITA_IP/10min).$CUSTO_EXTRA O QUE NÃO ACONTECE: as sondas usam slug inexistente com os demais campos válidos e morrem em \`slug_invalido\`, depois do rate limit e antes da resolução do slug — nenhum agendamento e nenhum cliente são gravados (nota 5). Nenhuma sonda foi disparada."
     fi
 else
     porta_ocupada && abortar "a porta $PORTA já está ocupada — encerre o processo antes de medir."
@@ -550,6 +625,20 @@ sondar() {
         "$BASE_URL$ROTA_SONDA" 2>/dev/null
 }
 
+# Sonda com controle TOTAL sobre os headers de IP — inclusive nenhum. É o que o
+# modo medição precisa e o que `sondar` (que sempre manda `X-Real-IP`) não pode
+# oferecer sem mudar o comportamento da bateria normal.
+sondar_livre() {
+    local args=() h
+    for h in "$@"; do args+=(-H "$h"); done
+    curl -s --max-time 15 -X POST \
+        -H "Next-Action: $ID_ACTION_ESCRITA" \
+        -H 'Content-Type: text/plain;charset=UTF-8' \
+        ${args[@]+"${args[@]}"} \
+        --data-raw "$(corpo_sonda)" \
+        "$BASE_URL$ROTA_SONDA" 2>/dev/null
+}
+
 recorte() {
     printf '%s' "$1" | head -c 300 | tr '\n' '|'
 }
@@ -589,6 +678,150 @@ if [ "$MODO_EXTERNO" -eq 1 ]; then
     fi
 
     echo "  … CONTROLE_DE_ID OK: o alvo resolveu o id para \`$NOME_ACTION_ESCRITA\` (devolveu \`campos_obrigatorios\`, sem gastar token)"
+fi
+
+# =============================================================================
+# MODO MEDIÇÃO (ver notas 16, 17 e 18) — substitui a bateria de vereditos
+# =============================================================================
+if [ "$MODO_MEDICAO" -eq 1 ]; then
+    echo
+    echo '--- 1. BASELINE: a chave que o alvo usa para NÓS está limpa? -------------'
+    CORPO_BASE=$(sondar_livre)
+    ESTADO_BASE=$(classificar "$CORPO_BASE")
+
+    if [ "$ESTADO_BASE" = 'BLOQUEADO' ]; then
+        encerrar_servidor
+        abortar "a sonda BASELINE (sem header forjado nenhum) já veio BLOQUEADA. O balde da chave que o alvo usa para nós está sujo, e nesse estado nada do que vem depois mede o que diz medir — as três sondas de discriminação viriam bloqueadas por herança, não por causa dos headers. Aguarde a janela virar e rode de novo. Abortar aqui é a mesma lógica do JANELA_LIMPA (nota 8)."
+    fi
+    if [ "$ESTADO_BASE" = 'INDEFINIDO' ]; then
+        encerrar_servidor
+        abortar "a sonda BASELINE não devolveu nem \`slug_invalido\` nem \`muitas_tentativas\`. Sem classificar a linha de base não há medição. Corpo: $(recorte "$CORPO_BASE")"
+    fi
+    echo "    BASELINE passou (\`slug_invalido\`) — linha de base válida."
+
+    echo
+    echo '--- 2. ENCHER: sondas com os DOIS headers forjados ------------------------'
+    TENTATIVAS_ENCHER=$((TETO_ESCRITA_IP + EXCEDENTE))
+    ENCHEU=0
+    n=1
+    while [ "$n" -le "$TENTATIVAS_ENCHER" ]; do
+        CORPO=$(sondar_livre "X-Real-IP: $CANDIDATO_REAL_IP" "X-Forwarded-For: $CANDIDATO_XFF")
+        if [ "$(classificar "$CORPO")" = 'BLOQUEADO' ]; then
+            ENCHEU=1
+            break
+        fi
+        n=$((n + 1))
+    done
+
+    if [ "$ENCHEU" -eq 0 ]; then
+        echo "    NUNCA bloqueou em $TENTATIVAS_ENCHER sondas."
+        echo
+        echo 'INCONCLUSIVO — sem bloqueio não existe balde cheio, e sem balde cheio não há'
+        echo 'oráculo. A causa mais provável é o rate limit em NO-OP no alvo (sem as'
+        echo 'credenciais do Upstash no ambiente DELE). Nesse estado a medição não existe;'
+        echo 'relatar inconclusivo é o único desfecho honesto.'
+        echo
+        echo 'VEREDITO_HEADER: inconclusivo'
+        encerrar_servidor
+        exit 2
+    fi
+    echo "    Bloqueou na sonda #$n — há um balde cheio para interrogar."
+
+    echo
+    echo '--- 3. DISCRIMINAR: três sondas, uma de cada forma -----------------------'
+    CORPO_SEM=$(sondar_livre)
+    ESTADO_SEM=$(classificar "$CORPO_SEM")
+    CORPO_REAL=$(sondar_livre "X-Real-IP: $CANDIDATO_REAL_IP")
+    ESTADO_REAL=$(classificar "$CORPO_REAL")
+    CORPO_XFF=$(sondar_livre "X-Forwarded-For: $CANDIDATO_XFF")
+    ESTADO_XFF=$(classificar "$CORPO_XFF")
+
+    printf '    sem header forjado ................. %s\n' "$ESTADO_SEM"
+    printf '    só X-Real-IP (%s) ....... %s\n' "$CANDIDATO_REAL_IP" "$ESTADO_REAL"
+    printf '    só X-Forwarded-For (%s) . %s\n' "$CANDIDATO_XFF" "$ESTADO_XFF"
+
+    # --- Tabela verdade ------------------------------------------------------
+    # A ordem dos ramos importa: a sonda SEM header é a primeira pergunta porque
+    # ela separa "o alvo ignorou os nossos headers" de todo o resto.
+    if [ "$ESTADO_SEM" = 'BLOQUEADO' ]; then
+        VEREDITO_HEADER='ip-da-conexao'
+        LEITURA='O alvo IGNOROU os headers que mandamos e chaveou pelo IP REAL da conexão.
+É o DESFECHO BOM: a camada de IP não é forjável de fora. (Neste mundo as três sondas
+costumam vir bloqueadas, porque todas caem no mesmo balde — o nosso IP real.)'
+    elif [ "$ESTADO_REAL" = 'BLOQUEADO' ] && [ "$ESTADO_XFF" = 'PASSOU' ]; then
+        VEREDITO_HEADER='x-real-ip'
+        LEITURA='O `x-real-ip` que o CLIENTE manda chega intacto ao app: só a sonda que o
+repetiu caiu no balde cheio. FORJÁVEL — quem escolhe a chave do rate limit é quem faz a
+requisição, então a camada de IP precisa ser recalibrada (ou o proxy precisa sobrescrever
+o header).'
+    elif [ "$ESTADO_XFF" = 'BLOQUEADO' ] && [ "$ESTADO_REAL" = 'PASSOU' ]; then
+        VEREDITO_HEADER='x-forwarded-for'
+        LEITURA='A ÚLTIMA entrada do `x-forwarded-for` é texto do CLIENTE, ou seja, o proxy
+não anexa a dele. FORJÁVEL pelo outro eixo — mesma consequência do caso anterior.'
+    else
+        VEREDITO_HEADER='inconclusivo'
+        LEITURA='Nenhuma das três combinações separa os candidatos. A janela pode ter virado
+no meio da medição, ou o alvo tem comportamento não previsto pela tabela. Rode de novo; se
+repetir, investigue antes de concluir qualquer coisa. Isto NÃO é aprovação.'
+    fi
+
+    echo
+    echo '--- 4. VEREDITO ---------------------------------------------------------'
+    echo "$LEITURA"
+    echo
+    echo 'Tabela verdade aplicada:'
+    echo '  sem header BLOQUEADA .................... ip-da-conexao   (bom: não forjável)'
+    echo '  só X-Real-IP BLOQUEADA, sem-header passou  x-real-ip       (forjável)'
+    echo '  só X-Forwarded-For BLOQUEADA, idem ......  x-forwarded-for (forjável)'
+    echo '  nenhuma bloqueada ......................  inconclusivo    (nunca é aprovação)'
+    echo
+    echo '⚠️ Ressalva que a nota 7 ensinou: "as três bloqueadas" e "o app está barrando'
+    echo 'tudo" só se separam com o BASELINE do passo 1 (que passou) e com o veredito'
+    echo 'ISOLAMENTO_POR_IP de uma execução NORMAL. Sem esses dois, um app em pane'
+    echo 'produziria este mesmo relatório.'
+
+    # --- 5. Hashes candidatos (corroboração, nunca o veredito) — ver nota 18 --
+    echo
+    echo '--- 5. Hashes candidatos (para comparar com o `chaveHash` do Sentry Log) --'
+    TRIPWIRE_OK=1
+    grep -q "DOMINIO_HASH = 'ratelimit'" src/lib/rate-limit.ts 2>/dev/null || TRIPWIRE_OK=0
+    grep -q '\.slice(0, 16)' src/lib/observabilidade/hash.ts 2>/dev/null || TRIPWIRE_OK=0
+
+    if [ "$TRIPWIRE_OK" -eq 0 ]; then
+        echo '    TRIPWIRE DISPAROU: a forma do hash mudou no código (domínio em'
+        echo '    src/lib/rate-limit.ts ou truncamento em src/lib/observabilidade/hash.ts).'
+        echo '    Nenhum hash impresso — hash de fórmula velha é pior que hash nenhum.'
+        echo '    Atualize o snippet deste script junto com o código.'
+    elif [ -z "${ANALYTICS_TENANT_SALT:-}" ]; then
+        echo '    ANALYTICS_TENANT_SALT ausente no ambiente deste shell: nenhum hash'
+        echo '    impresso. Hash com sal vazio é hash errado que PARECE certo, e comparar'
+        echo '    um desses com o painel produziria conclusão invertida.'
+    else
+        node -e '
+const { createHash } = require("node:crypto")
+// Sal lido do AMBIENTE, jamais de argv (argv é público em `ps`). Ver nota 1.
+const sal = process.env.ANALYTICS_TENANT_SALT ?? ""
+const dominio = "ratelimit"
+for (const [rotulo, valor] of JSON.parse(process.argv[1])) {
+    const hash = createHash("sha256").update(`${sal}|${dominio}|${valor}`).digest("hex").slice(0, 16)
+    process.stdout.write(`    ${rotulo.padEnd(17)} ${valor.padEnd(15)} -> ${hash}\n`)
+}
+' "$(printf '[["X-Real-IP","%s"],["X-Forwarded-For","%s"]]' "$CANDIDATO_REAL_IP" "$CANDIDATO_XFF")"
+        echo
+        echo '    ⚠️ Se o sal deste shell NÃO for o mesmo do alvo, os dois hashes vão'
+        echo '    diferir do painel — e isso NÃO significa que nenhum dos candidatos foi'
+        echo '    usado. Quem manda é o veredito do balde, acima. Estes hashes só'
+        echo '    corroboram.'
+        echo '    Não cole estes hashes em issue/PR: são pseudônimos, mas de plaintext'
+        echo '    conhecido (os dois candidatos estão escritos aqui do lado).'
+    fi
+
+    encerrar_servidor
+    echo
+    # Ver nota 17: última linha, formato fechado, quatro valores possíveis.
+    echo "VEREDITO_HEADER: $VEREDITO_HEADER"
+    [ "$VEREDITO_HEADER" = 'inconclusivo' ] && exit 2
+    exit 0
 fi
 
 # --- Veredito 3: JANELA_LIMPA (ver nota 8) -----------------------------------

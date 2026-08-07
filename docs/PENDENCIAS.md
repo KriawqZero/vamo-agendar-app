@@ -1016,6 +1016,14 @@ foi aprovado; nada aqui deve ser assumido como aprovado.
 --noEmit` exit 0. **Restam exclusivamente os itens manuais abaixo** — nenhum deles é
 alcançável por comando.
 
+> 🌱 **Pré-requisito de ambiente removido em 2026-08-07** (quick task `260807-ooq`): os itens
+> que exigem abrir uma tela do booking público não precisam mais de cadastro manual nem do
+> Clerk. `npx supabase db reset --local` executa `supabase/seed.sql` e entrega
+> `/book/salao-do-seed` de pé — dois serviços ativos de durações diferentes e horários de
+> segunda a sábado. A leitura pública roda com cliente privilegiado resolvido pelo slug, e
+> por isso funciona mesmo com o `tenant_id` sintético do seed (o **dashboard**, esse sim,
+> exige o GUC `vamoagendar.org_id` — o seed avisa no `RAISE NOTICE`).
+
 **(a) Prova comportamental do SC1 — script real contra Redis real**
 
 - [x] **FECHADO em 2026-07-27** por `scripts/verificar-rate-limit-escrita.sh` (commit
@@ -1153,11 +1161,59 @@ formal, e duas das quatro camadas dependem dela.
       aparecer, as camadas por IP estão em PASSE (fail-open deliberado do CR-04) e o
       problema é de infraestrutura, não de tráfego — o header sumiu.
 
+> 🔧 **O INSTRUMENTO PASSOU A EXISTIR em 2026-08-07** (quick task `260807-ooq`). As caixas
+> acima **continuam abertas** — quem mede e quem fecha é o owner —, mas a medição deixou de
+> depender de painel e de leitura de `chaveHash`:
+>
+> ```bash
+> # 1) execução normal contra o deploy (~13 sondas)
+> pnpm build   # NO COMMIT QUE ESTÁ DEPLOYADO — o id da Server Action sai desse manifesto
+> ALVO_EXTERNO=https://vamoagendar.com.br CONFIRMO_CUSTO_NO_ALVO=1 \
+>   bash scripts/verificar-rate-limit-escrita.sh
+>
+> # 2) qual header o alvo usa como chave (~16 sondas)
+> MEDIR_HEADER_IP=1 ALVO_EXTERNO=https://vamoagendar.com.br CONFIRMO_CUSTO_NO_ALVO=1 \
+>   bash scripts/verificar-rate-limit-escrita.sh
+> ```
+>
+> **O oráculo é o próprio balde do rate limit, não o painel.** O script enche o balde com
+> dois candidatos de faixas de documentação distintas (`X-Real-IP: 203.0.113.x` e
+> `X-Forwarded-For: 192.0.2.x`) e depois interroga três sondas — sem header, só uma, só a
+> outra. Tabela verdade:
+>
+> | Sonda bloqueada | `VEREDITO_HEADER:` | Leitura |
+> |---|---|---|
+> | a **sem header** | `ip-da-conexao` | **desfecho bom** — o proxy sobrepõe, a camada de IP não é forjável de fora |
+> | só `X-Real-IP` | `x-real-ip` | o header do cliente chega intacto — **forjável** |
+> | só `X-Forwarded-For` | `x-forwarded-for` | o proxy não anexa; a última entrada é texto do cliente — **forjável** |
+> | nenhuma | `inconclusivo` | janela virou ou comportamento não previsto — **nunca é aprovação** |
+>
+> **⚠️ Custo declarado** (o portão `CONFIRMO_CUSTO_NO_ALVO=1` é obrigatório e imprime isto
+> antes de disparar qualquer sonda): consome orçamento de rate limit real do alvo e escreve
+> contadores no Redis dele; e **no desfecho bom** quem enche o balde é o **IP real da máquina
+> que rodar**, que fica sem poder criar agendamento no alvo pela janela inteira (10 min).
+> O que **não** acontece: as sondas usam slug inexistente e morrem em `slug_invalido`, depois
+> do rate limit — nenhum agendamento e nenhum cliente são gravados.
+>
+> **Controle que prova que o instrumento discrimina:** rodado contra um `next start` local,
+> onde a resposta é conhecida de antemão (sem proxy na frente, o `X-Real-IP` da própria sonda
+> é o único candidato possível), o veredito saiu `x-real-ip` em duas execuções independentes.
+>
+> A justificativa do adiamento ("inalcançável sem deploy em produção") **caducou** — o deploy
+> existe desde 2026-08-07. Reclassificar o item é decisão do owner; este registro só diz que
+> o instrumento existe.
+
 **Diferidos para o go-live (Phase 11) — decisão do owner em 2026-08-07**
 
 Três itens desta fase são estruturalmente inalcançáveis antes de existir deploy em produção
 e tráfego real. Travar a Phase 03 por eles pararia o roadmap inteiro esperando algo que não
 depende de código, então saem daqui com dono, gatilho e detector escritos — não somem.
+
+> ⚠️ **Atualização de 2026-08-07 (quick task `260807-ooq`):** para o item **(d)** a premissa
+> do deferimento mudou — o deploy existe e o harness passou a mirar URL externa (ver o bloco
+> do instrumento logo acima). O item continua deferido aqui porque **reclassificá-lo é
+> decisão do owner**, não do executor; o que caducou foi o motivo "inalcançável", não a
+> pendência.
 
 | Item | Por que não fecha agora | Dono | Gatilho |
 |---|---|---|---|
