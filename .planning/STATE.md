@@ -5,8 +5,8 @@ milestone_name: Lançamento público
 current_phase: 03
 current_phase_name: anti-abuso-no-booking-p-blico
 status: awaiting_uat
-stopped_at: "Phase 03 executada (6/6), revisada e verificada. UAT: 3 pass, 2 DIFERIDOS para a Phase 11 (testes 6 e 7 — header de IP da Railway e calibração dos limites; exigem deploy e tráfego real, registrados com dono/gatilho/detector em docs/PENDENCIAS.md §'Diferidos para o go-live' e nas notas da Phase 11 do ROADMAP). Faltam 2, ambos do owner e alcançáveis hoje: teste 4 (abrir um Sentry Log ratelimit.bloqueio no painel e confirmar `camada`+`chaveHash` presentes e nenhum IP/telefone cru — a metade 'chegou?' já foi medida via MCP) e teste 5 (ver a copy do bloqueio de leitura em navegador real). NÃO marcada completa."
-last_updated: "2026-08-07T00:00:00.000Z"
+stopped_at: Quick task 260807-m5m concluída (fonte única das allowlists de log + camada nas Issues). Teste 4 do 03-UAT segue [pending] — exige deploy e olho do owner no painel.
+last_updated: "2026-08-07T20:14:25.883Z"
 last_activity: 2026-08-07
 progress:
   total_phases: 3
@@ -463,8 +463,8 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-07-27T19:30:29.983Z
-Stopped at: Completed 03-06-PLAN.md — Phase 03 encerrada em código
+Last session: 2026-08-07T20:14:25.863Z
+Stopped at: Quick task 260807-m5m concluída (fonte única das allowlists de log + camada nas Issues). Teste 4 do 03-UAT segue [pending] — exige deploy e olho do owner no painel.
 Resume file: None
 
 **Como retomar (ordem):**
