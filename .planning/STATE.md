@@ -5,7 +5,7 @@ milestone_name: Lançamento público
 current_phase: 03
 current_phase_name: anti-abuso-no-booking-p-blico
 status: awaiting_uat
-stopped_at: Quick task 260807-m5m concluída (fonte única das allowlists de log + camada nas Issues). Teste 4 do 03-UAT segue [pending] — exige deploy e olho do owner no painel.
+stopped_at: Quick task 260807-m5m concluída: `camada`/`chaveHash` eram descartados pelo `beforeSendLog` DEPOIS de aprovados pelo nosso filtro (duas allowlists duplicadas, uma envelhecida) — agora há fonte única, e a validação de forma de hash passou a valer também na última barreira (um `tenantHash` com IP cru atravessava). Phase 03 NÃO está completa: UAT com 3 pass, 2 DIFERIDOS para a Phase 11 (testes 6 e 7 — header de IP da Railway e calibração, exigem deploy e tráfego real; registrados com dono/gatilho/detector em docs/PENDENCIAS.md §'Diferidos para o go-live') e 2 pendentes do owner — teste 4 (painel do Sentry, e agora exige deploy com o código novo: log anterior não serve como prova) e teste 5 (copy do bloqueio de leitura em tela).
 last_updated: "2026-08-07T20:14:25.883Z"
 last_activity: 2026-08-07
 progress:
@@ -444,6 +444,7 @@ Nenhum ainda.
 | 260721-jif | Fundação operacional — Sentry, PostHog e Resend (etapa preparatória, pré-requisito da Phase 1) | 2026-07-21 | b80c408 | Needs Review | [260721-jif-fundacao-operacional-sentry-posthog-e-re](./quick/260721-jif-fundacao-operacional-sentry-posthog-e-re/) |
 | 260724-observabilidade-mensageria | Observabilidade Real da Mensageria (Sentry Logs, Sentry Issues aguardadas, PostHog e auditoria append-only em disparos_whatsapp) | 2026-07-24 | `a03cc39`→`cd63aa3`, merge `a9d071a` (PR #11) | Código fechado — falta verificação de painel (owner) | [260724-observabilidade-mensageria](./quick/260724-observabilidade-mensageria/) |
 | 2 | Adiciona "type": "http" ao servidor Sentry em .mcp.json (elimina warning do /mcp) | 2026-07-21 | ddcda54 | — | — |
+| 260807-m5m | Fonte única das allowlists de atributos de log (`camada`/`chaveHash` eram descartados pelo `beforeSendLog` depois de aprovados pelo nosso filtro) + `camada` nas Issues + validação de forma de hash na última barreira | 2026-08-07 | `62d2eda`→`e0118b8` | Código fechado — destrava o teste 4 do 03-UAT, que segue do owner | [260807-m5m-corrigir-divergencia-entre-as-allowlists](./quick/260807-m5m-corrigir-divergencia-entre-as-allowlists/) |
 
 **Status `Needs Review`**: as 4 tarefas de código fecharam e foram verificadas (0 gaps,
 `pnpm lint`/`test`/`build` verdes, 164 testes). Os dois checkpoints dependem do owner:
@@ -464,7 +465,7 @@ Nenhum ainda.
 ## Session Continuity
 
 Last session: 2026-08-07T20:14:25.863Z
-Stopped at: Quick task 260807-m5m concluída (fonte única das allowlists de log + camada nas Issues). Teste 4 do 03-UAT segue [pending] — exige deploy e olho do owner no painel.
+Stopped at: Quick task 260807-m5m concluída: `camada`/`chaveHash` eram descartados pelo `beforeSendLog` DEPOIS de aprovados pelo nosso filtro (duas allowlists duplicadas, uma envelhecida) — agora há fonte única, e a validação de forma de hash passou a valer também na última barreira (um `tenantHash` com IP cru atravessava). Phase 03 NÃO está completa: UAT com 3 pass, 2 DIFERIDOS para a Phase 11 (testes 6 e 7 — header de IP da Railway e calibração, exigem deploy e tráfego real; registrados com dono/gatilho/detector em docs/PENDENCIAS.md §'Diferidos para o go-live') e 2 pendentes do owner — teste 4 (painel do Sentry, e agora exige deploy com o código novo: log anterior não serve como prova) e teste 5 (copy do bloqueio de leitura em tela).
 Resume file: None
 
 **Como retomar (ordem):**
