@@ -1,5 +1,33 @@
 project_id = "vamo-agendar-app"
 
+# ⚠️ PORTAS DESLOCADAS DE PROPÓSITO (faixa 544xx em vez da padrão 543xx).
+#
+# A máquina do owner roda outra stack local do Supabase em paralelo (projeto
+# `bolaodoleo`), que ocupa as portas padrão 54321–54324 e 54327. Herdar os
+# defaults faria `supabase start` colidir com ela — ou pior, faria um comando
+# deste repo mirar o banco do outro projeto sem avisar.
+#
+# O `project_id` acima já isola os NOMES dos containers; o que ele não isola é
+# a porta publicada no host. Por isso a faixa é explícita aqui, e não um
+# detalhe de ambiente: quem clonar o repo herda o isolamento.
+[api]
+port = 54421
+
+[db]
+port = 54422
+
+[db.pooler]
+port = 54429
+
+[studio]
+port = 54423
+
+[inbucket]
+port = 54424
+
+[analytics]
+port = 54427
+
 [db.migrations]
 # Fluxo declarativo: schemas em supabase/schemas/ são a fonte da verdade.
 # Migrations são geradas via `supabase db diff -f <nome>`, nunca à mão.
