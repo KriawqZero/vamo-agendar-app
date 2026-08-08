@@ -820,7 +820,7 @@ export async function criarAgendamentoPublico({
     // seção 1 — mesma fonte para validação e escrita.
     const { data: clienteId, error: cError } = await admin.rpc('reaproveitar_ou_criar_cliente', {
         p_tenant_id: tenantId,
-        p_telefone: telefoneLimpo,
+        p_telefone: telefoneLimpo || null,
         p_nome: nomeLimpo,
         p_email: emailLimpo || null,
     })
