@@ -1,0 +1,55 @@
+<!doctype html><meta charset="utf-8"><style>
+@font-face{font-family:Poppins;src:url('file:///mnt/Files/VamoAgendar/vamo-agendar-app/.marketing/fabrica/acervo/fonte/Poppins-400.ttf');font-weight:400}
+@font-face{font-family:Poppins;src:url('file:///mnt/Files/VamoAgendar/vamo-agendar-app/.marketing/fabrica/acervo/fonte/Poppins-600.ttf');font-weight:600}
+@font-face{font-family:Poppins;src:url('file:///mnt/Files/VamoAgendar/vamo-agendar-app/.marketing/fabrica/acervo/fonte/Poppins-800.ttf');font-weight:800}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:1080px;height:1920px;overflow:hidden}
+body{background:#0b0b0f;color:#f4f4f5;font-family:Poppins,sans-serif;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative}
+/* Área segura: as plataformas cobrem topo e rodapé com UI própria */
+.palco{width:100%;padding:300px 72px 400px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:48px;height:100%}
+.halo{position:absolute;width:1200px;height:1200px;border-radius:50%;
+  background:radial-gradient(circle,#3961D522 0%,transparent 62%);
+  left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none}
+.rotulo{font-size:34px;font-weight:600;color:#3DBAED;letter-spacing:.02em;text-align:center}
+.rodape{font-size:32px;color:#a1a1aa;text-align:center;line-height:1.35}
+
+  /* Âncora no topo: as mensagens crescem para baixo, como numa conversa de verdade.
+     Centralizado, o painel "pulava" a cada corte porque mudava de altura. */
+  .palco{justify-content:flex-start;padding-top:330px}
+  .chat{width:100%;background:#0e0e13;border:1px solid #26262e;border-radius:44px;overflow:hidden}
+  .top{display:flex;align-items:center;gap:24px;padding:36px 40px;border-bottom:1px solid #26262e;background:#131319}
+  .av{width:86px;height:86px;border-radius:50%;background:#2a2a33;display:flex;align-items:center;
+      justify-content:center;font-size:36px;font-weight:600;color:#a1a1aa}
+  .nome{font-size:38px;font-weight:600}
+  .sub{font-size:28px;color:#3DBAED;margin-top:4px}
+  .msgs{padding:44px 36px;display:flex;flex-direction:column;gap:28px}
+  .linha{display:flex}.esq{justify-content:flex-start}.dir{justify-content:flex-end}
+  .bolha{max-width:78%;padding:30px 34px;border-radius:34px;font-size:40px;line-height:1.32;position:relative}
+  .esq .bolha{border-bottom-left-radius:12px}
+  .dir .bolha{border-bottom-right-radius:12px}
+  .hora{display:block;text-align:right;font-size:22px;color:#9fd6c4;margin-top:8px;height:22px}
+  </style>
+  <div class="halo"></div>
+  <div class="palco">
+    <div class="chat">
+      <div class="top"><div class="av">C</div>
+        <div><div class="nome">Cliente</div>
+        <div class="sub">digitando…</div></div></div>
+      <div class="msgs"><div class="linha esq">
+        <div class="bolha" style="background:#1e1e24;">Amiga, preciso remarcar a manutenção de amanhã!
+          <span class="hora"></span>
+        </div></div><div class="linha dir">
+        <div class="bolha" style="background:#0f4c3f;">Tranquilo! Tenho quinta às 14h
+          <span class="hora">✓✓</span>
+        </div></div><div class="linha esq">
+        <div class="bolha" style="background:#1e1e24;">Quinta só consigo depois das 17h… tem?
+          <span class="hora"></span>
+        </div></div><div class="linha dir">
+        <div class="bolha" style="background:#0f4c3f;box-shadow:0 0 0 4px #3DBAED66, 0 24px 60px -12px #3DBAED55;">Deixa eu conferir a agenda e te falo
+          <span class="hora">✓✓</span>
+        </div></div></div>
+    </div>
+    <div class="rodape">três paradas no meio de um volume russo</div>
+  </div>

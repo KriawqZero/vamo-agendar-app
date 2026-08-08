@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260709161817_restaura_privilegios_dml_roles_api_sql", "label": "20260709161817_restaura_privilegios_dml_roles_api.sql", "file_type": "code", "source_file": "supabase/migrations/20260709161817_restaura_privilegios_dml_roles_api.sql", "source_location": null}], "edges": []}

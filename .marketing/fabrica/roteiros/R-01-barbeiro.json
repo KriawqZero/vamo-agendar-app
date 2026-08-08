@@ -1,0 +1,97 @@
+{
+  "id": "R-01-barbeiro",
+  "tipo": "dor-encenada",
+  "nicho": "barbeiro",
+  "hipotese": "A dor da interrupção (celular vibrando com o cliente na cadeira) retém mais que a dor do prejuízo ou da vaga presa — E-07/E-11.",
+  "fonteDoDialogo": "src/lib/nichos.ts → NICHOS.barbeiro.dor.conversa",
+  "duracaoAlvoSegundos": 25,
+  "trilha": null,
+  "cenas": [
+    {
+      "id": "c1",
+      "tipo": "conversa",
+      "segundos": 1.9,
+      "cabecalho": "Cliente",
+      "subtitulo": "online",
+      "bolhas": [{ "autor": "cliente", "texto": "E aí! Consegue me encaixar hoje ainda?" }]
+    },
+    {
+      "id": "c2",
+      "tipo": "conversa",
+      "segundos": 1.7,
+      "cabecalho": "Cliente",
+      "subtitulo": "online",
+      "bolhas": [
+        { "autor": "cliente", "texto": "E aí! Consegue me encaixar hoje ainda?" },
+        { "autor": "voce", "texto": "Hoje só 18h30, fechou?" }
+      ]
+    },
+    {
+      "id": "c3",
+      "tipo": "conversa",
+      "segundos": 2.0,
+      "cabecalho": "Cliente",
+      "subtitulo": "online",
+      "bolhas": [
+        { "autor": "cliente", "texto": "E aí! Consegue me encaixar hoje ainda?" },
+        { "autor": "voce", "texto": "Hoje só 18h30, fechou?" },
+        { "autor": "cliente", "texto": "18h30 não dá… e amanhã cedo?" }
+      ]
+    },
+    {
+      "id": "c4",
+      "tipo": "conversa",
+      "segundos": 3.4,
+      "cabecalho": "Cliente",
+      "subtitulo": "digitando…",
+      "rodape": "e o cliente da cadeira, esperando",
+      "bolhas": [
+        { "autor": "cliente", "texto": "E aí! Consegue me encaixar hoje ainda?" },
+        { "autor": "voce", "texto": "Hoje só 18h30, fechou?" },
+        { "autor": "cliente", "texto": "18h30 não dá… e amanhã cedo?" },
+        { "autor": "voce", "texto": "Te falo quando terminar esse corte", "destaque": true }
+      ]
+    },
+    {
+      "id": "v0",
+      "tipo": "titulo",
+      "segundos": 2.1,
+      "texto": "Essa conversa não precisa existir."
+    },
+    {
+      "id": "p1",
+      "tipo": "produto",
+      "segundos": 2.3,
+      "imagem": "tela/barbeiro-1-servico.png",
+      "rotulo": "ele abre seu link"
+    },
+    {
+      "id": "p2",
+      "tipo": "produto",
+      "segundos": 3.0,
+      "imagem": "tela/barbeiro-2-horario.png",
+      "rotulo": "vê só o que está livre de verdade"
+    },
+    {
+      "id": "p3",
+      "tipo": "produto",
+      "segundos": 2.2,
+      "imagem": "tela/barbeiro-3-confirmar.png",
+      "rotulo": "escolhe e confirma"
+    },
+    {
+      "id": "p4",
+      "tipo": "produto",
+      "segundos": 3.2,
+      "imagem": "tela/barbeiro-4-sucesso.png",
+      "rotulo": "sem cadastro, sem senha, sem app"
+    },
+    {
+      "id": "fecho",
+      "tipo": "fecho",
+      "segundos": 3.2,
+      "texto": "Sua máquina não desliga.",
+      "apoio": "VamoAgendar"
+    }
+  ]
+}

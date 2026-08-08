@@ -1,0 +1,61 @@
+{
+  "pecaId": "R-01-barbeiro",
+  "loteId": "prototipo-F-01",
+  "tipo": "dor-encenada",
+  "nicho": "barbeiro",
+  "estado": "aguardando_aprovacao",
+  "hipotese": "A dor da interrupção (celular vibrando com o cliente na cadeira) retém mais que a dor do prejuízo ou da vaga presa — E-07.",
+  "arquivos": {
+    "video": "video.mp4",
+    "previa": "video-previa.gif",
+    "cenas": "cenas/"
+  },
+  "tecnico": {
+    "resolucao": "1080x1920",
+    "duracaoSegundos": 25.0,
+    "codecVideo": "h264",
+    "codecAudio": "aac",
+    "sondaDeAceite": "aprovado"
+  },
+  "custo": {
+    "geracaoIA": 0,
+    "moeda": "BRL",
+    "observacao": "Zero API paga: gravação de tela real do produto + tipografia + ffmpeg. Só o tempo de máquina."
+  },
+  "trilha": {
+    "estado": "ausente",
+    "decisao": "Não inventar música. O vídeo sai com os toques de mensagem e silêncio. A trilha certa é a NATIVA da plataforma, escolhida no momento do upload — além de gratuita e licenciada, áudio nativo é sinal de distribuição para o algoritmo. Isso é passo do owner no agendador, não da fábrica."
+  },
+  "adaptacao": {
+    "tiktok": {
+      "legenda": "toda vez que você para o corte pra responder \"tem horário?\", a máquina desliga.\n\nseu link responde por você — e o cliente marca sem baixar nada.",
+      "hashtags": ["#barbeiro", "#barbearia", "#barbeariabrasil", "#agendamento"],
+      "primeiroComentario": "quantas vezes por dia isso acontece com você?",
+      "audioNativo": "escolher no app na hora do upload"
+    },
+    "instagram": {
+      "legenda": "Cliente na cadeira, celular vibrando: \"consegue me encaixar hoje?\"\n\nVocê para o corte, responde, ele não pode no horário, você responde de novo. Multiplique por um sábado inteiro.\n\nCom o link, ele vê só os horários realmente livres, escolhe e confirma. Sem cadastro, sem senha, sem baixar aplicativo.\n\nConfirmação e lembrete automáticos no WhatsApp fazem parte do plano Pro.",
+      "hashtags": ["#barbeiro", "#barbearia", "#barbeariabrasil", "#agendaonline", "#barbeiroautonomo"],
+      "primeiroComentario": "quantas vezes por dia isso acontece na sua cadeira?",
+      "audioNativo": "escolher no app na hora do upload"
+    },
+    "youtube": {
+      "titulo": "O cliente marca sozinho — sem baixar app | VamoAgendar",
+      "descricao": "Barbeiro que atende sozinho perde o dia respondendo \"tem horário?\" no meio do corte. O link de agendamento mostra só os horários realmente livres — o cliente escolhe e confirma sem cadastro e sem senha. Confirmação e lembrete automáticos no WhatsApp fazem parte do plano Pro.",
+      "hashtags": ["#shorts", "#barbeiro", "#barbearia"]
+    },
+    "facebook": {
+      "legenda": "Cliente na cadeira, celular vibrando: \"consegue me encaixar hoje?\"\n\nCom o link de agendamento, ele vê os horários realmente livres e confirma sozinho — sem cadastro, sem senha, sem baixar aplicativo.",
+      "hashtags": ["#barbearia"]
+    }
+  },
+  "guardrails": {
+    "citaPreco": false,
+    "citaGratis": false,
+    "numeroNaoMedido": false,
+    "depoimentoFabricado": false,
+    "escondeQueWhatsAppEhPro": false,
+    "linkNaBio": false,
+    "observacaoLink": "Sem CTA de link enquanto a página de conversão não existir (D-15). A chamada é para comentário — que hoje é o único ponto de contato."
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "id": "R-03-lash",
+  "tipo": "dor-encenada",
+  "nicho": "lash-designer",
+  "hipotese": "Em sessão longa, a interrupção dói mais: a remarcação custa três paradas no meio de uma aplicação de duas horas — E-07/E-08.",
+  "fonteDoDialogo": "src/lib/nichos.ts → NICHOS['lash-designer'].dor.conversa",
+  "duracaoAlvoSegundos": 24,
+  "trilha": null,
+  "cenas": [
+    {
+      "id": "c1",
+      "tipo": "conversa",
+      "segundos": 2.0,
+      "cabecalho": "Cliente",
+      "subtitulo": "online",
+      "bolhas": [{ "autor": "cliente", "texto": "Amiga, preciso remarcar a manutenção de amanhã!" }]
+    },
+    {
+      "id": "c2",
+      "tipo": "conversa",
+      "segundos": 1.7,
+      "cabecalho": "Cliente",
+      "subtitulo": "online",
+      "bolhas": [
+        { "autor": "cliente", "texto": "Amiga, preciso remarcar a manutenção de amanhã!" },
+        { "autor": "voce", "texto": "Tranquilo! Tenho quinta às 14h" }
+      ]
+    },
+    {
+      "id": "c3",
+      "tipo": "conversa",
+      "segundos": 2.1,
+      "cabecalho": "Cliente",
+      "subtitulo": "online",
+      "bolhas": [
+        { "autor": "cliente", "texto": "Amiga, preciso remarcar a manutenção de amanhã!" },
+        { "autor": "voce", "texto": "Tranquilo! Tenho quinta às 14h" },
+        { "autor": "cliente", "texto": "Quinta só consigo depois das 17h… tem?" }
+      ]
+    },
+    {
+      "id": "c4",
+      "tipo": "conversa",
+      "segundos": 3.5,
+      "cabecalho": "Cliente",
+      "subtitulo": "digitando…",
+      "rodape": "três paradas no meio de um volume russo",
+      "bolhas": [
+        { "autor": "cliente", "texto": "Amiga, preciso remarcar a manutenção de amanhã!" },
+        { "autor": "voce", "texto": "Tranquilo! Tenho quinta às 14h" },
+        { "autor": "cliente", "texto": "Quinta só consigo depois das 17h… tem?" },
+        { "autor": "voce", "texto": "Deixa eu conferir a agenda e te falo", "destaque": true }
+      ]
+    },
+    {
+      "id": "v0",
+      "tipo": "titulo",
+      "segundos": 2.2,
+      "texto": "Sua pinça não precisa parar."
+    },
+    {
+      "id": "p1",
+      "tipo": "produto",
+      "segundos": 2.6,
+      "imagem": "tela/lash-1-servico.png",
+      "rotulo": "aplicação e manutenção têm tempos diferentes"
+    },
+    {
+      "id": "p2",
+      "tipo": "produto",
+      "segundos": 3.2,
+      "imagem": "tela/lash-2-horario.png",
+      "rotulo": "a grade só oferece onde o serviço cabe"
+    },
+    {
+      "id": "p3",
+      "tipo": "produto",
+      "segundos": 3.4,
+      "imagem": "tela/lash-4-sucesso.png",
+      "rotulo": "ela remarca sozinha, a qualquer hora"
+    },
+    {
+      "id": "fecho",
+      "tipo": "fecho",
+      "segundos": 3.0,
+      "texto": "Sem largar o fio a fio.",
+      "apoio": "VamoAgendar"
+    }
+  ]
+}

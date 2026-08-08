@@ -1,0 +1,97 @@
+{
+  "id": "R-04-sobrancelhas",
+  "tipo": "dor-encenada",
+  "nicho": "designer-de-sobrancelhas",
+  "hipotese": "Neste nicho o direct é vitrine e central de atendimento ao mesmo tempo — separar os dois é o que puxa — E-07/E-08.",
+  "fonteDoDialogo": "src/lib/nichos.ts → NICHOS['designer-de-sobrancelhas'].dor.conversa",
+  "duracaoAlvoSegundos": 25,
+  "trilha": null,
+  "cenas": [
+    {
+      "id": "c1",
+      "tipo": "conversa",
+      "segundos": 2.0,
+      "cabecalho": "Direct",
+      "subtitulo": "online",
+      "bolhas": [{ "autor": "cliente", "texto": "Oi! Tem horário pra design com henna essa semana?" }]
+    },
+    {
+      "id": "c2",
+      "tipo": "conversa",
+      "segundos": 1.7,
+      "cabecalho": "Direct",
+      "subtitulo": "online",
+      "bolhas": [
+        { "autor": "cliente", "texto": "Oi! Tem horário pra design com henna essa semana?" },
+        { "autor": "voce", "texto": "Tenho quinta 10h ou sexta 16h!" }
+      ]
+    },
+    {
+      "id": "c3",
+      "tipo": "conversa",
+      "segundos": 2.1,
+      "cabecalho": "Direct",
+      "subtitulo": "online",
+      "bolhas": [
+        { "autor": "cliente", "texto": "Oi! Tem horário pra design com henna essa semana?" },
+        { "autor": "voce", "texto": "Tenho quinta 10h ou sexta 16h!" },
+        { "autor": "cliente", "texto": "Quinta não consigo… sexta tem mais cedo?" }
+      ]
+    },
+    {
+      "id": "c4",
+      "tipo": "conversa",
+      "segundos": 3.4,
+      "cabecalho": "Direct",
+      "subtitulo": "digitando…",
+      "rodape": "no milímetro do fio, o direct chama",
+      "bolhas": [
+        { "autor": "cliente", "texto": "Oi! Tem horário pra design com henna essa semana?" },
+        { "autor": "voce", "texto": "Tenho quinta 10h ou sexta 16h!" },
+        { "autor": "cliente", "texto": "Quinta não consigo… sexta tem mais cedo?" },
+        { "autor": "voce", "texto": "Te respondo assim que acabar o atendimento", "destaque": true }
+      ]
+    },
+    {
+      "id": "v0",
+      "tipo": "titulo",
+      "segundos": 2.2,
+      "texto": "O direct volta a ser vitrine."
+    },
+    {
+      "id": "p1",
+      "tipo": "produto",
+      "segundos": 2.3,
+      "imagem": "tela/sobrancelhas-1-servico.png",
+      "rotulo": "ela abre o link da sua bio"
+    },
+    {
+      "id": "p2",
+      "tipo": "produto",
+      "segundos": 2.9,
+      "imagem": "tela/sobrancelhas-2-horario.png",
+      "rotulo": "vê só os horários livres de verdade"
+    },
+    {
+      "id": "p3",
+      "tipo": "produto",
+      "segundos": 2.2,
+      "imagem": "tela/sobrancelhas-3-confirmar.png",
+      "rotulo": "escolhe e confirma"
+    },
+    {
+      "id": "p4",
+      "tipo": "produto",
+      "segundos": 3.2,
+      "imagem": "tela/sobrancelhas-4-sucesso.png",
+      "rotulo": "sem cadastro, sem senha, sem app"
+    },
+    {
+      "id": "fecho",
+      "tipo": "fecho",
+      "segundos": 3.0,
+      "texto": "Você nem pegou o celular.",
+      "apoio": "VamoAgendar"
+    }
+  ]
+}

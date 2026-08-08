@@ -1,0 +1,49 @@
+{
+  "pecaId": "R-02-manicure",
+  "loteId": "lote-01",
+  "tipo": "dor-encenada",
+  "nicho": "manicure",
+  "estado": "aguardando_aprovacao",
+  "hipotese": "A dor da vaga presa (\"vou ver com meu marido e te aviso\") puxa mais que a da interrupção neste nicho — E-07/E-08.",
+  "arquivos": { "video": "video.mp4", "previa": "video-previa.gif", "cenas": "cenas/" },
+  "tecnico": {
+    "resolucao": "1080x1920",
+    "duracaoSegundos": 25.0,
+    "codecVideo": "h264",
+    "codecAudio": "aac",
+    "sondaDeAceite": "aprovado"
+  },
+  "custo": { "geracaoIA": 0, "moeda": "BRL", "observacao": "Zero API paga." },
+  "trilha": { "estado": "ausente", "decisao": "Áudio nativo da plataforma, escolhido no upload (D-20)." },
+  "adaptacao": {
+    "tiktok": {
+      "legenda": "\"vou ver com meu marido e te aviso\"\n\ne o sábado inteiro fica parado esperando uma resposta que não vem.\n\nno link, quem quer o horário confirma na hora — e ele some pras outras.",
+      "hashtags": ["#manicure", "#nailsdesigner", "#manicureprofissional", "#unhas"],
+      "primeiroComentario": "quantas vagas você já perdeu esperando resposta?",
+      "audioNativo": "escolher no app na hora do upload"
+    },
+    "instagram": {
+      "legenda": "\"Vou ver com meu marido e te aviso!\"\n\nVocê segura o horário. Ela não volta. E enquanto isso outra cliente queria exatamente aquele sábado.\n\nCom o link, ela vê só o que sobrou de verdade, escolhe e confirma na hora — sem cadastro, sem senha, sem baixar aplicativo. O horário some para as outras no mesmo instante.\n\nConfirmação e lembrete automáticos no WhatsApp fazem parte do plano Pro.",
+      "hashtags": ["#manicure", "#unhas", "#manicureprofissional", "#nailsdesigner", "#agendaonline"],
+      "primeiroComentario": "quantas vagas você já perdeu esperando o \"te aviso\"?",
+      "audioNativo": "escolher no app na hora do upload"
+    },
+    "youtube": {
+      "titulo": "A vaga que fica presa no \"te aviso\" | VamoAgendar",
+      "descricao": "Manicure que atende sozinha perde sábado inteiro segurando horário para cliente que não confirma. Com o link de agendamento, quem quer o horário confirma na hora — sem cadastro e sem senha — e ele some para as outras.",
+      "hashtags": ["#shorts", "#manicure", "#unhas"]
+    },
+    "facebook": {
+      "legenda": "\"Vou ver com meu marido e te aviso!\" — e o sábado fica parado.\n\nCom o link de agendamento, quem quer o horário confirma na hora, sem cadastro e sem senha.",
+      "hashtags": ["#manicure"]
+    }
+  },
+  "guardrails": {
+    "citaPreco": false,
+    "citaGratis": false,
+    "numeroNaoMedido": false,
+    "depoimentoFabricado": false,
+    "escondeQueWhatsAppEhPro": false,
+    "linkNaBio": false
+  }
+}

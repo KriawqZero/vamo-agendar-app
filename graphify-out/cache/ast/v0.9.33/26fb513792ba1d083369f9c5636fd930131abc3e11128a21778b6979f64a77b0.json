@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260722060000_fecha_data_api_para_anon_sql", "label": "20260722060000_fecha_data_api_para_anon.sql", "file_type": "code", "source_file": "supabase/migrations/20260722060000_fecha_data_api_para_anon.sql", "source_location": null}], "edges": []}

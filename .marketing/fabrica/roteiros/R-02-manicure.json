@@ -1,0 +1,97 @@
+{
+  "id": "R-02-manicure",
+  "tipo": "dor-encenada",
+  "nicho": "manicure",
+  "hipotese": "A dor da vaga presa (\"vou ver com meu marido e te aviso\") puxa mais que a da interrupção neste nicho — E-07/E-08.",
+  "fonteDoDialogo": "src/lib/nichos.ts → NICHOS.manicure.dor.conversa",
+  "duracaoAlvoSegundos": 25,
+  "trilha": null,
+  "cenas": [
+    {
+      "id": "c1",
+      "tipo": "conversa",
+      "segundos": 1.9,
+      "cabecalho": "Cliente",
+      "subtitulo": "online",
+      "bolhas": [{ "autor": "cliente", "texto": "Oi! Consegue me encaixar no sábado?" }]
+    },
+    {
+      "id": "c2",
+      "tipo": "conversa",
+      "segundos": 1.7,
+      "cabecalho": "Cliente",
+      "subtitulo": "online",
+      "bolhas": [
+        { "autor": "cliente", "texto": "Oi! Consegue me encaixar no sábado?" },
+        { "autor": "voce", "texto": "Sábado tenho 8h ou 16h40!" }
+      ]
+    },
+    {
+      "id": "c3",
+      "tipo": "conversa",
+      "segundos": 2.1,
+      "cabecalho": "Cliente",
+      "subtitulo": "online",
+      "bolhas": [
+        { "autor": "cliente", "texto": "Oi! Consegue me encaixar no sábado?" },
+        { "autor": "voce", "texto": "Sábado tenho 8h ou 16h40!" },
+        { "autor": "cliente", "texto": "Vou ver com meu marido e te aviso!" }
+      ]
+    },
+    {
+      "id": "c4",
+      "tipo": "conversa",
+      "segundos": 3.4,
+      "cabecalho": "Cliente",
+      "subtitulo": "visto por último ontem",
+      "rodape": "e o sábado inteiro parado, esperando",
+      "bolhas": [
+        { "autor": "cliente", "texto": "Oi! Consegue me encaixar no sábado?" },
+        { "autor": "voce", "texto": "Sábado tenho 8h ou 16h40!" },
+        { "autor": "cliente", "texto": "Vou ver com meu marido e te aviso!" },
+        { "autor": "voce", "texto": "Fechou? Preciso confirmar pra segurar a vaga…", "destaque": true }
+      ]
+    },
+    {
+      "id": "v0",
+      "tipo": "titulo",
+      "segundos": 2.2,
+      "texto": "Vaga não se segura no aviso."
+    },
+    {
+      "id": "p1",
+      "tipo": "produto",
+      "segundos": 2.3,
+      "imagem": "tela/manicure-1-servico.png",
+      "rotulo": "ela abre seu link"
+    },
+    {
+      "id": "p2",
+      "tipo": "produto",
+      "segundos": 3.0,
+      "imagem": "tela/manicure-2-horario.png",
+      "rotulo": "vê o que sobrou de verdade no sábado"
+    },
+    {
+      "id": "p3",
+      "tipo": "produto",
+      "segundos": 2.2,
+      "imagem": "tela/manicure-3-confirmar.png",
+      "rotulo": "quem quer o horário confirma na hora"
+    },
+    {
+      "id": "p4",
+      "tipo": "produto",
+      "segundos": 3.2,
+      "imagem": "tela/manicure-4-sucesso.png",
+      "rotulo": "e ele some para as outras"
+    },
+    {
+      "id": "fecho",
+      "tipo": "fecho",
+      "segundos": 3.0,
+      "texto": "Seu sábado fecha sozinho.",
+      "apoio": "VamoAgendar"
+    }
+  ]
+}

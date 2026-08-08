@@ -1,0 +1,49 @@
+{
+  "pecaId": "R-04-sobrancelhas",
+  "loteId": "lote-01",
+  "tipo": "dor-encenada",
+  "nicho": "designer-de-sobrancelhas",
+  "estado": "aguardando_aprovacao",
+  "hipotese": "Neste nicho o direct é vitrine e central de atendimento ao mesmo tempo — separar os dois é o que puxa — E-07/E-08.",
+  "arquivos": { "video": "video.mp4", "previa": "video-previa.gif", "cenas": "cenas/" },
+  "tecnico": {
+    "resolucao": "1080x1920",
+    "duracaoSegundos": 25.0,
+    "codecVideo": "h264",
+    "codecAudio": "aac",
+    "sondaDeAceite": "aprovado"
+  },
+  "custo": { "geracaoIA": 0, "moeda": "BRL", "observacao": "Zero API paga." },
+  "trilha": { "estado": "ausente", "decisao": "Áudio nativo da plataforma, escolhido no upload (D-20)." },
+  "adaptacao": {
+    "tiktok": {
+      "legenda": "seu direct devia mostrar antes e depois — não negociar horário no meio do atendimento.\n\no link responde \"tem horário?\" por você.",
+      "hashtags": ["#designdesobrancelhas", "#sobrancelhas", "#henna", "#browdesigner"],
+      "primeiroComentario": "quantos \"tem horário essa semana?\" você respondeu hoje?",
+      "audioNativo": "escolher no app na hora do upload"
+    },
+    "instagram": {
+      "legenda": "No milímetro do fio, o direct chama: \"tem horário pra henna essa semana?\"\n\nVocê para, responde, ela não pode, você responde de novo. E isso se repete o dia inteiro.\n\nSeu Instagram devia ser vitrine do seu trabalho. Com o link, ela vê só os horários realmente livres, escolhe e confirma — sem cadastro, sem senha, sem baixar aplicativo.\n\nConfirmação e lembrete automáticos no WhatsApp fazem parte do plano Pro.",
+      "hashtags": ["#designdesobrancelhas", "#sobrancelhas", "#henna", "#browlamination", "#browdesigner"],
+      "primeiroComentario": "quantos \"tem horário essa semana?\" você respondeu hoje?",
+      "audioNativo": "escolher no app na hora do upload"
+    },
+    "youtube": {
+      "titulo": "O direct volta a ser vitrine | VamoAgendar",
+      "descricao": "Designer de sobrancelhas que atende sozinha passa o dia negociando horário no direct. Com o link de agendamento, a cliente vê os horários realmente livres e confirma sozinha — sem cadastro e sem senha.",
+      "hashtags": ["#shorts", "#sobrancelhas", "#designdesobrancelhas"]
+    },
+    "facebook": {
+      "legenda": "No meio do atendimento, o direct chama: \"tem horário essa semana?\"\n\nCom o link de agendamento, a cliente vê os horários livres e confirma sozinha, sem cadastro.",
+      "hashtags": ["#designdesobrancelhas"]
+    }
+  },
+  "guardrails": {
+    "citaPreco": false,
+    "citaGratis": false,
+    "numeroNaoMedido": false,
+    "depoimentoFabricado": false,
+    "escondeQueWhatsAppEhPro": false,
+    "linkNaBio": false
+  }
+}

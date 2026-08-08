@@ -1,0 +1,50 @@
+{
+  "pecaId": "R-03-lash",
+  "loteId": "lote-01",
+  "tipo": "dor-encenada",
+  "nicho": "lash-designer",
+  "estado": "aguardando_aprovacao",
+  "hipotese": "Em sessão longa a interrupção dói mais: uma remarcação custa três paradas no meio de uma aplicação de duas horas — E-07/E-08.",
+  "arquivos": { "video": "video.mp4", "previa": "video-previa.gif", "cenas": "cenas/" },
+  "tecnico": {
+    "resolucao": "1080x1920",
+    "duracaoSegundos": 23.7,
+    "codecVideo": "h264",
+    "codecAudio": "aac",
+    "sondaDeAceite": "aprovado"
+  },
+  "custo": { "geracaoIA": 0, "moeda": "BRL", "observacao": "Zero API paga." },
+  "trilha": { "estado": "ausente", "decisao": "Áudio nativo da plataforma, escolhido no upload (D-20)." },
+  "observacaoDeProducao": "Esta peça usa 3 cenas de produto em vez de 4: a captura da etapa de confirmação saiu no meio da transição de opacidade e foi descartada em vez de usada. Recapturar quando o estágio 4 (capturador determinístico) existir.",
+  "adaptacao": {
+    "tiktok": {
+      "legenda": "remarcar uma manutenção custou três paradas no meio de um volume russo.\n\nno link ela remarca sozinha, a qualquer hora — e a grade só mostra onde o serviço cabe de verdade.",
+      "hashtags": ["#lashdesigner", "#extensaodecilios", "#volumerusso", "#lashbrasil"],
+      "primeiroComentario": "quantas vezes você largou a pinça hoje?",
+      "audioNativo": "escolher no app na hora do upload"
+    },
+    "instagram": {
+      "legenda": "\"Amiga, preciso remarcar a manutenção de amanhã!\"\n\nVocê está no meio de uma aplicação de duas horas. Para, responde, ela não pode no horário, você para de novo.\n\nCom o link, ela remarca sozinha a qualquer hora — e a grade só oferece horário onde aquele serviço cabe de verdade, porque aplicação e manutenção não ocupam o mesmo espaço.\n\nConfirmação e lembrete automáticos no WhatsApp fazem parte do plano Pro.",
+      "hashtags": ["#lashdesigner", "#extensaodecilios", "#volumerusso", "#cilios", "#lashbrasil"],
+      "primeiroComentario": "quantas vezes você largou a pinça hoje pra responder agenda?",
+      "audioNativo": "escolher no app na hora do upload"
+    },
+    "youtube": {
+      "titulo": "Remarcar sem largar o fio a fio | VamoAgendar",
+      "descricao": "Lash designer que atende sozinha para a aplicação três vezes para resolver uma remarcação. Com o link de agendamento, a cliente remarca sozinha e a grade só oferece horários onde o serviço cabe — aplicação e manutenção têm durações diferentes.",
+      "hashtags": ["#shorts", "#lashdesigner", "#cilios"]
+    },
+    "facebook": {
+      "legenda": "Uma remarcação custa três paradas no meio de uma aplicação de duas horas.\n\nCom o link, a cliente remarca sozinha — e a grade só mostra onde o serviço cabe.",
+      "hashtags": ["#lashdesigner"]
+    }
+  },
+  "guardrails": {
+    "citaPreco": false,
+    "citaGratis": false,
+    "numeroNaoMedido": false,
+    "depoimentoFabricado": false,
+    "escondeQueWhatsAppEhPro": false,
+    "linkNaBio": false
+  }
+}

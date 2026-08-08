@@ -1,0 +1,56 @@
+{
+  "id": "R-02-manicure",
+  "duracaoTotal": 25,
+  "cenas": [
+    {
+      "arquivo": "01-c1.png",
+      "segundos": 1.9,
+      "tipo": "conversa"
+    },
+    {
+      "arquivo": "02-c2.png",
+      "segundos": 1.7,
+      "tipo": "conversa"
+    },
+    {
+      "arquivo": "03-c3.png",
+      "segundos": 2.1,
+      "tipo": "conversa"
+    },
+    {
+      "arquivo": "04-c4.png",
+      "segundos": 3.4,
+      "tipo": "conversa"
+    },
+    {
+      "arquivo": "05-v0.png",
+      "segundos": 2.2,
+      "tipo": "titulo"
+    },
+    {
+      "arquivo": "06-p1.png",
+      "segundos": 2.3,
+      "tipo": "produto"
+    },
+    {
+      "arquivo": "07-p2.png",
+      "segundos": 3,
+      "tipo": "produto"
+    },
+    {
+      "arquivo": "08-p3.png",
+      "segundos": 2.2,
+      "tipo": "produto"
+    },
+    {
+      "arquivo": "09-p4.png",
+      "segundos": 3.2,
+      "tipo": "produto"
+    },
+    {
+      "arquivo": "10-fecho.png",
+      "segundos": 3,
+      "tipo": "fecho"
+    }
+  ]
+}

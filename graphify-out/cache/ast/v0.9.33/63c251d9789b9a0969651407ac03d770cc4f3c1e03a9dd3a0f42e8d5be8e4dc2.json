@@ -1,0 +1,1 @@
+{"nodes": [{"id": "$graphify-root$_supabase_migrations_20260709193156_restringe_colunas_assinaturas_anon_sql", "label": "20260709193156_restringe_colunas_assinaturas_anon.sql", "file_type": "code", "source_file": "supabase/migrations/20260709193156_restringe_colunas_assinaturas_anon.sql", "source_location": null}], "edges": []}

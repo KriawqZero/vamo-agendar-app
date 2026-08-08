@@ -1,0 +1,51 @@
+{
+  "id": "R-03-lash",
+  "duracaoTotal": 23.7,
+  "cenas": [
+    {
+      "arquivo": "01-c1.png",
+      "segundos": 2,
+      "tipo": "conversa"
+    },
+    {
+      "arquivo": "02-c2.png",
+      "segundos": 1.7,
+      "tipo": "conversa"
+    },
+    {
+      "arquivo": "03-c3.png",
+      "segundos": 2.1,
+      "tipo": "conversa"
+    },
+    {
+      "arquivo": "04-c4.png",
+      "segundos": 3.5,
+      "tipo": "conversa"
+    },
+    {
+      "arquivo": "05-v0.png",
+      "segundos": 2.2,
+      "tipo": "titulo"
+    },
+    {
+      "arquivo": "06-p1.png",
+      "segundos": 2.6,
+      "tipo": "produto"
+    },
+    {
+      "arquivo": "07-p2.png",
+      "segundos": 3.2,
+      "tipo": "produto"
+    },
+    {
+      "arquivo": "08-p3.png",
+      "segundos": 3.4,
+      "tipo": "produto"
+    },
+    {
+      "arquivo": "09-fecho.png",
+      "segundos": 3,
+      "tipo": "fecho"
+    }
+  ]
+}
