@@ -10,6 +10,8 @@ import { obterAssinaturaVigente, type AssinaturaVigente } from '@/lib/assinatura
 import { hashTenantId } from '@/lib/analytics/tenant'
 import IdentificacaoAnalytics from '@/components/analytics/IdentificacaoAnalytics'
 import NavPrincipal from './NavPrincipal'
+import { obterPerfilEmpresa } from '@/app/actions/perfis-empresas'
+import { garantirEnvioBoasVindas } from '@/lib/email-boas-vindas'
 
 /**
  * Casco da área logada — o "bastidor" do palco da landing. Acompanha o
@@ -26,6 +28,26 @@ export default async function DashboardLayout({
     if (orgId) {
         const supabase = await createClient()
         assinatura = await obterAssinaturaVigente(supabase, orgId)
+
+        // Gatilho de e-mail de boas-vindas (EML-01 / EML-04)
+        const user = await currentUser()
+        if (user && user.emailAddresses?.[0]?.emailAddress) {
+            const perfil = await obterPerfilEmpresa().catch(() => null)
+            if (perfil) {
+                const emailProfissional = user.emailAddresses[0].emailAddress
+                const nomeProfissional = user.firstName || user.fullName || 'Profissional'
+                const nomeEstabelecimento = perfil.nome_estabelecimento || 'Seu Estabelecimento'
+                const slug = perfil.slug || perfil.slug_gratuito
+
+                garantirEnvioBoasVindas({
+                    tenantId: orgId,
+                    email: emailProfissional,
+                    nomeProfissional,
+                    nomeEstabelecimento,
+                    slug,
+                }).catch(() => {})
+            }
+        }
     }
 
     // Analytics: identifica a sessão pelo hash pseudonimizado do tenant (o
