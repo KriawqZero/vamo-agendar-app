@@ -102,7 +102,7 @@ precisa ser sabido antes.
 - [x] **Phase 2: Integridade da agenda** - Duração gravada no agendamento e proteção atômica contra double-booking
 - [x] **Phase 3: Anti-abuso no booking público** - Rate limit e honeypot sem nenhuma fricção visível ao cliente
 - [x] **Phase 4: Canal de e-mail transacional** - Resend em domínio próprio, com remetente reconhecível e supressão de bounce
-- [ ] **Phase 5: Contato flexível no booking** - Cliente final agenda com e-mail OU WhatsApp e recebe a confirmação pelo que informou
+- [x] **Phase 5: Contato flexível no booking** - Cliente final agenda com e-mail OU WhatsApp e recebe a confirmação pelo que informou
 - [ ] **Phase 6: Diferencial visível — agenda densa** - Profissional enxerga o buraco de agenda que a grade anti-buraco evitou
 - [ ] **Phase 7: Fim do Plus e preço correto** - Um único plano pago, R$ 39,90 com fundador vitalício de R$ 29,90 e selo derivado
 - [ ] **Phase 8: Autonomia do cliente final** - Cancelamento e remarcação por link assinado, sem login, cadastro ou código

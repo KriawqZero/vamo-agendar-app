@@ -1290,6 +1290,13 @@ O código da Phase 04 foi implementado e coberto por testes unitários e de inte
 - [ ] **Verificação de Caixa de Entrada em Provedores (SC4 / EML-01)**: Enviar o e-mail de boas-vindas para 3 destinatários reais (Gmail, Outlook e um Domínio Corporativo) e registrar a aba de destino (Principal, Promoções ou Spam).
 - [ ] **Registros TXT de DNS para Entregabilidade (EML-01 / SC4)**: Adicionar registro TXT de DMARC (`_dmarc.mail.vamoagendar.com.br`) com `p=none` e `rua` monitorado, além do SPF no subdomínio `mail.vamoagendar.com.br`.
 
+### 📱 Verificações manuais da Phase 05 (Contato flexível no booking)
+
+O código da Phase 05 foi implementado e coberto por testes unitários (`pnpm test` com 34 suítes / 430 testes verdes). As validações em ambiente real dependem do owner:
+
+- [ ] **Agendamento com apenas E-mail no Booking Público (SC1/SC2)**: Acessar a tela pública `/book/salao-do-seed`, preencher Nome e apenas E-mail (sem WhatsApp), confirmar e verificar que o agendamento é salvo e o e-mail de confirmação é recebido com os detalhes da reserva.
+- [ ] **Agendamento com apenas WhatsApp no Booking Público (SC1/SC4)**: Acessar `/book/salao-do-seed`, preencher Nome e apenas WhatsApp (sem E-mail), confirmar e verificar o envio de mensagem via WhatsApp/QStash.
+
 ### 🔑 Rotação das signing keys do QStash — ação do owner, prazo 2026-08-05
 
 **Só o owner fecha este item.** A rotação acontece no painel da Upstash; nenhum
