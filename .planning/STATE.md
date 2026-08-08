@@ -2,17 +2,18 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lançamento público
-current_phase: 03
+current_phase: 04
 current_phase_name: canal-de-e-mail-transacional
-status: phase_complete
-stopped_at: Phase 4 context gathered
-last_updated: "2026-08-08T00:08:42.450Z"
+status: in_progress
+stopped_at: Phase 4 planned (6 plans)
+last_updated: "2026-08-08T00:47:45.569Z"
 last_activity: 2026-08-07
 progress:
   total_phases: 4
   completed_phases: 3
   total_plans: 31
   completed_plans: 31
+  total_phase_plans: 6
 last_activity_desc: "Phase 03 (anti-abuso-no-booking-p-blico) encerrada em CÓDIGO em 2026-07-27 — 6/6 planos, gate final verde (lint 0, 353 testes em 22 arquivos, build 0 com 14 rotas SEM env do Upstash, tsc 0). ABU-01/02/03 seguem ABERTOS de propósito: sem UPSTASH_REDIS_REST_URL/_TOKEN as quatro camadas rodam em no-op e nada é barrado em execução real; o honeypot é a exceção e já funciona. O provisionamento é ação do OWNER e gate de DEPLOY (o 03-04 pôs as duas em OBRIGATORIAS_EM_PRODUCAO — deploy antes disso não sobe), registrado com dono, gatilho e detector em docs/PENDENCIAS.md junto do risco aceito da cota do Free e das verificações manuais da fase. Contexto anterior: Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 — 6/6 planos, veredito do verificador human_needed com 5/5 must-haves verificados e 2 itens de UAT de TELA abertos (aviso âmbar público e detalhe do walk-in); AGE-01..05 marcados em REQUIREMENTS. Depois dela veio a quick task 260724-observabilidade-mensageria (fora do roadmap, disparada por incidente do owner: agendamento testado, confirmação e lembrete não entregues e NADA em PostHog, Sentry Issues, Sentry Logs ou log do Railway). Ela está mergeada no master (PR #11, merge a9d071a; commits a03cc39 → cd63aa3) e é BASELINE — não reimplementar. Baseline reconferida nesta sessão: pnpm test 280/280 em 20 arquivos. O que ela deixou aberto é só verificação de painel (não fecha por teste), listada em docs/PENDENCIAS.md. Próximo passo do roadmap: /gsd-discuss-phase 03 (Anti-abuso no booking público) — mas ele tem uma DECISÃO DO OWNER como pré-requisito: Upstash Redis vs. RPC atômica no Postgres para o rate limit."
 ---
 
@@ -465,9 +466,9 @@ Nenhum ainda.
 
 ## Session Continuity
 
-Last session: 2026-08-08T00:08:42.422Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-canal-de-e-mail-transacional/04-CONTEXT.md
+Last session: 2026-08-08T00:47:45.544Z
+Stopped at: Phase 4 UI-SPEC approved
+Resume file: .planning/phases/04-canal-de-e-mail-transacional/04-UI-SPEC.md
 
 **Como retomar (ordem):**
 
