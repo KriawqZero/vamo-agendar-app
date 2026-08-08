@@ -180,7 +180,12 @@ All user-facing strings are **pt-BR with full diacritics**. Tone follows
 no invented numbers, no testimonials (there is no customer yet), no exclamation marks, no
 emoji, no "parabéns pela sua jornada".
 
-`{estabelecimento}` = `perfis_empresas.nome_empresa`. `{slug}` = `perfis_empresas.slug`.
+**Placeholder provenance — read this before writing the template:**
+
+- `{estabelecimento}` = `perfis_empresas.nome_estabelecimento`
+  (`supabase/schemas/01_perfis_empresas.sql:5`). There is no `nome_empresa` column.
+- `{slug}` = the return of **`obterSlugEfetivo(perfil, plano)`** (`src/lib/planos.ts:96-101`),
+  the helper already shipped in the project. **Never a raw column.** See the locked rule below.
 
 ### Surface A — e-mail de boas-vindas
 
@@ -192,7 +197,7 @@ emoji, no "parabéns pela sua jornada".
 | **Título (H1)** | `Seu link de agendamento está pronto` |
 | **Parágrafo 1** | `A conta do {estabelecimento} está criada. Este é o endereço que seus clientes usam para marcar horário:` |
 | **Primary CTA** (the one button) | `Abrir minha página de agendamento` |
-| **URL abaixo do botão** (copy-paste fallback) | `vamoagendar.com.br/book/{slug}` |
+| **URL abaixo do botão** (copy-paste fallback) | `vamoagendar.com.br/book/{slug}` — where `{slug}` is `obterSlugEfetivo(perfil, plano)`, which for a brand-new account resolves to `perfil.slug_gratuito` |
 | **Parágrafo 2** | `Coloque o link na bio do Instagram, no status do WhatsApp ou mande direto para quem pedir horário. Quem abrir escolhe o serviço, o dia e a hora sem baixar aplicativo e sem criar conta.` |
 | **Parágrafo 3** | `Os serviços e os horários que você cadastrar no painel aparecem nessa página automaticamente.` |
 | **Rodapé, linha 1** | `Você recebeu este e-mail porque criou uma conta no VamoAgendar.` |
@@ -201,6 +206,19 @@ emoji, no "parabéns pela sua jornada".
 
 **Copy rules that carry a decision:**
 
+- 🔒 **The URL is built from `obterSlugEfetivo(perfil, plano)`. Reading `perfis_empresas.slug`
+  directly here is the defect, not the simplification.** There are two slug columns —
+  `slug` (personalizado) and `slug_gratuito` (aleatório, generated at provisioning)
+  (`supabase/schemas/01_perfis_empresas.sql:3-4`) — and which one is live depends on the plan:
+  `obterSlugEfetivo` returns `perfil.slug` only when `PLANOS[plano].recursos.linkPersonalizado`
+  is true (`src/lib/planos.ts:96-101`), and the `gratuito` plan has `linkPersonalizado: false`
+  (`src/lib/planos.ts:37`). **The recipient of this e-mail is by definition an account created
+  seconds ago — no vigent row in `assinaturas`, therefore `gratuito`, therefore
+  `slug_gratuito`.** Sending `perfil.slug` would hand the professional a URL that is not the
+  one their clients should use, in the one e-mail whose entire purpose is Success Criterion 1.
+  The plan must therefore resolve the vigent plan before rendering, and pass the **resolved
+  string** into the template — the e-mail component takes a `linkPublico` prop and never
+  touches a perfil column itself.
 - 🔒 **Rodapé linha 2 is mandatory and cannot be softened.** D-02 locked "no reply-to", and
   `naoresponda@` is literal — the domain has no MX record, so a reply is swallowed with no
   bounce and no human ever sees it. Telling the reader is the only honest option. Any future
