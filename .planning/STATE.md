@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 05
 current_phase_name: contato-flexivel-no-booking
-status: in_progress
-stopped_at: Phase 5 context gathered
-last_updated: "2026-08-08T06:48:30.000Z"
+status: completed
+stopped_at: Phase 5 complete (5/5 plans executed and verified)
+last_updated: "2026-08-08T06:56:15.000Z"
 last_activity: 2026-08-08
 progress:
   total_phases: 5
-  completed_phases: 4
-  total_plans: 37
-  completed_plans: 37
-  total_phase_plans: 0
-last_activity_desc: "Phase 05 (contato-flexivel-no-booking) iniciada com a coleta de contexto de implementação em 05-CONTEXT.md e 05-DISCUSSION-LOG.md. Decisões travadas: Nome é obrigatório; WhatsApp e E-mail são opcionais (pelo menos um obrigatório em formulário e Server Action); deduplicação de clientes busca por WhatsApp depois E-mail; envio de notificação ocorre nos canais fornecidos (em ambos se os dois forem preenchidos); disparo de notificações desacoplado no Next.js after() para liberação instantânea da tela de sucesso na UI."
+  completed_phases: 5
+  total_plans: 42
+  completed_plans: 42
+  total_phase_plans: 5
+last_activity_desc: "Phase 05 (contato-flexivel-no-booking) CONCLUÍDA com sucesso — 5/5 planos executados e validados, gate final verde (pnpm test 424/424 testes em 32 arquivos, pnpm lint 0 erros, npx tsc --noEmit 0 erros, pnpm build 0 erros). Funcionalidades implementadas: migration de schema em clientes (telefone NULLABLE com CHECK telefone IS NOT NULL OR email IS NOT NULL e índice parcial lower(email) por tenant), RPC reaproveitar_ou_criar_cliente atômica com precedência por WhatsApp e fallback por e-mail, template React Email ConfirmacaoAgendamento com testes de renderização, formulário público EtapaContato flexível com aviso de pelo menos um meio de contato e armadilha honeypot intacta, e orquestração multicanal (WhatsApp E/OU E-mail) desacoplada via Next.js after() para liberação instantânea da tela de sucesso na UI."
 ---
 
 # Project State

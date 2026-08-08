@@ -392,13 +392,13 @@ async function resolverPerfilPublicoPorSlug(
     return { ok: true, perfil, plano, degradadoPorErro }
 }
 
-interface AgendamentoPublicoParams {
+export interface AgendamentoPublicoParams {
     slug: string
     servicoId: string
     dataHora: string // ISO string em UTC
     clienteNome: string
-    clienteTelefone: string // WhatsApp
-    clienteEmail?: string
+    clienteTelefone?: string | null // WhatsApp (opcional se clienteEmail fornecido)
+    clienteEmail?: string | null
     /**
      * Campo ARMADILHA (honeypot) do formulário público — nome deliberadamente
      * neutro no fio, para que nem o payload nem o bundle denunciem a armadilha.
@@ -517,12 +517,19 @@ export async function criarAgendamentoPublico({
     }
 
     // 1. Sanitizar e validar dados de entrada básicos
-    if (!slug || !servicoId || !dataHora || !clienteNome || !clienteTelefone) {
+    const telefoneLimpo = clienteTelefone ? clienteTelefone.replace(/\D/g, '') : null
+    const emailLimpo = clienteEmail?.trim() || null
+    const nomeLimpo = clienteNome?.trim() || ''
+
+    if (!slug || !servicoId || !dataHora || !nomeLimpo) {
         return { ok: false, motivo: 'campos_obrigatorios' }
     }
 
-    const telefoneLimpo = clienteTelefone.replace(/\D/g, '')
-    if (telefoneLimpo.length < 10 || telefoneLimpo.length > 11) {
+    if (!telefoneLimpo && !emailLimpo) {
+        return { ok: false, motivo: 'campos_obrigatorios' }
+    }
+
+    if (telefoneLimpo && (telefoneLimpo.length < 10 || telefoneLimpo.length > 11)) {
         return { ok: false, motivo: 'telefone_invalido' }
     }
 
@@ -531,7 +538,6 @@ export async function criarAgendamentoPublico({
     // também barra nome só de espaços em branco, que passaria pelo `!clienteNome`
     // acima (string truthy) e viraria uma linha vazia no banco. Nome longo é
     // ataque, não UX: reusa `campos_obrigatorios`, sem cópia nova.
-    const nomeLimpo = clienteNome.trim()
     if (nomeLimpo.length < 1 || nomeLimpo.length > NOME_MAXIMO_CARACTERES) {
         return { ok: false, motivo: 'campos_obrigatorios' }
     }
@@ -539,7 +545,6 @@ export async function criarAgendamentoPublico({
     // E-mail é OPCIONAL: só valida se veio preenchido. Formato mínimo (um `@`
     // com domínio) + teto RFC 5321. E-mail malformado um cliente real digita, e
     // ele tem discriminante honesto próprio (`email_invalido`).
-    const emailLimpo = clienteEmail?.trim()
     if (
         emailLimpo &&
         (emailLimpo.length > EMAIL_MAXIMO_CARACTERES || !FORMATO_EMAIL.test(emailLimpo))
@@ -663,13 +668,10 @@ export async function criarAgendamentoPublico({
     // uma requisição com `servicoId` lixo também — 30 delas negavam agendamento
     // a um tenant inteiro por uma hora, sem criar nada. O token do tenant sai
     // agora depois do INSERT, onde "criação" quer dizer criação.
-    const [passouTelefone, passouTenant] = await Promise.all([
-        // Telefone + tenant: o mesmo número agendando em dois estabelecimentos
-        // são dois baldes. Telefone JÁ normalizado, senão a formatação digitada
-        // escolheria o balde.
-        verificarLimite('escrita_telefone', [telefoneLimpo, tenantId]),
-        verificarLimiteSemConsumir('teto_tenant', [tenantId]),
-    ])
+    const passouTelefone = telefoneLimpo
+        ? await verificarLimite('escrita_telefone', [telefoneLimpo, tenantId])
+        : true
+    const passouTenant = await verificarLimiteSemConsumir('teto_tenant', [tenantId])
 
     if (!passouTelefone) {
         // Bloqueio de telefone é ROTINA — mesma natureza do bloqueio de IP: log
@@ -683,7 +685,7 @@ export async function criarAgendamentoPublico({
                 {
                     fluxo: 'booking_publico',
                     camada: 'escrita_telefone',
-                    chaveHash: hashChaveRateLimit(telefoneLimpo),
+                    chaveHash: hashChaveRateLimit(telefoneLimpo!),
                     tenantHash: hashTenantId(tenantId),
                 },
             )
@@ -920,17 +922,25 @@ export async function criarAgendamentoPublico({
         console.error('[analytics] booking_completed não capturado (ignorado):', analyticsErr)
     }
 
-    // 7. Disparar notificações assíncronas (WhatsApp + QStash).
-    // A fase de disparo também precisa do cliente privilegiado: o RLS bloqueia
-    // — corretamente — whatsapp_configs para anon (instance_token nunca pode
-    // ser público). A função nunca lança — o agendamento nunca quebra.
-    await dispararNotificacoesAgendamento(admin, {
-        agendamentoId: agendamento.id,
-        tenantId,
-        clienteNome: nomeLimpo,
-        clienteTelefone: telefoneLimpo,
-        dataHora,
-        timezone,
+    // 7. Disparar notificações assíncronas (WhatsApp + E-mail + QStash).
+    // O disparo é desacoplado da resposta HTTP via emitirDepoisDaResposta/after (BOO-02):
+    // a Server Action retorna ok: true imediatamente para a UI, liberando a tela de sucesso
+    // sem esperar latência de transportes externos (Resend / Evolution API / QStash).
+    emitirDepoisDaResposta(async () => {
+        try {
+            await dispararNotificacoesAgendamento(admin, {
+                agendamentoId: agendamento.id,
+                tenantId,
+                clienteNome: nomeLimpo,
+                clienteTelefone: telefoneLimpo,
+                clienteEmail: emailLimpo,
+                servicoNome: servico.nome,
+                dataHora,
+                timezone,
+            })
+        } catch (err) {
+            console.error('Erro no disparo assíncrono de notificações pós-resposta:', err)
+        }
     })
 
     return { ok: true, agendamento }

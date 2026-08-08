@@ -350,7 +350,8 @@ faria a prova medir a árvore errada — mesmo racional das Phases 1 e 2.
   3. A tela de sucesso aparece assim que o agendamento é gravado, sem esperar o envio de WhatsApp nem de e-mail
   4. Cliente que já agendou antes é reconhecido por qualquer um dos contatos e não vira segunda linha em `clientes`
 
-**Plans**: TBD
+**Plans**: 5/5 plans completed
+**Status**: completed
 **UI hint**: yes
 
 **Notas de execução:**

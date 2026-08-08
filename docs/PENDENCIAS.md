@@ -556,6 +556,23 @@ A infraestrutura de e-mail transacional (templates React Email, log de envios `t
 5. **UAT de Supressão NUNCA-PII no Sentry**:
    - Adicionar manualmente um e-mail de teste à lista de supressão no painel do Resend e confirmar o disparo do webhook, verificando a criação da Issue sintética `resend:supressao_adicionada` no Sentry com o `tenantHash` pseudonimizado (assegurando zero vazamento de PII).
 
+### 📱 Verificações Manuais de UAT do Booking com Contato Flexível (Phase 5 / Contato Flexível — Dono: Owner)
+
+A funcionalidade de agendamento público com contato flexível (E-mail, WhatsApp ou Ambos) foi 100% implementada no código e testada com 424 testes automatizados. As seguintes verificações manuais de aceitação (UAT) devem ser realizadas pelo **owner**:
+
+1. **Agendamento com apenas WhatsApp**:
+   - Preencher apenas Nome e WhatsApp no `/book/[slug]`.
+   - Confirmar recebimento da mensagem no WhatsApp e registro no painel de disparos.
+2. **Agendamento com apenas E-mail**:
+   - Preencher apenas Nome e E-mail no `/book/[slug]`.
+   - Confirmar recebimento do e-mail de confirmação (assunto `"<Estabelecimento> via VamoAgendar: Agendamento Confirmado"`).
+3. **Agendamento com AMBOS os canais**:
+   - Preencher Nome, WhatsApp e E-mail no `/book/[slug]`.
+   - Confirmar recebimento das notificações em **ambos** os canais simultaneamente.
+4. **Validação de recusa quando ambos os contatos estão vazios**:
+   - Tentar submeter o formulário sem WhatsApp e sem E-mail.
+   - Confirmar a exibição da mensagem de erro amigável na UI e rejeição na Server Action.
+
 ### Integridade e pertencimento multi-tenant (inclui hardening da Data API e revisão RLS)
 
 **Absorvido pelo P0.12 em 2026-07-16 e fechado em 2026-07-17** com o redesign do

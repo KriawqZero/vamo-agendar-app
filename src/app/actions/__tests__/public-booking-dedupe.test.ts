@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 describe('Deduplicação de clientes por Telefone e E-mail', () => {
     it('deve priorizar busca por telefone e em seguida por e-mail no lookup', () => {

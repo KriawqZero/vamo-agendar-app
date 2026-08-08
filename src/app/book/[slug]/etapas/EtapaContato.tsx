@@ -6,16 +6,18 @@ import { formatarTelefone } from '@/lib/telefone'
 interface EtapaContatoProps {
     formAction: (formData: FormData) => void
     erro: string | null
-    /** Nome/telefone vivem no BookingApp: voltar de etapa não apaga o que foi digitado. */
+    /** Nome/telefone/email vivem no BookingApp: voltar de etapa não apaga o que foi digitado. */
     nome: string
     onNomeChange: (valor: string) => void
     telefone: string
     onTelefoneChange: (valor: string) => void
+    email: string
+    onEmailChange: (valor: string) => void
     autoFoco: boolean
 }
 
 /**
- * Dados de contato — Fricção Zero: só nome e WhatsApp, sem cadastro. O submit fica
+ * Dados de contato — Fricção Zero: nome + WhatsApp e/ou E-mail, sem cadastro. O submit fica
  * no CTA da barra inferior (<button form="form-contato">); a validação/envio vive
  * no useActionState do BookingApp.
  */
@@ -26,6 +28,8 @@ export default function EtapaContato({
     onNomeChange,
     telefone,
     onTelefoneChange,
+    email,
+    onEmailChange,
     autoFoco,
 }: EtapaContatoProps) {
     const tituloRef = useRef<HTMLHeadingElement>(null)
@@ -58,7 +62,7 @@ export default function EtapaContato({
 
                 <div className="space-y-1.5">
                     <label htmlFor="contato-nome" className="block text-sm font-medium">
-                        Seu nome
+                        Seu nome *
                     </label>
                     <input
                         id="contato-nome"
@@ -75,13 +79,12 @@ export default function EtapaContato({
 
                 <div className="space-y-1.5">
                     <label htmlFor="contato-telefone" className="block text-sm font-medium">
-                        WhatsApp
+                        WhatsApp <span className="text-xs font-normal text-penumbra">(opcional)</span>
                     </label>
                     <input
                         id="contato-telefone"
                         name="telefone"
                         type="tel"
-                        required
                         autoComplete="tel-national"
                         inputMode="numeric"
                         value={telefone}
@@ -89,8 +92,24 @@ export default function EtapaContato({
                         placeholder="(11) 99999-9999"
                         className="min-h-12 w-full rounded-xl border border-fio bg-bastidor px-4 font-mono text-sm outline-hidden transition-all duration-200 focus:border-[var(--acento,var(--marca))]"
                     />
+                </div>
+
+                <div className="space-y-1.5">
+                    <label htmlFor="contato-email" className="block text-sm font-medium">
+                        E-mail <span className="text-xs font-normal text-penumbra">(opcional)</span>
+                    </label>
+                    <input
+                        id="contato-email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(e) => onEmailChange(e.target.value)}
+                        placeholder="seuemail@exemplo.com"
+                        className="min-h-12 w-full rounded-xl border border-fio bg-bastidor px-4 text-sm outline-hidden transition-all duration-200 focus:border-[var(--acento,var(--marca))]"
+                    />
                     <p className="text-xs text-penumbra">
-                        O estabelecimento usa este número para confirmar seu horário.
+                        Informe pelo menos um meio de contato (WhatsApp ou E-mail) para receber sua confirmação.
                     </p>
                 </div>
 

@@ -122,6 +122,7 @@ export default function BookingApp({
     // apagar o que o cliente já digitou — Fricção Zero.
     const [nome, setNome] = useState('')
     const [telefone, setTelefone] = useState('')
+    const [email, setEmail] = useState('')
 
     // Erros do submit são estado próprio (não o retorno do useActionState) para
     // poderem ser limpos ao trocar de slot/etapa — sem erro fantasma no remount.
@@ -291,7 +292,8 @@ export default function BookingApp({
                 return null
             }
             const nomeInformado = String(formData.get('nome') ?? '').trim()
-            const telefoneLimpo = String(formData.get('telefone') ?? '').replace(/\D/g, '')
+            const telefoneLimpo = String(formData.get('telefone') ?? '').replace(/\D/g, '') || null
+            const emailInformado = String(formData.get('email') ?? '').trim() || null
             // Campo ARMADILHA do EtapaContato: invisível, fora da tabulação e não
             // anunciado por leitor de tela — pessoa real nunca o preenche. É lido
             // aqui SEM validação e SEM interferir nas validações abaixo (o cliente
@@ -303,8 +305,16 @@ export default function BookingApp({
                 setErroEnvio('Informe seu nome.')
                 return null
             }
-            if (telefoneLimpo.length < 10 || telefoneLimpo.length > 11) {
+            if (!telefoneLimpo && !emailInformado) {
+                setErroEnvio('Informe pelo menos um meio de contato (WhatsApp ou E-mail) para confirmar o agendamento.')
+                return null
+            }
+            if (telefoneLimpo && (telefoneLimpo.length < 10 || telefoneLimpo.length > 11)) {
                 setErroEnvio('Informe o WhatsApp com DDD (10 ou 11 dígitos).')
+                return null
+            }
+            if (emailInformado && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInformado)) {
+                setErroEnvio('Informe um e-mail válido.')
                 return null
             }
             try {
@@ -314,6 +324,7 @@ export default function BookingApp({
                     dataHora: slotSelecionado.datetime,
                     clienteNome: nomeInformado,
                     clienteTelefone: telefoneLimpo,
+                    clienteEmail: emailInformado,
                     infoAdicional,
                 })
                 if (res.ok) {
@@ -450,6 +461,8 @@ export default function BookingApp({
                                     onNomeChange={setNome}
                                     telefone={telefone}
                                     onTelefoneChange={setTelefone}
+                                    email={email}
+                                    onEmailChange={setEmail}
                                     autoFoco={jaNavegou}
                                 />
                             )}
