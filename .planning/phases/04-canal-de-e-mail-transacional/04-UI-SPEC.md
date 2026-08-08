@@ -1,10 +1,11 @@
 ---
 phase: 4
 slug: canal-de-e-mail-transacional
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-08-07
+reviewed_at: 2026-08-07
 ---
 
 # Phase 4 — UI Design Contract
@@ -279,24 +280,66 @@ and the contract states it here so no future UI "completes the profile card" wit
 > Empty-state and error-state COPY live in `## Copywriting Contract` above — this section covers
 > state coverage and REFERENCES those rows rather than restating the copy (de-dup).
 
-Applicable state considerations resolved: **9 covered, 4 backstop, 1 unresolved**
+### Elements probed
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| empty | `email_contato` input | ✅ covered | Blank is a valid state; the Surface B "Empty state" row renders as helper text, with no warning styling and no error |
-| empty | welcome e-mail, no usable address | ✅ covered | D-10: nothing is rendered and nothing is sent — the row is written as `sem_destinatario` and the dashboard opens normally. There is no user-facing empty UI, by design |
-| loading | perfil form submit | ✅ covered | Existing `isPending` swaps the button label to `Salvando...` and disables it — unchanged behaviour, the new field just joins the same form |
-| loading | welcome e-mail dispatch | ✅ covered | D-09: the send runs inside `after()`, after the response is flushed. The dashboard shows **no** spinner, **no** toast and **no** "enviando e-mail" state — the first paint must not wait on Resend |
-| error | invalid e-mail format | ✅ covered | Inline message under the input; see Surface B "Error state — invalid format". Validation runs on the server action too, never only in the island |
-| error | save failure | ✅ covered | Existing red banner with the friendly pt-BR string; raw provider errors never reach the UI |
-| error | send failure (`falhou`/`rejeitado`) | ✅ covered | Invisible to the professional by design (Regra de Falha Silenciosa) — it goes to the audit table and Sentry. Telling the professional in-dashboard is the deferred Phase 11 idea; do **not** build a banner for it here |
-| populated | `email_contato` with a value | ✅ covered | Standard input rendering, same classes as the sibling `Endereço` field |
-| zero-one-many | welcome e-mail per tenant | ✅ covered | Exactly one, forever — enforced by the partial unique index of D-06/D-07, not by UI state. There is no "resend" button and no "already sent" indicator in this phase |
-| long-text | very long `{estabelecimento}` in the H1 and the `from` display name | 🧪 backstop | Header side is already sanitized by `montarRemetente`; the H1 must **wrap**, never truncate, never `white-space: nowrap`. Verify with a ~60-character establishment name in the local preview (`email dev`) at 320px |
-| long-text | long `{slug}` in the copy-paste URL line | 🧪 backstop | The URL `<Text>` carries `word-break: break-all` so it wraps inside the 600px container instead of forcing horizontal scroll in mobile clients. Verify in the preview at 320px |
-| images-off | logo blocked (common in corporate Outlook) | 🧪 backstop | The band is a CSS background colour, so the top still renders as a blue bar; `alt="VamoAgendar"` in white must be readable on it. Verified in the SC4 UAT, corporate-domain leg |
-| forced-dark-mode | e-mail card and text | 🧪 backstop | `color-scheme: light` + explicit `background-color` on every `<td>`; verify in Apple Mail and Outlook mobile with dark mode on, that `#14172B` text is not left on a recoloured surface. Part of the SC4 UAT sweep |
-| tab-classification | the whole message | ⚠ unresolved | Which Gmail tab the e-mail lands in cannot be predicted or asserted — it is holistic and depends on reputation and engagement, which a zero-history domain does not have. Deliberately left as an assumption: SC4 is **measurement by the owner**, not a claim any executor can make |
+| ID | Surface | Detected kinds | Confirmed |
+|----|---------|----------------|-----------|
+| **E1** | Welcome e-mail, whole document | form, list-collection, media, interactive-control, static-content | Real kinds: media + interactive-control + static-content. `form` and `list-collection` are **cue false positives** — there is no form and no collection inside an e-mail body. Their categories are kept and **dismissed with a written reason** rather than narrowed away, so the discard is auditable |
+| **E2** | `email_contato` field, dashboard perfil form | form, interactive-control, static-content | Confirmed as detected |
+| **E3** | Plain-text alternative (`render(node, { plainText: true })`) | static-content | Confirmed as detected |
+| **E4** | Primary CTA button + copy-paste URL line | list-collection, interactive-control, static-content | Real kinds: interactive-control + static-content. `list-collection` is a cue false positive — the CTA is capped at exactly one by the one-link budget |
+| **E5** | Logo image + top brand band | media, static-content | Confirmed as detected |
+
+Engine reported **30 applicable considerations** across the 5 elements. Resolution:
+**19 covered · 3 backstop · 8 dismissed · 0 deferred.** Three further considerations outside the
+engine taxonomy are authored below, because they are e-mail-client failure modes the web-shaped
+taxonomy has no category for.
+
+### Taxonomy-derived considerations
+
+| El. | Category | Status | Resolution / Reason |
+|-----|----------|--------|---------------------|
+| E1 | empty | ⊘ dismissed | Cue false positive (`form`/`list-collection`). The only genuine absence in the document is the blocked logo, resolved at E5/empty. "No usable recipient" (D-10) is a send-time guard — nothing renders and nothing is sent — not a state of the document |
+| E1 | loading | ⊘ dismissed | Cue false positive. The document is rendered server-side and delivered whole; a mail client has no in-flight state for it. The in-flight state of the *send* is D-09 and is resolved at E2/loading |
+| E1 | error | ✅ covered | `render()` runs before `send`, so a render exception aborts the dispatch — a half-rendered message can never leave. The failure goes to Sentry and the audit row; the professional sees nothing (Regra de Falha Silenciosa) |
+| E1 | populated | ✅ covered | The happy path is the only path: one logo, one `<h1>`, three paragraphs, one CTA, one literal URL, three footer lines, inside the fixed 600px container |
+| E1 | partial | ✅ covered | Both interpolated values are resolved by the caller and passed in as props — `nome_estabelecimento` (`NOT NULL` in `01_perfis_empresas.sql:5`) and `linkPublico` from `obterSlugEfetivo(perfil, plano)`. The component reads **no** perfil column itself, so it cannot render a half-resolved link. This row is what surfaced the two provenance defects fixed in `## Copywriting Contract` |
+| E1 | overflow | ✅ covered | Fixed 600px table container; nothing scrolls horizontally. The one string that can exceed its cell is the URL, resolved at E4/overflow |
+| E1 | zero-one-many | ⊘ dismissed | Cue false positive. Exactly one welcome e-mail per tenant, forever — enforced by the partial unique index of D-06/D-07, not by UI state. No "resend" button, no "already sent" indicator in this phase |
+| E1 | long-text | 🧪 backstop | **Statement:** a long `{estabelecimento}` in the `<h1>` wraps and never truncates — no `white-space: nowrap`, no ellipsis. The `from` display name is already sanitized by the shipped `montarRemetente`. **Verification:** backstop — render the preview (`email dev`) at 320px with a ~60-character establishment name |
+| E2 | empty | ✅ covered | Blank is a valid, expected state. The helper text *is* the empty state — no warning styling, no nudge, no placeholder-as-label. See Surface B "Empty state" |
+| E2 | loading | ✅ covered | D-09: the existing `isPending` swaps the submit label to `Salvando...` and disables it. The new field joins the existing form and adds no state of its own; the send itself runs in `after()` with no spinner and no toast |
+| E2 | error | ✅ covered | Two distinct states, both in Surface B: invalid format (inline, under the input) and save failure (existing red banner). Format validation runs in the Server Action too, never only in the island. Raw Supabase/Clerk strings never reach the UI |
+| E2 | partial | ✅ covered | The perfil saves with `email_contato` blank and the sibling fields filled — the new field is optional and format validation only fires when a value is present. No existing field becomes required |
+| E2 | overflow | ✅ covered | Full-width input inside the existing `grid grid-cols-1 md:grid-cols-2 gap-4`; `maxLength={254}` bounds the entry and the native input scrolls its own content. Mobile stacks the pair, the form's existing default |
+| E2 | long-text | ✅ covered | `maxLength={254}` is the RFC 5321 ceiling, so the value cannot grow unbounded. The helper text wraps to multiple lines on mobile by default — it is a `<p>`, not a truncated hint |
+| E3 | overflow | ✅ covered | No container exists in `text/plain`; the mail client wraps. Authored to survive flattening: no ASCII rules, no `———`, no `*` bullets, and `<Hr>` collapses to a blank line |
+| E3 | long-text | 🧪 backstop | **Statement:** the absolute URL survives flattening intact and unbroken, because it is authored as literal `<Text>` and not only as the button `href`. **Verification:** backstop — assert on the output of `render(node, { plainText: true })` that the full URL appears as a contiguous substring, with a long slug and a long establishment name |
+| E4 | empty | ✅ covered | The CTA never renders without a destination: `linkPublico` is resolved and passed in by the caller, and the same D-10 guard that skips a send with no recipient also means no e-mail exists without a public page. No empty `href` is reachable |
+| E4 | loading | ⊘ dismissed | An `<a>` inside an e-mail has no in-flight state — the load happens in the browser after the reader leaves the message, outside anything this contract governs |
+| E4 | error | ✅ covered | If the button fails to render or the client strips it, the same absolute URL is repeated below as selectable literal text. That redundancy is exactly why the URL line exists, and it is what carries the plain-text alternative too |
+| E4 | populated | ✅ covered | One button, one label (`Abrir minha página de agendamento`), one URL beneath it; `12px 24px` padding yields the 44px tap target |
+| E4 | partial | ⊘ dismissed | Cue false positive. The button + URL pair is atomic — the contract admits no state where one renders without the other |
+| E4 | overflow | ✅ covered | `word-break: break-all` on the URL `<Text>` wraps it inside the 600px container instead of forcing horizontal scroll in mobile clients |
+| E4 | zero-one-many | ⊘ dismissed | Cue false positive. Exactly one CTA and one link target, fixed by the one-link budget in `## Copywriting Contract` — the link count is part of what SC4 measures |
+| E4 | long-text | 🧪 backstop | **Statement:** a long slug in the copy-paste URL line wraps rather than forcing horizontal scroll. **Verification:** backstop — preview at 320px with a maximum-length slug |
+| E5 | empty | ✅ covered | Images blocked (routine in corporate Outlook): the band is a `background-color` on the `<td>`, not the image, so the blue bar still renders, and `alt="VamoAgendar"` is set to `#FFFFFF` on the `<img>` so it stays legible against it |
+| E5 | loading | ⊘ dismissed | Mail clients have no image-loading placeholder — the `alt` shows until the bytes arrive, which is the same rendering already resolved at E5/empty |
+| E5 | error | ✅ covered | A 404 or an unreachable `APP_URL` degrades along the identical path as a blocked image: blue band plus white `alt`. Never `cid:`, never a data URI, never SVG — see the asset contract |
+| E5 | populated | ✅ covered | 160×52, with `width`/`height` as HTML attributes **and** inline style; flattened RGB PNG baked onto `#3961D5`, exported at 480×156 for retina |
+| E5 | overflow | ✅ covered | Fixed dimensions well inside the 600px container; deliberately no responsive `max-width` here, which is what breaks the ratio in Outlook desktop |
+| E5 | long-text | ⊘ dismissed | The element's only text is the `alt` string `VamoAgendar` — literal, fixed, three syllables. It cannot vary |
+
+### Authored beyond the taxonomy — e-mail-client failure modes
+
+The engine's taxonomy is web-shaped and has no category for these. They are the states most likely
+to break a transactional e-mail, so they are carried explicitly rather than left out.
+
+| Consideration | Status | Resolution / Reason |
+|---------------|--------|---------------------|
+| forced dark mode (card + text) | 🧪 backstop | **Statement:** `color-scheme: light` plus an explicit `background-color` on every `<td>`, so `#14172B` text is never left on a client-recoloured surface. **Verification:** backstop — Apple Mail and Outlook mobile with dark mode on, as part of the SC4 UAT sweep |
+| Free-tier quota exhaustion (100/day, 3.000/month) | 🧪 backstop | **Statement:** a quota rejection is a send-time failure, not a UI state — it writes the audit row and reaches Sentry, and the dashboard stays silent exactly as in E2/loading. **Verification:** backstop — assert the rejection path writes the row and reports, and does not surface to the professional |
+| Gmail tab classification (Principal / Promoções / Spam) | ⚠ **unresolved — planner must treat as assumption** | Which tab the message lands in cannot be predicted or asserted in code: it is holistic and depends on domain reputation and engagement, which a zero-history domain does not have. SC4 is **measurement by the owner across Gmail, Outlook and a corporate domain**, not a claim any executor or test can make. The planner must plan it as a human-verify checkpoint, never as an automated assertion |
 
 ---
 
@@ -322,14 +365,34 @@ components**, and it was audited during research.
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS *(with one non-blocking FLAG — see below)*
 
-**Approval:** pending
+**Approval:** APPROVED by gsd-ui-checker, 2026-08-07.
+
+**Non-blocking recommendations the planner must carry into PLAN.md:**
+
+1. The `checkpoint:human-verify` before `pnpm add react-email @react-email/ui` currently lives as
+   prose inside a Registry Safety table cell. It must become an **actual checkpoint task**, not a
+   sentence — prose obligations get dropped silently.
+2. The **7-day freshness window**: if planning or execution crosses **2026-08-14**, re-run
+   `npm view react-email version` and the deprecation check before installing.
+3. The `resend@^6.17.2 → ^6.18.1` bump that RESEARCH C-02 makes mandatory (`suppression.added` is
+   absent from the installed types, so `tsc --noEmit` fails without it) is **not** in the Registry
+   Safety table — it is an existing dependency, outside the vetting gate. The planner must not
+   discover the version bump only from RESEARCH.
+
+**Post-approval correction (UI-consideration probe, Step 9.5).** The probe's `partial` category on
+E1 surfaced two data-provenance defects the dimension review does not cover, both fixed in
+`## Copywriting Contract` (commit `a2bbd8c`): `perfis_empresas.nome_empresa` does not exist (the
+column is `nome_estabelecimento`), and `{slug}` must come from `obterSlugEfetivo(perfil, plano)` —
+a brand-new account is on `gratuito`, whose `linkPersonalizado: false` makes the effective public
+slug `slug_gratuito`. Reading `perfis_empresas.slug` directly would have shipped the wrong URL in
+the one e-mail whose entire purpose is Success Criterion 1.
 
 ---
 
