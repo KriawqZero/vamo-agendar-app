@@ -20,7 +20,7 @@ vi.mock('@/lib/assinaturas', () => ({
 describe('salvarPerfilEmpresa - emailContato', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(clerkServer.auth).mockResolvedValue({ orgId: 'org_test123' } as any);
+    vi.mocked(clerkServer.auth).mockResolvedValue({ orgId: 'org_test123' } as unknown as Awaited<ReturnType<typeof clerkServer.auth>>);
     vi.mocked(assinaturasModule.obterAssinaturaVigente).mockResolvedValue({
       plano: 'gratuito',
       inadimplente: false,
@@ -35,7 +35,7 @@ describe('salvarPerfilEmpresa - emailContato', () => {
     });
     vi.mocked(supabaseServer.createClient).mockResolvedValue({
       from: () => ({ select: () => ({ eq: () => ({ maybeSingle: mockMaybeSingle }) }) }),
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof supabaseServer.createClient>>);
 
     await expect(
       salvarPerfilEmpresa({
@@ -65,7 +65,7 @@ describe('salvarPerfilEmpresa - emailContato', () => {
         select: () => ({ eq: () => ({ maybeSingle: mockMaybeSingle }) }),
         upsert: mockUpsert,
       }),
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof supabaseServer.createClient>>);
 
     const res = await salvarPerfilEmpresa({
       slug: 'slug-teste',

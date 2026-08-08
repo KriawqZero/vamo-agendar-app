@@ -4,6 +4,17 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { hashTenantId } from '@/lib/analytics/tenant';
 import { reportarExcecao } from '@/lib/observabilidade/reportar';
 
+interface ResendEventPayload {
+  type?: string;
+  event?: string;
+  data?: {
+    email_id?: string;
+    source_id?: string;
+    id?: string;
+    [key: string]: unknown;
+  };
+}
+
 export async function POST(req: NextRequest) {
   const svixId = req.headers.get('svix-id') || req.headers.get('webhook-id');
   const svixTimestamp = req.headers.get('svix-timestamp') || req.headers.get('webhook-timestamp');
@@ -27,11 +38,11 @@ export async function POST(req: NextRequest) {
   let rawBody: string;
   try {
     rawBody = await req.text();
-  } catch (err) {
+  } catch {
     return NextResponse.json({ erro: 'Erro ao ler corpo da requisição' }, { status: 400 });
   }
 
-  let evento: any;
+  let evento: ResendEventPayload | undefined;
   try {
     const resend = new Resend(process.env.RESEND_API_KEY || 're_dummy');
     evento = resend.webhooks.verify({
@@ -42,8 +53,8 @@ export async function POST(req: NextRequest) {
         timestamp: svixTimestamp,
         signature: svixSignature,
       },
-    });
-  } catch (err) {
+    }) as unknown as ResendEventPayload;
+  } catch {
     return NextResponse.json({ erro: 'Assinatura de webhook inválida' }, { status: 401 });
   }
 
@@ -68,7 +79,7 @@ export async function POST(req: NextRequest) {
 
     if (logEntry?.tenant_id) {
       const tenantHash = hashTenantId(logEntry.tenant_id);
-      // NUNCA-PII: apenas o rótulo estático e o hash pseudonimizado do tenant entram na telemetria
+      // NUNCA-PII: apenas o rótulo estático e o hash pseudonimizador do tenant entram na telemetria
       reportarExcecao(new Error('resend:supressao_adicionada'), {
         tenantHash,
         tipoEvento,

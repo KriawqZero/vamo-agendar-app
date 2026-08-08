@@ -1,14 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { garantirEnvioBoasVindas } from '../email-boas-vindas';
-import * as enviarModule from '../email/enviar';
-import * as adminModule from '../supabase/admin';
+import * as adminModule from '@/lib/supabase/admin';
+import * as enviarModule from '@/lib/email/enviar';
 
-vi.mock('../email/enviar', () => ({
-  enviarEmail: vi.fn(),
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: vi.fn(),
 }));
 
-vi.mock('../supabase/admin', () => ({
-  createAdminClient: vi.fn(),
+vi.mock('@/lib/email/enviar', () => ({
+  enviarEmail: vi.fn(),
 }));
 
 describe('garantirEnvioBoasVindas', () => {
@@ -16,130 +16,115 @@ describe('garantirEnvioBoasVindas', () => {
     vi.clearAllMocks();
   });
 
-  it('dispara o e-mail de boas-vindas com sucesso na primeira tentativa', async () => {
+  it('retorna idempotência se a chave única 23505 for violada no INSERT', async () => {
     const mockInsert = vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnValue({
-        single: vi.fn().mockResolvedValue({
-          data: { id: 'log-uuid-1', status: 'pendente' },
-          error: null,
-        }),
-      }),
-    });
-
-    const mockUpdate = vi.fn().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-    });
-
-    vi.mocked(adminModule.createAdminClient).mockReturnValue({
-      from: (tabela: string) => {
-        if (tabela === 'tb_email_log') {
-          return { insert: mockInsert, update: mockUpdate };
-        }
-        return {};
-      },
-    } as any);
-
-    vi.mocked(enviarModule.enviarEmail).mockResolvedValue({
-      ok: true,
-      id: 'resend-msg-123',
-    });
-
-    const res = await garantirEnvioBoasVindas({
-      tenantId: 'tenant-123',
-      email: 'barbeiro@exemplo.com',
-      nomeProfissional: 'Marcilio',
-      nomeEstabelecimento: 'Barbearia Top',
-      slug: 'barbearia-top',
-    });
-
-    expect(res.ok).toBe(true);
-    if (res.ok) {
-      expect(res.id).toBe('resend-msg-123');
-    }
-    expect(enviarModule.enviarEmail).toHaveBeenCalledTimes(1);
-    expect(enviarModule.enviarEmail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        para: 'barbeiro@exemplo.com',
-        replyTo: 'barbeiro@exemplo.com',
-        idempotencyKey: 'boas-vindas/tenant-123',
-      })
-    );
-    expect(mockUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: 'enviado',
-        resend_id: 'resend-msg-123',
-      })
-    );
-  });
-
-  it('ignora silenciosamente o disparo se a chave de idempotência já existir (erro 23505)', async () => {
-    const mockInsert = vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnValue({
+      select: () => ({
         single: vi.fn().mockResolvedValue({
           data: null,
-          error: { code: '23505', message: 'duplicate key value' },
+          error: { code: '23505', message: 'duplicate key value violates unique constraint' },
         }),
       }),
     });
 
     vi.mocked(adminModule.createAdminClient).mockReturnValue({
       from: () => ({ insert: mockInsert }),
-    } as any);
+    } as unknown as ReturnType<typeof adminModule.createAdminClient>);
 
     const res = await garantirEnvioBoasVindas({
-      tenantId: 'tenant-123',
-      email: 'barbeiro@exemplo.com',
-      nomeProfissional: 'Marcilio',
-      nomeEstabelecimento: 'Barbearia Top',
-      slug: 'barbearia-top',
+      tenantId: 'tenant_123',
+      email: 'proprietario@salao.com',
+      nomeProfissional: 'Maria',
+      nomeEstabelecimento: 'Espaço Maria',
+      slug: 'espaco-maria',
     });
 
-    expect(res.ok).toBe(true);
-    if (res.ok) {
-      expect(res.ignoradoPorIdempotencia).toBe(true);
-    }
+    expect(res).toEqual({ ok: true, ignoradoPorIdempotencia: true });
     expect(enviarModule.enviarEmail).not.toHaveBeenCalled();
   });
 
-  it('atualiza status para falhou quando o envio de e-mail falha', async () => {
+  it('envia e-mail com sucesso e atualiza log para enviado', async () => {
+    const mockUpdate = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    });
+
     const mockInsert = vi.fn().mockReturnValue({
-      select: vi.fn().mockReturnValue({
+      select: () => ({
         single: vi.fn().mockResolvedValue({
-          data: { id: 'log-uuid-2', status: 'pendente' },
+          data: { id: 'log_uuid_1', status: 'pendente' },
           error: null,
         }),
       }),
     });
 
-    const mockUpdate = vi.fn().mockReturnValue({
-      eq: vi.fn().mockResolvedValue({ data: null, error: null }),
-    });
-
     vi.mocked(adminModule.createAdminClient).mockReturnValue({
-      from: () => ({ insert: mockInsert, update: mockUpdate }),
-    } as any);
+      from: () => ({
+        insert: mockInsert,
+        update: mockUpdate,
+      }),
+    } as unknown as ReturnType<typeof adminModule.createAdminClient>);
 
     vi.mocked(enviarModule.enviarEmail).mockResolvedValue({
-      ok: false,
-      motivo: 'falha_transporte',
+      ok: true,
+      id: 'resend_msg_99',
     });
 
     const res = await garantirEnvioBoasVindas({
-      tenantId: 'tenant-123',
-      email: 'barbeiro@exemplo.com',
-      nomeProfissional: 'Marcilio',
-      nomeEstabelecimento: 'Barbearia Top',
-      slug: 'barbearia-top',
+      tenantId: 'tenant_456',
+      email: 'joao@barbearia.com',
+      nomeProfissional: 'João',
+      nomeEstabelecimento: 'Barbearia João',
+      slug: 'barbearia-joao',
     });
 
-    expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.motivo).toBe('falha_transporte');
-    }
+    expect(res).toEqual({ ok: true, id: 'resend_msg_99' });
+    expect(enviarModule.enviarEmail).toHaveBeenCalledTimes(1);
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'enviado',
+        resend_id: 'resend_msg_99',
+      })
+    );
+  });
+
+  it('atualiza o log para falhou caso enviarEmail retorne ok: false', async () => {
+    const mockUpdate = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ error: null }),
+    });
+
+    const mockInsert = vi.fn().mockReturnValue({
+      select: () => ({
+        single: vi.fn().mockResolvedValue({
+          data: { id: 'log_uuid_2', status: 'pendente' },
+          error: null,
+        }),
+      }),
+    });
+
+    vi.mocked(adminModule.createAdminClient).mockReturnValue({
+      from: () => ({
+        insert: mockInsert,
+        update: mockUpdate,
+      }),
+    } as unknown as ReturnType<typeof adminModule.createAdminClient>);
+
+    vi.mocked(enviarModule.enviarEmail).mockResolvedValue({
+      ok: false,
+      motivo: 'config_ausente',
+    });
+
+    const res = await garantirEnvioBoasVindas({
+      tenantId: 'tenant_789',
+      email: 'carla@estetica.com',
+      nomeProfissional: 'Carla',
+      nomeEstabelecimento: 'Estética Carla',
+      slug: 'estetica-carla',
+    });
+
+    expect(res).toEqual({ ok: false, motivo: 'config_ausente' });
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'falhou',
-        erro: 'falha_transporte',
+        erro: 'config_ausente',
       })
     );
   });

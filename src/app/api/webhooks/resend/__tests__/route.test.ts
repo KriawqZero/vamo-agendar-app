@@ -4,7 +4,15 @@ import { POST } from '../route';
 import * as adminModule from '@/lib/supabase/admin';
 import * as reportarModule from '@/lib/observabilidade/reportar';
 
-const verifyMock = vi.fn((options: any) => {
+interface VerifyOptions {
+  webhookSecret?: string;
+  headers?: {
+    signature?: string;
+    id?: string;
+  };
+}
+
+const verifyMock = vi.fn((options: VerifyOptions) => {
   if (options.webhookSecret !== 'whsec_valido') {
     throw new Error('Assinatura inválida');
   }
@@ -125,7 +133,7 @@ describe('Route Handler POST /api/webhooks/resend', () => {
 
     vi.mocked(adminModule.createAdminClient).mockReturnValue({
       from: () => ({ select: () => ({ eq: () => ({ maybeSingle: mockMaybeSingle }) }) }),
-    } as any);
+    } as unknown as ReturnType<typeof adminModule.createAdminClient>);
 
     const req = new NextRequest('http://localhost/api/webhooks/resend', {
       method: 'POST',

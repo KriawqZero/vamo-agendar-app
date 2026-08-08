@@ -540,6 +540,39 @@ nesta seção bloqueia os pilotos controlados; quando uma parte mínima afetar o
 pilotos, ela está destacada. **Não apagar os detalhes técnicos abaixo** — eles foram
 verificados no código/banco e economizam a re-auditoria na hora de executar.
 
+### ✉️ Configurações e Verificações Manuais de E-mail Transacional (Phase 4 / Resend — Dono: Owner)
+
+A infraestrutura de e-mail transacional (templates React Email, log de envios `tb_email_log`, idempotência e webhook do Resend) foi concluída no código (Phase 4). As seguintes ações de infraestrutura e painel são de responsabilidade do **owner** antes do lançamento público:
+
+1. **Webhook do Resend & Segredo no Railway**:
+   - No painel do Resend, cadastrar o endpoint `POST https://app.vamoagendar.com.br/api/webhooks/resend` escutando eventos de supressão (`suppression.added` e `email.bounced`).
+   - Copiar o segredo Svix gerado (`whsec_...`) e configurar a variável `RESEND_WEBHOOK_SECRET` no Railway **antes** de incluí-la no array `OBRIGATORIAS_EM_PRODUCAO`.
+2. **Registros DNS (SPF & DMARC)**:
+   - Adicionar os registros TXT recomendados pelo Resend para o subdomínio `mail.vamoagendar.com.br` (SPF) e DMARC (`p=none` com `rua` para recebimento de relatórios).
+3. **Desativar Open/Click Tracking no Resend**:
+   - No painel do Resend, desativar Open Tracking e Click Tracking para que os links de agendamento (`/book/[slug]`) não sejam reescritos por proxies de rastreamento (preservando o score de entregabilidade e evitando filtros de spam).
+4. **UAT de Entregabilidade em Caixas de Entrada (Gmail, Outlook, Corporativo)**:
+   - Disparar e-mails de boas-vindas para caixas de teste em provedores distintos (Gmail, Outlook/Hotmail, e-mail corporativo) e registrar no diário a caixa e aba de chegada (ex: Principal vs Promoções vs Spam).
+5. **UAT de Supressão NUNCA-PII no Sentry**:
+   - Adicionar manualmente um e-mail de teste à lista de supressão no painel do Resend e confirmar o disparo do webhook, verificando a criação da Issue sintética `resend:supressao_adicionada` no Sentry com o `tenantHash` pseudonimizado (assegurando zero vazamento de PII).
+
+### Integridade e pertencimento multi-tenant (inclui hardening da Data API e revisão RLS)
+
+**Absorvido pelo P0.12 em 2026-07-16 e fechado em 2026-07-17** com o redesign do
+booking público: cor, logo e capa do tenant Pro aplicados em `/book/[slug]` (upload
+próprio no Storage; sanitização pelo plano vigente). Ver P0.12(b) e "Itens
+resolvidos".
+
+---
+
+## 🟠 Obrigatório antes do lançamento público
+
+Nada aqui é opcional — é a etapa imediatamente anterior a receber tráfego público.
+Também **não é o próximo trabalho**: a prioridade atual é o produto (P0/P1). Nada
+nesta seção bloqueia os pilotos controlados; quando uma parte mínima afetar os
+pilotos, ela está destacada. **Não apagar os detalhes técnicos abaixo** — eles foram
+verificados no código/banco e economizam a re-auditoria na hora de executar.
+
 ### Integridade e pertencimento multi-tenant (inclui hardening da Data API e revisão RLS)
 
 Garantir que **todos os dados usados numa operação pertencem ao mesmo tenant** e que

@@ -13,6 +13,7 @@ const eslintConfig = defineConfig([
     "build/**",
     "next-env.d.ts",
     // Artefatos auxiliares fora do código-fonte:
+    ".agent/**",
     ".agents/**",
     ".obsidian/**",
     // Gerado pelo CLI do Supabase em `supabase start` (runtime das Edge
