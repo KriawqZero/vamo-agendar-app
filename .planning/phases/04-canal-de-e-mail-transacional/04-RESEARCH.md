@@ -868,7 +868,10 @@ zero simplesmente não existem ainda. É por isso que SC4 é medição humana, n
 
 ---
 
-## Arquitetura de validação
+## Validation Architecture
+
+> Arquitetura de validação. O título fica em inglês porque os gates do GSD procuram a
+> string literal `## Validation Architecture` — em pt-BR a seção existe e o gate não a vê.
 
 ### Framework de teste
 
