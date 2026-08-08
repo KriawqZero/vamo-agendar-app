@@ -12,7 +12,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:integracao": "EXIGIR_INTEGRACAO=1 vitest run src/app/actions/__tests__/public-booking-escrita.test.ts"
+    "test:integracao": "EXIGIR_INTEGRACAO=1 vitest run"
   },
   "dependencies": {
     "@clerk/localizations": "^4.12.0",
