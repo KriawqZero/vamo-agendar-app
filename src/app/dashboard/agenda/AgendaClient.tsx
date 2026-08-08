@@ -20,6 +20,7 @@ interface PerfilEmpresa {
     nome_estabelecimento: string
     descricao: string | null
     telefone_contato: string | null
+    email_contato?: string | null
     cor_marca: string | null
     logo_url: string | null
     capa_url: string | null
@@ -140,6 +141,7 @@ export default function AgendaClient({
     )
     const [descricao, setDescricao] = useState(perfilEmpresa?.descricao || '')
     const [telefoneContato, setTelefoneContato] = useState(perfilEmpresa?.telefone_contato || '')
+    const [emailContato, setEmailContato] = useState(perfilEmpresa?.email_contato || '')
     const [corMarca, setCorMarca] = useState<string | null>(perfilEmpresa?.cor_marca ?? null)
     const [instagram, setInstagram] = useState(perfilEmpresa?.instagram || '')
     const [endereco, setEndereco] = useState(perfilEmpresa?.endereco || '')
@@ -311,6 +313,7 @@ export default function AgendaClient({
                     nomeEstabelecimento,
                     descricao,
                     telefoneContato,
+                    emailContato,
                     corMarca,
                     instagram,
                     endereco,
@@ -654,6 +657,19 @@ export default function AgendaClient({
                                     value={telefoneContato}
                                     onChange={(e) => setTelefoneContato(e.target.value)}
                                     placeholder="DDD + Telefone (ex: 11999999999)"
+                                    className="w-full px-3.5 py-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm bg-zinc-50 dark:bg-zinc-900 outline-hidden text-zinc-900 dark:text-zinc-50"
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-xs font-bold uppercase text-zinc-400 block">
+                                    E-mail de Contato (opcional)
+                                </label>
+                                <input
+                                    type="email"
+                                    value={emailContato}
+                                    onChange={(e) => setEmailContato(e.target.value)}
+                                    placeholder="contato@seu-estabelecimento.com"
                                     className="w-full px-3.5 py-2 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm bg-zinc-50 dark:bg-zinc-900 outline-hidden text-zinc-900 dark:text-zinc-50"
                                 />
                             </div>

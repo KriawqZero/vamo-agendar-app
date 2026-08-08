@@ -20,3 +20,6 @@ WHERE status != 'falhou';
 
 -- Índice por resend_id para busca rápida no processamento de webhooks
 CREATE INDEX IF NOT EXISTS idx_email_log_resend_id ON tb_email_log (resend_id) WHERE resend_id IS NOT NULL;
+
+-- Campo opcional de e-mail de contato no perfil da empresa (EML-04)
+ALTER TABLE perfis_empresas ADD COLUMN IF NOT EXISTS email_contato TEXT;

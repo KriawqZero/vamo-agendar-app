@@ -29,6 +29,7 @@ interface PerfilEmpresaInput {
     nomeEstabelecimento: string
     descricao?: string
     telefoneContato?: string
+    emailContato?: string | null
     corMarca?: string | null
     instagram?: string | null
     endereco?: string | null
@@ -265,6 +266,12 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
         horizonteFinal = input.horizonteMaximoDias
     }
 
+    // E-mail de contato do estabelecimento (opcional)
+    const emailContatoNovo = input.emailContato?.trim().toLowerCase() || null
+    if (emailContatoNovo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailContatoNovo)) {
+        throw new Error('E-mail de contato inválido.')
+    }
+
     // logo_url e capa_url NÃO passam por aqui: são geridos exclusivamente pelas
     // actions de upload (src/app/actions/imagens-perfil.ts) — o upsert omite as colunas.
     const payload = {
@@ -274,6 +281,7 @@ export async function salvarPerfilEmpresa(input: PerfilEmpresaInput) {
         nome_estabelecimento: input.nomeEstabelecimento.trim(),
         descricao: input.descricao?.trim() || null,
         telefone_contato: input.telefoneContato?.replace(/\D/g, '') || null,
+        email_contato: emailContatoNovo,
         cor_marca: corMarcaNova,
         instagram: instagramNovo,
         endereco: enderecoNovo,
