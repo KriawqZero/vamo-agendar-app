@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: Lançamento público
 current_phase: 04
 current_phase_name: canal-de-e-mail-transacional
-status: in_progress
-stopped_at: Phase 4 planned (6 plans)
-last_updated: "2026-08-08T00:47:45.569Z"
-last_activity: 2026-08-07
+status: completed
+stopped_at: Phase 4 complete (6/6 plans executed and verified)
+last_updated: "2026-08-08T06:44:00.000Z"
+last_activity: 2026-08-08
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 31
-  completed_plans: 31
+  completed_phases: 4
+  total_plans: 37
+  completed_plans: 37
   total_phase_plans: 6
-last_activity_desc: "Phase 03 (anti-abuso-no-booking-p-blico) encerrada em CÓDIGO em 2026-07-27 — 6/6 planos, gate final verde (lint 0, 353 testes em 22 arquivos, build 0 com 14 rotas SEM env do Upstash, tsc 0). ABU-01/02/03 seguem ABERTOS de propósito: sem UPSTASH_REDIS_REST_URL/_TOKEN as quatro camadas rodam em no-op e nada é barrado em execução real; o honeypot é a exceção e já funciona. O provisionamento é ação do OWNER e gate de DEPLOY (o 03-04 pôs as duas em OBRIGATORIAS_EM_PRODUCAO — deploy antes disso não sobe), registrado com dono, gatilho e detector em docs/PENDENCIAS.md junto do risco aceito da cota do Free e das verificações manuais da fase. Contexto anterior: Phase 02 (integridade-da-agenda) COMPLETA em 2026-07-23 — 6/6 planos, veredito do verificador human_needed com 5/5 must-haves verificados e 2 itens de UAT de TELA abertos (aviso âmbar público e detalhe do walk-in); AGE-01..05 marcados em REQUIREMENTS. Depois dela veio a quick task 260724-observabilidade-mensageria (fora do roadmap, disparada por incidente do owner: agendamento testado, confirmação e lembrete não entregues e NADA em PostHog, Sentry Issues, Sentry Logs ou log do Railway). Ela está mergeada no master (PR #11, merge a9d071a; commits a03cc39 → cd63aa3) e é BASELINE — não reimplementar. Baseline reconferida nesta sessão: pnpm test 280/280 em 20 arquivos. O que ela deixou aberto é só verificação de painel (não fecha por teste), listada em docs/PENDENCIAS.md. Próximo passo do roadmap: /gsd-discuss-phase 03 (Anti-abuso no booking público) — mas ele tem uma DECISÃO DO OWNER como pré-requisito: Upstash Redis vs. RPC atômica no Postgres para o rate limit."
+last_activity_desc: "Phase 04 (canal-de-e-mail-transacional) CONCLUÍDA com sucesso — 6/6 planos executados e validados, gate final verde (pnpm test 419/419 testes em 28 arquivos, pnpm lint 0 erros, npx tsc --noEmit 0 erros, pnpm build 0 erros em 14 rotas). Funcionalidades implementadas: tabela tb_email_log com índice único parcial para idempotência (23505), template React Email BoasVindas com link absoluto /book/[slug], serviço orquestrador garantirEnvioBoasVindas acionado via layout do dashboard, Route Handler /api/webhooks/resend com verificação de assinatura Svix e reporte Sentry com hash do tenant (NUNCA-PII), e campo opcional emailContato no perfil do estabelecimento. Ações manuais do owner (webhook Svix no Railway, DNS SPF/DMARC, tracking desativado e UATs) registradas em docs/PENDENCIAS.md."
 ---
 
 # Project State
