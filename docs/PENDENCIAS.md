@@ -1282,6 +1282,14 @@ sendo forjável (se a Railway não puser `x-real-ip`). O fail-open do CR-04 gara
 erro degrada para "não protege", nunca para "bloqueia cliente legítimo" — que é o lado
 certo do erro assimétrico da fase.
 
+### ✉️ Verificações manuais e configurações do owner da Phase 04 (Canal de e-mail transacional)
+
+O código da Phase 04 foi implementado e coberto por testes unitários e de integração (`pnpm test` com 33 suítes / 426 testes verdes). As ações operacionais e verificações visuais/reais dependem do owner:
+
+- [ ] **Configuração do Webhook do Resend (EML-06)**: Cadastrar a URL de endpoint (`https://<dominio>/api/webhooks/resend`), selecionar o evento `suppression.added`, copiar o segredo Svix e provisionar a variável `RESEND_WEBHOOK_SECRET` no painel do Railway/produção.
+- [ ] **Verificação de Caixa de Entrada em Provedores (SC4 / EML-01)**: Enviar o e-mail de boas-vindas para 3 destinatários reais (Gmail, Outlook e um Domínio Corporativo) e registrar a aba de destino (Principal, Promoções ou Spam).
+- [ ] **Registros TXT de DNS para Entregabilidade (EML-01 / SC4)**: Adicionar registro TXT de DMARC (`_dmarc.mail.vamoagendar.com.br`) com `p=none` e `rua` monitorado, além do SPF no subdomínio `mail.vamoagendar.com.br`.
+
 ### 🔑 Rotação das signing keys do QStash — ação do owner, prazo 2026-08-05
 
 **Só o owner fecha este item.** A rotação acontece no painel da Upstash; nenhum
