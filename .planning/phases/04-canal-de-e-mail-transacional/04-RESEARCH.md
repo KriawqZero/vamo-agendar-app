@@ -219,7 +219,7 @@ type RESEND_ERROR_CODE_KEY = 'invalid_idempotency_key' | 'validation_error' | 'm
 **Recomendação:** `pnpm add resend@^6.18.1` como tarefa própria do plano, com `pnpm test`
 + `tsc --noEmit` como prova de que `classificar.ts` sobreviveu.
 
-### C-03 — alternativa em texto puro fica de fora, ou D-03 precisa ser ampliada (BAIXA prioridade, decisão do owner)
+### C-03 — ✅ RESOLVIDO em 2026-08-07: D-03 foi ampliada pelo owner
 
 D-03 é explícita: em `enviarEmail`, "**`replyTo` passa a ser opcional. Nada mais.**"
 
@@ -234,10 +234,10 @@ a plain text version of your email ensures accessibility for all recipients"*
 Ou seja: mandar só HTML deixa um ganho barato de SC4 na mesa, e mandar HTML+texto exige uma
 **segunda** alteração no wrapper (`text?: string` em `ParamsEmail`) que D-03 não autorizou.
 
-**Recomendação:** o planner abre um `checkpoint:human-verify` perguntando ao owner, em
-linguagem leiga (como pedido em `<specifics>`), se D-03 pode virar "`replyTo` opcional **e**
-`text` opcional". Se a resposta for não, seguir só com HTML e registrar no UAT do SC4 que a
-ausência de versão texto é uma variável não controlada da medição.
+**Resolução (2026-08-07, decisão do owner):** D-03 foi ampliada — ver **D-03a** em
+`04-CONTEXT.md`. O wrapper recebe **duas** alterações autorizadas (`replyTo?` e `text?`) e
+o e-mail sai com HTML + versão em texto puro, gerada por
+`render(node, { plainText: true })`. **Não abrir checkpoint sobre isto** — está decidido.
 
 ---
 

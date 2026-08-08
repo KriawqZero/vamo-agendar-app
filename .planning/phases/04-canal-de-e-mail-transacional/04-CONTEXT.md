@@ -47,6 +47,15 @@ HTML que as Phases 5 e 9 vão herdar.
   a ausência como erro de programação. É alteração cirúrgica no wrapper da etapa
   preparatória, não reescrita; a guarda de `para`/`assunto` permanece intacta.
   — **Reversibility:** reversible.
+- **D-03a (ampliação de D-03, decidida pelo owner em 2026-08-07 sobre o achado C-03 da
+  pesquisa):** `enviarEmail` passa a aceitar **também** `text` **opcional**, e o e-mail sai
+  com HTML + versão em texto puro. O `render(node, { plainText: true })` do React Email
+  produz o texto sem trabalho extra, o SDK do Resend aceita `html` e `text` no mesmo envio
+  (`RequireAtLeastOne`), e a presença da versão texto é item de entregabilidade listado
+  pelo próprio Resend — ou seja, mexe direto no que o Success Criteria 4 mede. Isto revoga
+  a cláusula "**Nada mais**" da redação original de D-03: são **duas** alterações
+  autorizadas no wrapper (`replyTo?` e `text?`), e nenhuma além dessas. A guarda de
+  `para`/`assunto` continua intacta. — **Reversibility:** reversible.
 - **D-04:** ⚠️ **o Success Criteria 2 da fase é dividido.** A metade "chega identificado
   pelo estabelecimento" fecha aqui (já pronta em `montarRemetente`). A metade "responder
   vai para o profissional, não para o VamoAgendar" **migra para a Phase 5**, onde o
@@ -197,8 +206,8 @@ HTML que as Phases 5 e 9 vão herdar.
 
 ### Código que a fase consome e NÃO reescreve (entregue na etapa preparatória)
 - `src/lib/email/enviar.ts` — `enviarEmail`; contrato "nunca lança", vocabulário fechado
-  `MotivoFalhaEmail`, `idempotencyKey` já no parâmetro. **Alteração autorizada por D-03:
-  `replyTo` passa a ser opcional. Nada mais.**
+  `MotivoFalhaEmail`, `idempotencyKey` já no parâmetro. **Alterações autorizadas: `replyTo`
+  opcional (D-03) e `text` opcional (D-03a). Nada além dessas duas.**
 - `src/lib/email/remetente.ts` — `montarRemetente`; endereço é constante de produto, e a
   sanitização quoted-string existe porque vírgula/ponto no nome do salão quebram o header
 - `src/lib/email/classificar.ts` — tabela exaustiva dos 21 códigos do SDK; `Record` com
