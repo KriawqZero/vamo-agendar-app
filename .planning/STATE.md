@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: Lançamento público
-current_phase: 04
-current_phase_name: canal-de-e-mail-transacional
-status: completed
-stopped_at: Phase 4 complete (6/6 plans executed and verified)
-last_updated: "2026-08-08T06:44:00.000Z"
+current_phase: 05
+current_phase_name: contato-flexivel-no-booking
+status: in_progress
+stopped_at: Phase 5 context gathered
+last_updated: "2026-08-08T06:48:30.000Z"
 last_activity: 2026-08-08
 progress:
-  total_phases: 4
+  total_phases: 5
   completed_phases: 4
   total_plans: 37
   completed_plans: 37
-  total_phase_plans: 6
-last_activity_desc: "Phase 04 (canal-de-e-mail-transacional) CONCLUÍDA com sucesso — 6/6 planos executados e validados, gate final verde (pnpm test 419/419 testes em 28 arquivos, pnpm lint 0 erros, npx tsc --noEmit 0 erros, pnpm build 0 erros em 14 rotas). Funcionalidades implementadas: tabela tb_email_log com índice único parcial para idempotência (23505), template React Email BoasVindas com link absoluto /book/[slug], serviço orquestrador garantirEnvioBoasVindas acionado via layout do dashboard, Route Handler /api/webhooks/resend com verificação de assinatura Svix e reporte Sentry com hash do tenant (NUNCA-PII), e campo opcional emailContato no perfil do estabelecimento. Ações manuais do owner (webhook Svix no Railway, DNS SPF/DMARC, tracking desativado e UATs) registradas em docs/PENDENCIAS.md."
+  total_phase_plans: 0
+last_activity_desc: "Phase 05 (contato-flexivel-no-booking) iniciada com a coleta de contexto de implementação em 05-CONTEXT.md e 05-DISCUSSION-LOG.md. Decisões travadas: Nome é obrigatório; WhatsApp e E-mail são opcionais (pelo menos um obrigatório em formulário e Server Action); deduplicação de clientes busca por WhatsApp depois E-mail; envio de notificação ocorre nos canais fornecidos (em ambos se os dois forem preenchidos); disparo de notificações desacoplado no Next.js after() para liberação instantânea da tela de sucesso na UI."
 ---
 
 # Project State
