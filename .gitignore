@@ -53,3 +53,26 @@ supabase/.branches/
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Skills instalados por gerenciador: em .claude/skills/ eles são SYMLINKS para
+# .agents/skills/, e symlink versionado quebra o build do Railway. O railpack
+# 0.36.4 passou a SEGUIR symlink ao varrer o repo atrás de package.json, acha os
+# templates das skills do Clerk "através" do link e emite COPY para
+# `.claude/skills/…/templates/…/package.json` — caminho que o .dockerignore tira
+# do contexto de propósito. BuildKit então falha com "failed to compute cache
+# key: … not found" e NENHUM deploy passa. O 0.35.0 não seguia; a atualização do
+# builder entre 2026-08-07 e 2026-08-13 quebrou deploy sem uma linha de código
+# ter mudado (provado: o commit que subiu OK em 07/08 falhou igual em 13/08).
+#
+# É a mesma raiz do bug de 21/07 ("cannot replace to directory … with file"),
+# que na época foi tratada no sintoma via .dockerignore.
+#
+# O conteúdo real vive em .agents/skills/ e continua versionado (507 arquivos) —
+# é de lá que as skills são carregadas. Estes links são conveniência local.
+# Ignorar tudo em .claude/skills/ EXCETO as skills próprias do projeto.
+.claude/skills/*
+!.claude/skills/diario-socio/
+!.claude/skills/integration-nextjs-app-router/
+!.claude/skills/nova-feature/
+!.claude/skills/relatorio-socio/
+!.claude/skills/revisao/
