@@ -11,9 +11,31 @@
 
 # --- Causa direta do build quebrado: skills de IA e tooling de agente ---
 .claude/
-.agents/
 .superpowers/
 skills-lock.json
+
+# `.agents/` NÃO entra nesta lista — e a exclusão dele foi removida em 13/08.
+#
+# Motivo: o railpack 0.36.4 (o deploy de 07/08 rodou 0.36.4 ainda não; rodou
+# 0.35.0) enxerga o `pnpm-workspace.yaml` da raiz, varre o repo INTEIRO atrás de
+# package.json — sem respeitar este arquivo — e emite um COPY para cada um que
+# acha, incluindo os 8 de `.agents/skills/clerk-*/templates/*/`. Excluí-los aqui
+# fazia o caminho sumir do contexto e o BuildKit abortava com "failed to compute
+# cache key: … not found". Nenhum deploy passava.
+#
+# A prova do mecanismo estava no próprio log: `.agent/package.json` (singular)
+# nunca deu erro, porque `.agent/` nunca esteve nesta lista. Mesmo tipo de
+# arquivo — presente no contexto funciona, excluído quebra.
+#
+# A exclusão original existia por causa da colisão entre os symlinks de
+# `.claude/skills/` e os diretórios reais de `.agents/skills/` (bug de 21/07,
+# "cannot replace to directory … with file"). Esses symlinks saíram do git em
+# 13/08, então a colisão não pode mais acontecer e a exclusão perdeu a razão de
+# ser. Custo de reincluir: ~507 arquivos de markdown no contexto. Irrelevante.
+#
+# Se um dia isto voltar a quebrar, a alternativa determinística é tirar os
+# `templates/` das skills do Clerk do git — sem package.json aninhado, não há
+# COPY a emitir.
 
 # --- Notas, planejamento e assets que não são código do app ---
 .obsidian/
