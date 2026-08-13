@@ -3,7 +3,7 @@
 Lista viva de tarefas identificadas. Revisar antes de cada nova etapa de
 desenvolvimento — e obrigatoriamente antes de implementar o checkout Asaas.
 
-Última atualização: 2026-07-27 (Phase 03 — Anti-abuso no booking público: código fechado, com o provisionamento do Upstash, o risco aceito da cota e as verificações manuais nascendo ABERTOS na seção "Obrigatório antes do lançamento público"). Antes dela: Quick Task `260724-observabilidade-mensageria` (Observabilidade Real da Mensageria com Sentry Logs, Sentry Issues aguardadas, PostHog e auditoria append-only em PostgreSQL/`disparos_whatsapp` — resolvido) e P0.12-desktop.
+Última atualização: 2026-08-13 (correção do canal de reputação do Resend: URL do webhook sem subdomínio `app.`, `suppression.added` existe, lacuna do handler registrada; migrations das Phases 4, 5 e a de sincronização aplicadas no Supabase Cloud). Antes dela: 2026-07-27 (Phase 03 — Anti-abuso no booking público: código fechado, com o provisionamento do Upstash, o risco aceito da cota e as verificações manuais nascendo ABERTOS na seção "Obrigatório antes do lançamento público"). Antes dela: Quick Task `260724-observabilidade-mensageria` (Observabilidade Real da Mensageria com Sentry Logs, Sentry Issues aguardadas, PostHog e auditoria append-only em PostgreSQL/`disparos_whatsapp` — resolvido) e P0.12-desktop.
 
 ---
 
@@ -545,8 +545,9 @@ verificados no código/banco e economizam a re-auditoria na hora de executar.
 A infraestrutura de e-mail transacional (templates React Email, log de envios `tb_email_log`, idempotência e webhook do Resend) foi concluída no código (Phase 4). As seguintes ações de infraestrutura e painel são de responsabilidade do **owner** antes do lançamento público:
 
 1. **Webhook do Resend & Segredo no Railway** — ⚠️ **agora bloqueia o boot em produção**:
-   - No painel do Resend, cadastrar o endpoint `POST https://app.vamoagendar.com.br/api/webhooks/resend` escutando `email.suppressed`, `email.bounced` e `email.complained`.
-     > ⚠️ **Não use `suppression.added`** — esse evento não existe no Resend. A Phase 4 nasceu escutando esse nome e o caminho de supressão ficou morto até 2026-08-13; o union `WebhookEvent` do SDK é a fonte da verdade.
+   - No painel do Resend, cadastrar o endpoint `POST https://vamoagendar.com.br/api/webhooks/resend` escutando `email.suppressed`, `email.bounced` e `email.complained`.
+     > ⚠️ **A URL não tem subdomínio `app.`**. Até 2026-08-13 este documento pedia `app.vamoagendar.com.br`, que não existe: a Railway serve o app no domínio raiz (`vamoagendar.com.br`, custom/ACTIVE, único domínio do serviço `vamo-agendar-app`). Cadastrar o hostname errado não daria erro visível no painel — o Resend acumularia falha de entrega, retentaria e acabaria desabilitando o endpoint, exatamente o incidente silencioso que a Phase 4 tentou evitar.
+     > ℹ️ **`suppression.added` e `suppression.removed` existem** — são a categoria "Suppression Events" da doc oficial do Resend, separada dos "Email Events". Este documento afirmou o contrário entre 2026-08-13 e a correção; o erro veio de tratar o union `WebhookEventPayload` do SDK como fonte da verdade, e o SDK (`resend@6.17.2`, e o `6.19.0` publicado) **não tipa** esses dois eventos. A fonte da verdade é a doc do Resend, não o SDK. Ver a lacuna do handler logo abaixo antes de contar com esses eventos.
    - Copiar o segredo Svix gerado (`whsec_...`) e configurar `RESEND_WEBHOOK_SECRET` no Railway **antes do próximo deploy de produção**: desde 2026-08-13 a variável está em `OBRIGATORIAS_EM_PRODUCAO`, então o boot **cai** sem ela. É deliberado — o estado anterior (503 mudo, Resend desabilitando o endpoint em silêncio) era pior.
 2. **Registros DNS (SPF & DMARC)**:
    - Adicionar os registros TXT recomendados pelo Resend para o subdomínio `mail.vamoagendar.com.br` (SPF) e DMARC (`p=none` com `rua` para recebimento de relatórios).
@@ -557,19 +558,54 @@ A infraestrutura de e-mail transacional (templates React Email, log de envios `t
 5. **UAT de Supressão NUNCA-PII no Sentry**:
    - Adicionar manualmente um e-mail de teste à lista de supressão no painel do Resend e confirmar o disparo do webhook, verificando a criação da Issue sintética `resend:evento_de_reputacao` no Sentry com o `tenantHash` pseudonimizado (assegurando zero vazamento de PII). O rótulo é único para os três tipos de evento; o tipo real viaja no contexto, para o agrupamento não estilhaçar.
 
-### 🔴 Aplicar a migration de sincronização de schema no Supabase Cloud (Dono: Owner)
+### 🔴 O webhook do Resend não trata `suppression.added` (Dono: dev)
 
-`20260813122140_sincroniza_schema_email_e_contato_flexivel.sql` foi gerada e
-**aplicada apenas no banco local**. Ela é pré-requisito de duas coisas que já
-estão no código: o índice **único** de e-mail (sem ele a RPC duplica cliente sob
-concorrência) e o status `descartado` de `tb_email_log` (sem ele o CHECK recusa a
-escrita e o envio de boas-vindas quebra).
+`src/app/api/webhooks/resend/route.ts` só reconhece `email.suppressed`,
+`email.bounced` e `email.complained`. Um `suppression.added` que chegue hoje cai
+no `ehEventoDeReputacao` → `false` e sai com `200 {processado: false}`: silêncio
+completo, sem Issue e sem log. Dois obstáculos, nesta ordem:
 
-Ordem: aplicar a migration **antes** de subir o código desta sessão. Verificar
-depois que `npx supabase db diff --linked` volta sem statements de DDL — os
-~136 `grant`/`revoke` que aparecem são ruído conhecido do `migra`, que não
-enxerga os REVOKE de privilégio escritos à mão; **não aplicá-los**, reabririam a
-Data API fechada na Phase 1.
+1. A allowlist é validada por `satisfies readonly WebhookEventPayload['type'][]`.
+   Como o SDK não tipa `suppression.*`, **acrescentar o literal não compila** —
+   a trava que a Phase 4 pôs para impedir nome inventado agora também impede
+   nome real que o SDK desconhece.
+2. O payload de `suppression.added` **não traz `email_id`** — traz `id`, `email`,
+   `origin` (`bounce` | `complaint` | `manual`) e `source_id`. A linha que
+   correlaciona com `tb_email_log` lê `evento.data.email_id`; para esse evento a
+   correlação teria que passar por `source_id`, que é `null` quando a supressão
+   foi manual.
+
+**Mitigação imediata, sem código (Owner):** manter marcados no painel também
+`email.suppressed`, `email.bounced` e `email.complained` — esses três o handler
+já trata hoje. Marcar apenas `suppression.added` deixa o canal de reputação
+inteiramente morto.
+
+### ✅ ~~Aplicar a migration de sincronização de schema no Supabase Cloud~~ — resolvido em 2026-08-13
+
+Aplicado. O achado ao executar foi maior que o item registrado: o ledger do Cloud
+parava em `20260723162858_integridade_agenda` (Phase 2) — as migrations das
+**Phases 4 e 5 também nunca tinham subido**. Só o `CREATE OR REPLACE FUNCTION` da
+Phase 5 havia sido executado solto, o que dava à RPC a assinatura de 4 argumentos
+e escondia o resto da lacuna. Com `clientes.telefone` ainda `NOT NULL` no Cloud,
+**agendar só com e-mail quebrava em produção**.
+
+Aplicadas em ordem, via `mcp__supabase__apply_migration`:
+`20260808000000_create_tb_email_log` → `20260808100000_contato_flexivel_clientes`
+→ `20260813122140_sincroniza_schema_email_e_contato_flexivel`. Ledger realinhado
+por DML depois de cada apply (o MCP carimba o instante da chamada, não a version
+do arquivo). Dados preservados: 1 tenant, 5 clientes, 7 agendamentos antes e
+depois. Zero duplicatas de e-mail por tenant, então o índice único criou sem
+conflito.
+
+Verificado no banco após aplicar: `telefone` nullable, `idx_clientes_tenant_email`
+UNIQUE, `idx_email_log_chave_idempotencia_ativa` escopado por `(tenant_id,
+chave_idempotencia)`, CHECK de status com `descartado`, `tb_email_log` com RLS
+ativa e 3 policies, `perfis_empresas.email_contato` presente, RPC com o `RAISE`.
+
+Continua valendo para conferências futuras: `npx supabase db diff --linked` emite
+~136 `grant`/`revoke` que são ruído conhecido do `migra`, que não enxerga os
+REVOKE de privilégio escritos à mão. **Não aplicá-los** — reabririam a Data API
+fechada na Phase 1.
 
 ### 🧪 A deduplicação de clientes saiu do `pnpm test` (Dono: dev)
 
