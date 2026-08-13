@@ -52,6 +52,11 @@ export const OBRIGATORIAS_EM_PRODUCAO = [
     'NEXT_PUBLIC_POSTHOG_KEY',
     'NEXT_PUBLIC_SENTRY_DSN',
     'RESEND_API_KEY',
+    // Phase 4: sem ele todo POST do Resend leva 503, o provedor retenta,
+    // desiste e desabilita o endpoint. O boot sobe, o dashboard funciona e os
+    // e-mails saem — só o canal de reputação (EML-06) fica desligado, sem Issue
+    // e sem log, até um incidente de entregabilidade. Critério (a) exato.
+    'RESEND_WEBHOOK_SECRET',
     // Phase 3: sem as duas, o rate limit do booking público entra em NO-OP
     // silencioso — toda requisição passa e nenhum erro aparece (critério (a)).
     'UPSTASH_REDIS_REST_URL',

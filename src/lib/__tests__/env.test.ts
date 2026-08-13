@@ -109,9 +109,9 @@ describe('validarEnvObrigatorio', () => {
 })
 
 describe('OBRIGATORIAS_EM_PRODUCAO', () => {
-    it('tem os dezesseis nomes acordados, sem duplicata', () => {
-        expect(OBRIGATORIAS_EM_PRODUCAO).toHaveLength(16)
-        expect(new Set(OBRIGATORIAS_EM_PRODUCAO).size).toBe(16)
+    it('tem os dezessete nomes acordados, sem duplicata', () => {
+        expect(OBRIGATORIAS_EM_PRODUCAO).toHaveLength(17)
+        expect(new Set(OBRIGATORIAS_EM_PRODUCAO).size).toBe(17)
     })
 
     it('exige as DUAS chaves de assinatura do QStash (SEG-05)', () => {
@@ -129,6 +129,14 @@ describe('OBRIGATORIAS_EM_PRODUCAO', () => {
         // falso-verde que esta lista existe para matar.
         expect(OBRIGATORIAS_EM_PRODUCAO).toContain('UPSTASH_REDIS_REST_URL')
         expect(OBRIGATORIAS_EM_PRODUCAO).toContain('UPSTASH_REDIS_REST_TOKEN')
+    })
+
+    it('exige o segredo do webhook do Resend (Phase 4, EML-06)', () => {
+        // Mesmo critério (a) das duas acima: sem ele todo POST do Resend leva
+        // 503, o provedor retenta, desiste e desabilita o endpoint. O boot sobe,
+        // o dashboard funciona, os e-mails saem — só o canal de reputação fica
+        // desligado, sem Issue e sem log, até um incidente de entregabilidade.
+        expect(OBRIGATORIAS_EM_PRODUCAO).toContain('RESEND_WEBHOOK_SECRET')
     })
 
     it('não inclui as chaves do Clerk (falham alto e imediato por conta própria)', () => {

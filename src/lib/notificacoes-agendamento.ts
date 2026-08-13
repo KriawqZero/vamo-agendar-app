@@ -10,11 +10,15 @@ import {
 import { PLANOS } from './planos'
 import { obterPlanoVigentePublico } from './assinaturas'
 import { capturarEventoTenant } from './analytics/server'
-import { reportarExcecaoAguardando, reportarFalhaSilenciosaAguardando } from './observabilidade/reportar'
+import {
+    reportarExcecaoAguardando,
+    reportarFalhaSilenciosaAguardando,
+} from './observabilidade/reportar'
 import { erroSinteticoSupabase } from './observabilidade/erro-supabase'
 import { logOperacional } from './observabilidade/log'
 import { hashTenantId, hashAgendamentoId } from './observabilidade/hash'
 import { enviarEmail } from './email/enviar'
+import { ENDERECO_REMETENTE } from './email/remetente'
 import { ConfirmacaoAgendamento } from '@/emails/ConfirmacaoAgendamento'
 import { render } from 'react-email'
 
@@ -75,7 +79,12 @@ export async function dispararNotificacoesAgendamento(
         }
 
         const empresaNome = perfil?.nome_estabelecimento || 'Estabelecimento'
-        const emailContato = perfil?.email_contato || 'nao-responda@vamoagendar.com.br'
+        // Fallback é a constante de produto, não um literal digitado à mão: o
+        // valor anterior ('nao-responda@vamoagendar.com.br') divergia do endereço
+        // real em dois pontos — hífen a mais e sem o subdomínio `mail.` — e é
+        // domínio sem MX. Todo tenant sem `email_contato` mandava confirmação
+        // cujo "Responder" bounceava.
+        const emailContato = perfil?.email_contato || ENDERECO_REMETENTE
 
         // -------------------------------------------------------------------------
         // 1. CANAL DE E-MAIL TRANSACIONAL (Resend)
@@ -90,7 +99,7 @@ export async function dispararNotificacoesAgendamento(
                         nomeServico: servicoNome || 'Atendimento / Serviço',
                         dataHoraFormatada: dataHoraStr,
                         endereco: perfil?.endereco || undefined,
-                    })
+                    }),
                 )
 
                 const resultadoEmail = await enviarEmail({
@@ -106,12 +115,20 @@ export async function dispararNotificacoesAgendamento(
                     logOperacional.info('email.confirmacao.enviado', contextoMeta)
                     capturarEventoTenant('email_confirmation_sent', tenantId)
                 } else {
-                    logOperacional.warn('email.confirmacao.falhou', { ...contextoMeta, motivo: resultadoEmail.motivo })
-                    capturarEventoTenant('email_confirmation_failed', tenantId, { motivo: resultadoEmail.motivo })
+                    logOperacional.warn('email.confirmacao.falhou', {
+                        ...contextoMeta,
+                        motivo: resultadoEmail.motivo,
+                    })
+                    capturarEventoTenant('email_confirmation_failed', tenantId, {
+                        motivo: resultadoEmail.motivo,
+                    })
                 }
             } catch (emailErr) {
                 console.error('Erro ao enviar e-mail de confirmação de agendamento:', emailErr)
-                await reportarFalhaSilenciosaAguardando('email:falha_envio_confirmacao', contextoMeta)
+                await reportarFalhaSilenciosaAguardando(
+                    'email:falha_envio_confirmacao',
+                    contextoMeta,
+                )
             }
         }
 
@@ -140,7 +157,10 @@ export async function dispararNotificacoesAgendamento(
             if (planoTemWhatsapp) {
                 if (!config || !config.instance_name) {
                     logOperacional.warn('whatsapp.config.ausente_pro', contextoMeta)
-                    await reportarFalhaSilenciosaAguardando('whatsapp:config_ausente_para_plano_pro', contextoMeta)
+                    await reportarFalhaSilenciosaAguardando(
+                        'whatsapp:config_ausente_para_plano_pro',
+                        contextoMeta,
+                    )
                     await registrarDisparo(client, {
                         tenantId,
                         agendamentoId,
@@ -153,7 +173,10 @@ export async function dispararNotificacoesAgendamento(
                     })
                 } else if (config.status !== 'conectado' || !config.instance_token) {
                     logOperacional.warn('whatsapp.confirmacao.desconectado', contextoMeta)
-                    await reportarFalhaSilenciosaAguardando('whatsapp:desconectado_ao_confirmar', contextoMeta)
+                    await reportarFalhaSilenciosaAguardando(
+                        'whatsapp:desconectado_ao_confirmar',
+                        contextoMeta,
+                    )
                     await registrarDisparo(client, {
                         tenantId,
                         agendamentoId,

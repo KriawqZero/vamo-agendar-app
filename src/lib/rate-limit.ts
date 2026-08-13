@@ -52,7 +52,8 @@ import {
  * neste tipo mas SEM entrada em `LIMITERS` devolve PASSE, nunca bloqueio
  * acidental.
  */
-export type CamadaRateLimit = 'escrita_ip' | 'escrita_telefone' | 'teto_tenant' | 'leitura_ip'
+export type CamadaRateLimit =
+    'escrita_ip' | 'escrita_telefone' | 'escrita_email' | 'teto_tenant' | 'leitura_ip'
 
 /**
  * Teto de latência da checagem antes de liberar a requisição (D-03).
@@ -139,6 +140,31 @@ const LIMITERS: Partial<Record<CamadaRateLimit, Ratelimit>> = redis
               redis,
               limiter: Ratelimit.slidingWindow(5, '1 h'),
               prefix: 'rl:escrita:tel',
+              timeout: TIMEOUT_MS,
+          }),
+
+          // Gêmeo do `escrita_telefone` para o eixo aberto pela Phase 5, quando o
+          // telefone virou opcional. Sem ele, `escrita_telefone` era simplesmente
+          // PULADO no caminho só-e-mail (não havia chave), e o booking ficava com
+          // duas camadas onde o caminho com WhatsApp tem três.
+          //
+          // A assimetria não era só de contagem. A Phase 5 plugou nesse caminho o
+          // envio de e-mail transacional PARA O ENDEREÇO QUE O VISITANTE DIGITOU,
+          // com nome de exibição controlado por ele, a partir de um domínio
+          // verificado COMPARTILHADO por todos os tenants. Sem teto por endereço,
+          // o booking público vira relay: marcações de spam e hard bounces
+          // derrubam a reputação do remetente e, com ela, todo o e-mail
+          // transacional de todos os tenants — inclusive as boas-vindas da Phase 4.
+          // Verificação de posse (OTP) está fora de questão pela Fricção Zero, o
+          // que faz do teto a única defesa disponível neste eixo.
+          //
+          // Mesma janela do telefone, pela mesma razão do D-08: o token é gasto na
+          // TENTATIVA, e o cliente que perde uma corrida de double-booking repete.
+          // Chave é e-mail normalizado + tenant, espelhando a composta do telefone.
+          escrita_email: new Ratelimit({
+              redis,
+              limiter: Ratelimit.slidingWindow(5, '1 h'),
+              prefix: 'rl:escrita:email',
               timeout: TIMEOUT_MS,
           }),
 

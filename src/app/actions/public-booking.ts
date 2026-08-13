@@ -518,7 +518,12 @@ export async function criarAgendamentoPublico({
 
     // 1. Sanitizar e validar dados de entrada básicos
     const telefoneLimpo = clienteTelefone ? clienteTelefone.replace(/\D/g, '') : null
-    const emailLimpo = clienteEmail?.trim() || null
+    // Normalizado em minúsculas: e-mail não distingue caixa na prática, e três
+    // coisas dependem de todas concordarem sobre a mesma forma — o índice único
+    // `(tenant_id, lower(email))`, o lookup da RPC de deduplicação, e o balde de
+    // rate limit `escrita_email`. Sem isso, `Maria@x.com` e `maria@x.com` viram
+    // dois clientes e dois baldes, e a dedupe por e-mail (BOO-03) não fecha.
+    const emailLimpo = clienteEmail?.trim().toLowerCase() || null
     const nomeLimpo = clienteNome?.trim() || ''
 
     if (!slug || !servicoId || !dataHora || !nomeLimpo) {
@@ -668,33 +673,52 @@ export async function criarAgendamentoPublico({
     // uma requisição com `servicoId` lixo também — 30 delas negavam agendamento
     // a um tenant inteiro por uma hora, sem criar nada. O token do tenant sai
     // agora depois do INSERT, onde "criação" quer dizer criação.
-    const passouTelefone = telefoneLimpo
-        ? await verificarLimite('escrita_telefone', [telefoneLimpo, tenantId])
-        : true
+    //
+    // ⚠️ O balde de CONTATO tem duas variantes porque o contato tem dois eixos
+    // desde a Phase 5. Cada uma só roda quando o dado correspondente veio: sem
+    // telefone não há chave de telefone. O que NÃO pode acontecer — e aconteceu
+    // quando o telefone virou opcional — é o caminho só-e-mail ficar sem NENHUM
+    // balde de contato, com o `escrita_email` inexistente e o `escrita_telefone`
+    // pulado. Era o caminho que dispara e-mail para endereço escolhido pelo
+    // visitante, ou seja, o que mais precisava do teto.
+    const [passouTelefone, passouEmail] = await Promise.all([
+        telefoneLimpo ? verificarLimite('escrita_telefone', [telefoneLimpo, tenantId]) : true,
+        emailLimpo ? verificarLimite('escrita_email', [emailLimpo, tenantId]) : true,
+    ])
     const passouTenant = await verificarLimiteSemConsumir('teto_tenant', [tenantId])
 
-    if (!passouTelefone) {
-        // Bloqueio de telefone é ROTINA — mesma natureza do bloqueio de IP: log
+    const camadaDeContatoBloqueada = !passouTelefone
+        ? ('escrita_telefone' as const)
+        : !passouEmail
+          ? ('escrita_email' as const)
+          : null
+
+    if (camadaDeContatoBloqueada) {
+        // Bloqueio de contato é ROTINA — mesma natureza do bloqueio de IP: log
         // pesquisável + taxa agregada, e NENHUMA Issue. O que muda em relação à
         // camada de IP é a variante do PostHog: aqui o tenant já existe, e a
         // taxa POR TENANT é o que responde "esta agenda está sendo atacada?".
+        const chaveBloqueada =
+            camadaDeContatoBloqueada === 'escrita_telefone' ? telefoneLimpo! : emailLimpo!
         try {
             logarRotinaDepoisDaResposta(
-                'ratelimit.bloqueio:escrita_telefone',
+                `ratelimit.bloqueio:${camadaDeContatoBloqueada}`,
                 'ratelimit.bloqueio',
                 {
                     fluxo: 'booking_publico',
-                    camada: 'escrita_telefone',
-                    chaveHash: hashChaveRateLimit(telefoneLimpo!),
+                    camada: camadaDeContatoBloqueada,
+                    // hashChaveRateLimit também aqui: e-mail é dado pessoal, e o
+                    // log é o mesmo destino de terceiro do resto da telemetria.
+                    chaveHash: hashChaveRateLimit(chaveBloqueada),
                     tenantHash: hashTenantId(tenantId),
                 },
             )
             capturarEventoTenant('booking_rate_limited', tenantId, {
-                camada: 'escrita_telefone',
+                camada: camadaDeContatoBloqueada,
             })
         } catch (telemetriaErr) {
             console.error(
-                '[rate-limit] telemetria de bloqueio por telefone não emitida (ignorada):',
+                '[rate-limit] telemetria de bloqueio por contato não emitida (ignorada):',
                 telemetriaErr,
             )
         }
