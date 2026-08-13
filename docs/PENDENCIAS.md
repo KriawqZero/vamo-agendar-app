@@ -575,23 +575,6 @@ A funcionalidade de agendamento público com contato flexível (E-mail, WhatsApp
 
 ### Integridade e pertencimento multi-tenant (inclui hardening da Data API e revisão RLS)
 
-**Absorvido pelo P0.12 em 2026-07-16 e fechado em 2026-07-17** com o redesign do
-booking público: cor, logo e capa do tenant Pro aplicados em `/book/[slug]` (upload
-próprio no Storage; sanitização pelo plano vigente). Ver P0.12(b) e "Itens
-resolvidos".
-
----
-
-## 🟠 Obrigatório antes do lançamento público
-
-Nada aqui é opcional — é a etapa imediatamente anterior a receber tráfego público.
-Também **não é o próximo trabalho**: a prioridade atual é o produto (P0/P1). Nada
-nesta seção bloqueia os pilotos controlados; quando uma parte mínima afetar os
-pilotos, ela está destacada. **Não apagar os detalhes técnicos abaixo** — eles foram
-verificados no código/banco e economizam a re-auditoria na hora de executar.
-
-### Integridade e pertencimento multi-tenant (inclui hardening da Data API e revisão RLS)
-
 Garantir que **todos os dados usados numa operação pertencem ao mesmo tenant** e que
 a role `anon` (= a internet inteira) só alcança o mínimo necessário. (O bug funcional
 do booking anônimo foi destacado para o P0.2 — o restante do redesenho fica aqui.)
