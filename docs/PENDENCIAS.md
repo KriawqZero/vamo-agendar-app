@@ -544,9 +544,10 @@ verificados no código/banco e economizam a re-auditoria na hora de executar.
 
 A infraestrutura de e-mail transacional (templates React Email, log de envios `tb_email_log`, idempotência e webhook do Resend) foi concluída no código (Phase 4). As seguintes ações de infraestrutura e painel são de responsabilidade do **owner** antes do lançamento público:
 
-1. **Webhook do Resend & Segredo no Railway**:
-   - No painel do Resend, cadastrar o endpoint `POST https://app.vamoagendar.com.br/api/webhooks/resend` escutando eventos de supressão (`suppression.added` e `email.bounced`).
-   - Copiar o segredo Svix gerado (`whsec_...`) e configurar a variável `RESEND_WEBHOOK_SECRET` no Railway **antes** de incluí-la no array `OBRIGATORIAS_EM_PRODUCAO`.
+1. **Webhook do Resend & Segredo no Railway** — ⚠️ **agora bloqueia o boot em produção**:
+   - No painel do Resend, cadastrar o endpoint `POST https://app.vamoagendar.com.br/api/webhooks/resend` escutando `email.suppressed`, `email.bounced` e `email.complained`.
+     > ⚠️ **Não use `suppression.added`** — esse evento não existe no Resend. A Phase 4 nasceu escutando esse nome e o caminho de supressão ficou morto até 2026-08-13; o union `WebhookEvent` do SDK é a fonte da verdade.
+   - Copiar o segredo Svix gerado (`whsec_...`) e configurar `RESEND_WEBHOOK_SECRET` no Railway **antes do próximo deploy de produção**: desde 2026-08-13 a variável está em `OBRIGATORIAS_EM_PRODUCAO`, então o boot **cai** sem ela. É deliberado — o estado anterior (503 mudo, Resend desabilitando o endpoint em silêncio) era pior.
 2. **Registros DNS (SPF & DMARC)**:
    - Adicionar os registros TXT recomendados pelo Resend para o subdomínio `mail.vamoagendar.com.br` (SPF) e DMARC (`p=none` com `rua` para recebimento de relatórios).
 3. **Desativar Open/Click Tracking no Resend**:
@@ -554,7 +555,47 @@ A infraestrutura de e-mail transacional (templates React Email, log de envios `t
 4. **UAT de Entregabilidade em Caixas de Entrada (Gmail, Outlook, Corporativo)**:
    - Disparar e-mails de boas-vindas para caixas de teste em provedores distintos (Gmail, Outlook/Hotmail, e-mail corporativo) e registrar no diário a caixa e aba de chegada (ex: Principal vs Promoções vs Spam).
 5. **UAT de Supressão NUNCA-PII no Sentry**:
-   - Adicionar manualmente um e-mail de teste à lista de supressão no painel do Resend e confirmar o disparo do webhook, verificando a criação da Issue sintética `resend:supressao_adicionada` no Sentry com o `tenantHash` pseudonimizado (assegurando zero vazamento de PII).
+   - Adicionar manualmente um e-mail de teste à lista de supressão no painel do Resend e confirmar o disparo do webhook, verificando a criação da Issue sintética `resend:evento_de_reputacao` no Sentry com o `tenantHash` pseudonimizado (assegurando zero vazamento de PII). O rótulo é único para os três tipos de evento; o tipo real viaja no contexto, para o agrupamento não estilhaçar.
+
+### 🔴 Aplicar a migration de sincronização de schema no Supabase Cloud (Dono: Owner)
+
+`20260813122140_sincroniza_schema_email_e_contato_flexivel.sql` foi gerada e
+**aplicada apenas no banco local**. Ela é pré-requisito de duas coisas que já
+estão no código: o índice **único** de e-mail (sem ele a RPC duplica cliente sob
+concorrência) e o status `descartado` de `tb_email_log` (sem ele o CHECK recusa a
+escrita e o envio de boas-vindas quebra).
+
+Ordem: aplicar a migration **antes** de subir o código desta sessão. Verificar
+depois que `npx supabase db diff --linked` volta sem statements de DDL — os
+~136 `grant`/`revoke` que aparecem são ruído conhecido do `migra`, que não
+enxerga os REVOKE de privilégio escritos à mão; **não aplicá-los**, reabririam a
+Data API fechada na Phase 1.
+
+### 🧪 A deduplicação de clientes saiu do `pnpm test` (Dono: dev)
+
+`public-booking-dedupe.test.ts` foi **removido** em 2026-08-13: ele declarava uma
+função `simularLookup` dentro do próprio arquivo e testava essa função — nenhuma
+linha de código de produção era importada, e ele passaria verde com a migration
+revertida. Ainda assim o `05-VALIDATION.md` o listava como a prova do SC4.
+
+A prova real virou `public-booking-dedupe.integration.test.ts`, que exercita a
+RPC `reaproveitar_ou_criar_cliente` de verdade — inclusive o caso concorrente que
+só o índice único resolve. Ela **não roda no gate**: o glob padrão exclui
+`*.integration.test.ts` para o `pnpm test` continuar hermético.
+
+Consequência assumida: enquanto isso valer, o gate padrão **não cobre**
+deduplicação. É pior em cobertura e melhor em honestidade que o verde falso
+anterior. Rodar `pnpm test:integracao` depois de aplicar a migration no ambiente
+alvo — nesta sessão não foi executada porque o `.env.local` pode apontar para a
+nuvem, onde a migration ainda não está.
+
+### 🎨 `npx prettier --check` reprova 34 arquivos (Dono: dev)
+
+Não é defeito de uma fase: o Prettier nunca rodou sobre o repositório inteiro, e
+a lista inclui `booking-engine.ts`, `proxy.ts`, `timezone.ts` e outros de fases
+anteriores. Os arquivos tocados em 2026-08-13 já estão formatados. Uma passada
+com `--write` no resto resolve, mas produz um diff enorme que não deve se
+misturar a mudança de comportamento — merece commit próprio, sozinho.
 
 ### 📱 Verificações Manuais de UAT do Booking com Contato Flexível (Phase 5 / Contato Flexível — Dono: Owner)
 
