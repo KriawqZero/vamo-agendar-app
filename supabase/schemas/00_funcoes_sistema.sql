@@ -1,3 +1,12 @@
+-- Pré-requisito de 07_agendamentos.sql: a EXCLUDE ag_sem_sobreposicao combina
+-- `tenant_id WITH =` (text) e `periodo WITH &&` (tstzrange) no mesmo índice GiST,
+-- e a operator class de = para text vem do btree_gist. Criada originalmente pela
+-- migration 20260723162858 e ausente daqui até 2026-08-13 — o que quebrava o
+-- shadow database de TODO `supabase db diff` com "data type text has no default
+-- operator class for access method gist". Com o caminho declarativo travado, as
+-- migrations das fases seguintes passaram a ser escritas à mão, contra a DoD.
+CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA extensions;
+
 -- Rede de segurança: garante que toda tabela nova criada no schema public
 -- nasça com RLS habilitado, mesmo que o autor da migration esqueça o
 -- "ALTER TABLE ... ENABLE ROW LEVEL SECURITY".

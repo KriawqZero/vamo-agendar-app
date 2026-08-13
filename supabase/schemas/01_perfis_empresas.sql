@@ -14,7 +14,8 @@ CREATE TABLE perfis_empresas (
     horizonte_maximo_dias integer NOT NULL DEFAULT 14 CHECK (horizonte_maximo_dias BETWEEN 1 AND 365),
     capa_url text,   -- URL pública da imagem de capa no bucket imagens-perfis (recurso Pro; upload próprio)
     instagram text CHECK (instagram ~ '^[a-z0-9._]{1,30}$'), -- handle sem @, normalizado na action (todos os planos)
-    endereco text CHECK (char_length(endereco) <= 200) -- endereço em texto livre exibido no booking (todos os planos)
+    endereco text CHECK (char_length(endereco) <= 200), -- endereço em texto livre exibido no booking (todos os planos)
+    email_contato text -- e-mail do profissional usado como replyTo dos e-mails transacionais (Phase 4, EML-04)
 );
 
 -- Habilitar RLS
@@ -65,3 +66,4 @@ COMMENT ON COLUMN perfis_empresas.endereco IS 'Endereço em texto livre exibido 
 COMMENT ON COLUMN perfis_empresas.timezone IS 'Fuso horário IANA do estabelecimento (ex.: America/Sao_Paulo, America/Campo_Grande). Slots de disponibilidade são calculados e as mensagens de WhatsApp formatadas neste fuso; os timestamps continuam gravados em UTC. Validado na action com Intl.supportedValuesOf(timeZone) — sem CHECK no banco.';
 COMMENT ON COLUMN perfis_empresas.antecedencia_minima_minutos IS 'Tempo mínimo, em minutos, entre o momento da reserva e o horário agendável no booking público (ex.: 15 = só permite agendar a partir de 15 min à frente). O fluxo de agendamento manual do dashboard ignora esta regra.';
 COMMENT ON COLUMN perfis_empresas.horizonte_maximo_dias IS 'Até quantos dias no futuro o booking público aceita agendamento (ex.: 14 = duas semanas de antecedência máxima). O fluxo de agendamento manual do dashboard ignora esta regra.';
+COMMENT ON COLUMN perfis_empresas.email_contato IS 'E-mail do profissional usado como replyTo dos e-mails transacionais enviados ao cliente final (EML-04): a mensagem sai de naoresponda@mail.vamoagendar.com.br, mas responder chega ao estabelecimento, não ao VamoAgendar. Opcional — quando vazio, o replyTo cai no endereço institucional. Validado na action (formato + teto RFC 5321), sem CHECK no banco.';
